@@ -12,7 +12,7 @@ Além disso, o time comercial não tinha como acompanhar o status das próprias 
 
 Conecta ao ERP IXC via MariaDB (somente leitura) para validar contratos em tempo real. Cada equipe registra suas comissões direto no sistema, que calcula os valores automaticamente conforme as regras de negócio de cada modalidade.
 
-Para o time comercial, há um painel de acompanhamento que mostra a evolução do status de cada venda — do registro até a liberação para pagamento. O fechamento do mês deixou de exigir reconciliação manual.
+Para o time comercial, há um painel de acompanhamento que mostra a evolução do status de cada venda, do registro até a liberação para pagamento. O fechamento do mês deixou de exigir reconciliação manual.
 
 ## Equipes atendidas
 
