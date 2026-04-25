@@ -1,34 +1,48 @@
-# BDR Commission — Sistema de Registro de Comissões
+# BDR Commission
 
-Aplicação web para registro de comissionamento da equipe BDR (Upgrade, Downgrade e Refidelização).
+Sistema web para registro de comissões da equipes de vendas e retenção(comercial), e terceiras de campo(instalação).
+
+## O problema que isso resolve
+
+O time BDR controlava comissões em planilhas. Sem validação contra o ERP, contratos errados eram comissionados, valores divergiam e o fechamento do mês virava um trabalho à parte: horas comparando planilha com sistema.
+
+Este projeto conecta direto ao ERP IXC via MariaDB (somente leitura), valida o contrato em tempo real e registra a comissão no banco próprio. O consultor informa o ID do contrato durante o próprio atendimento. O fechamento mensal deixou de ser um problema.
 
 ## Stack
 
-| Camada     | Tecnologia                        |
-|------------|-----------------------------------|
-| Frontend   | Vue 3 + Composition API + Vite    |
-| Backend    | Node.js + TypeScript + Express    |
-| ORM        | Prisma (migrations automáticas)   |
-| Banco RW   | PostgreSQL 16 (banco próprio)     |
-| Banco RO   | MariaDB — ERP IXC (somente leitura) |
-| Infra      | Docker + Docker Compose           |
+| Camada | Tecnologia |
+|---|---|
+| Frontend | Vue 3 + Composition API + Vite |
+| Backend | Node.js + TypeScript + Express |
+| ORM | Prisma (migrations automáticas) |
+| Banco RW | PostgreSQL 16 |
+| Banco RO | MariaDB — ERP IXC (somente leitura) |
+| Infra | Docker + Docker Compose |
 
----
+## Como funciona
 
-## Estrutura de Diretórios
+O consultor informa o ID do contrato. O sistema busca os dados no ERP, calcula a comissão conforme o tipo e salva o registro com histórico.
+
+| Tipo | Cálculo |
+|---|---|
+| Upgrade | valor_novo − valor_atual |
+| Downgrade | R$ 3,00 fixo |
+| Refidelização | R$ 3,00 fixo |
+
+## Estrutura de diretórios
 
 ```
 bdr-commission/
 ├── backend/
 │   ├── prisma/
-│   │   └── schema.prisma          # Schema PostgreSQL
+│   │   └── schema.prisma
 │   └── src/
 │       ├── config/
-│       │   ├── mysql.ts           # Pool MySQL (leitura ERP)
+│       │   ├── mysql.ts           # Pool de conexão com o ERP (MariaDB)
 │       │   ├── prisma.ts          # Client Prisma
 │       │   └── consultants.ts     # Lista de consultores
 │       ├── modules/
-│       │   └── bdr/               # Módulo BDR (Controllers → Services → Repositories)
+│       │   └── bdr/               # Controller → Service → Repository
 │       │       ├── bdr.controller.ts
 │       │       ├── bdr.service.ts
 │       │       ├── bdr.repository.ts
@@ -46,13 +60,11 @@ bdr-commission/
         └── main.ts
 ```
 
----
-
 ## Configuração
 
 ### 1. Variáveis de ambiente
 
-Edite o arquivo `.env` na raiz com os dados do servidor IXC:
+Copie o `.env.example` e preencha com os dados do servidor IXC:
 
 ```env
 MYSQL_HOST=IP_DO_SERVIDOR_IXC
@@ -62,9 +74,9 @@ MYSQL_PASSWORD=senha_readonly
 MYSQL_DATABASE=nome_do_banco
 ```
 
-> O PostgreSQL é provisionado automaticamente pelo Docker Compose.
+O PostgreSQL sobe automaticamente via Docker Compose.
 
-### 2. Consultor IXC — adaptar a query MariaDB
+### 2. Adaptando a query do ERP
 
 Se necessário, ajuste a query em `backend/src/modules/bdr/bdr.repository.ts` conforme o schema real do IXC:
 
@@ -81,117 +93,69 @@ WHERE cc.id = ?
 
 ### 3. Lista de consultores
 
-Edite `backend/src/config/consultants.ts` para incluir os nomes reais da equipe.
+Edite `backend/src/config/consultants.ts` com os nomes da equipe.
 
----
-
-## Rodando com Docker (recomendado)
+## Rodando com Docker
 
 ```bash
-# 1. Build e subir todos os serviços
+# Subir todos os serviços
 docker compose up --build -d
 
-# 2. Acessar a aplicação
+# Acessar
 http://localhost
 
-# 3. Ver logs
+# Logs
 docker compose logs -f backend
 
-# 4. Parar
+# Parar
 docker compose down
 ```
 
----
+## Rodando localmente
 
-## Rodando localmente (desenvolvimento)
-
-### Backend
-
+**Backend**
 ```bash
 cd backend
-
-# Instalar dependências
 npm install
-
-# Copiar variáveis de ambiente
 cp .env.example .env
-# Edite .env com DATABASE_URL e dados MySQL
-
-# Gerar client Prisma
 npm run prisma:generate
-
-# Rodar migrations
 npm run prisma:migrate
-
-# Iniciar servidor (hot-reload)
 npm run dev
 ```
 
-### Frontend
-
+**Frontend**
 ```bash
 cd frontend
-
-# Instalar dependências
 npm install
-
-# Iniciar servidor de desenvolvimento
 npm run dev
-# Acesse: http://localhost:5173
+# http://localhost:5173
 ```
-
----
 
 ## Endpoints da API
 
-| Método | Rota                              | Descrição                              |
-|--------|-----------------------------------|----------------------------------------|
-| GET    | `/api/v1/bdr/consultants`         | Lista consultores                      |
-| GET    | `/api/v1/bdr/contracts/:id`       | Valida contrato no ERP (MySQL)         |
-| POST   | `/api/v1/bdr/commissions`         | Registra comissão (PostgreSQL)         |
-| GET    | `/api/v1/bdr/commissions`         | Lista histórico de comissões           |
-| GET    | `/health`                         | Health check                           |
-
-### Exemplo POST `/api/v1/bdr/commissions`
-
-```json
-{
-  "id_contrato": "123456",
-  "vendedor": "Ana Paula",
-  "tipo_negociacao": "Upgrade",
-  "valor_novo": 250.00
-}
-```
-
----
-
-## Regras de Negócio
-
-| Tipo           | Cálculo da Comissão                    |
-|----------------|----------------------------------------|
-| Upgrade        | `valor_novo − valor_atual`             |
-| Downgrade      | R$ 3,00 fixo                          |
-| Refidelização  | R$ 3,00 fixo                          |
-
----
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | /api/v1/bdr/consultants | Lista consultores |
+| GET | /api/v1/bdr/contracts/:id | Valida contrato no ERP |
+| POST | /api/v1/bdr/commissions | Registra comissão |
+| GET | /api/v1/bdr/commissions | Histórico de comissões |
+| GET | /health | Health check |
 
 ## Escalabilidade
 
-O projeto usa **arquitetura modular em camadas** (`Controller → Service → Repository`).
-Para adicionar o módulo de Vendas no futuro:
+O projeto usa arquitetura modular em camadas. Para adicionar um novo módulo (ex: Vendas) basta criar a pasta e registrar a rota — sem tocar no que já existe:
 
 ```
 src/modules/
 ├── bdr/       ← módulo atual
-└── sales/     ← novo módulo, sem afetar o BDR
+└── sales/     ← novo módulo
     ├── sales.controller.ts
     ├── sales.service.ts
     ├── sales.repository.ts
     └── sales.routes.ts
 ```
 
-Basta registrar a nova rota em `src/app.ts`:
-
 ```ts
+// src/app.ts
 app.use('/api/v1/sales', salesRoutes);
 ```
