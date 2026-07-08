@@ -1,197 +1,86 @@
-# BDR Commission — Sistema de Registro de Comissões
+# Canaã Performance
 
-Aplicação web para registro de comissionamento da equipe BDR (Upgrade, Downgrade e Refidelização).
+Hub interno de performance da Canaã Telecom. Centraliza dashboards analíticos (Power BI) e um conjunto de módulos operacionais que substituem controles paralelos em planilha — comissionamento, retenção, vendas, agenda de salas e acesso ao monitoramento de rede.
+
+O comissionamento (BDR) foi o módulo de partida do projeto; hoje é um entre vários módulos do Hub.
+
+## Módulos
+
+| Módulo | O que faz |
+|---|---|
+| **Hub** | Portal de dashboards Power BI, com RBAC por setor/dashboard (quem vê o quê) |
+| **Vendas** | Contratos ativados no IXC, enriquecidos com status de assinatura (ZapSign/GovSign) e financeiro. Snapshots mensais imutáveis para fechamento de comissão |
+| **BDR** | Comissão por alteração contratual: Upgrade, Downgrade, Refidelização |
+| **Retenção** | Comissão da equipe de CS por faixa de contratos retidos no mês |
+| **Comissão Campo** | Auditoria de planilhas de equipes terceirizadas de instalação/manutenção |
+| **Agenda** | Agendamento de salas de reunião, com convite/recusa por e-mail e integração com calendário |
+| **OTDR** | SSO para o dashboard de monitoramento de rede (detecção de queda de fibra via SmartOLT) |
+| **Alertas** | Cron diário (08:00) — assinatura pendente, fatura em aberto, metas de retenção |
 
 ## Stack
 
-| Camada     | Tecnologia                        |
-|------------|-----------------------------------|
-| Frontend   | Vue 3 + Composition API + Vite    |
-| Backend    | Node.js + TypeScript + Express    |
-| ORM        | Prisma (migrations automáticas)   |
-| Banco RW   | PostgreSQL 16 (banco próprio)     |
-| Banco RO   | MariaDB — ERP IXC (somente leitura) |
-| Infra      | Docker + Docker Compose           |
+| Camada | Tecnologia |
+|---|---|
+| Frontend | Vue 3 + Composition API + Vite (SPA sem router — navegação por estado) |
+| Backend | Node.js 20 + TypeScript + Express |
+| ORM | Prisma 5 |
+| Banco (escrita) | PostgreSQL 16 — schemas `bdr`, `hub`, `comissao` |
+| Banco (leitura) | MariaDB — ERP IXC, somente leitura |
+| Processo (produção) | systemd |
 
----
-
-## Estrutura de Diretórios
+## Estrutura
 
 ```
 bdr-commission/
 ├── backend/
-│   ├── prisma/
-│   │   └── schema.prisma          # Schema PostgreSQL
+│   ├── prisma/schema.prisma
 │   └── src/
-│       ├── config/
-│       │   ├── mysql.ts           # Pool MySQL (leitura ERP)
-│       │   ├── prisma.ts          # Client Prisma
-│       │   └── consultants.ts     # Lista de consultores
-│       ├── modules/
-│       │   └── bdr/               # Módulo BDR (Controllers → Services → Repositories)
-│       │       ├── bdr.controller.ts
-│       │       ├── bdr.service.ts
-│       │       ├── bdr.repository.ts
-│       │       └── bdr.routes.ts
-│       ├── middlewares/
-│       │   └── errorHandler.ts
-│       ├── app.ts
-│       └── server.ts
+│       ├── config/          # prisma, mysql, mailer, ixcApi, logger
+│       ├── jobs/            # cron de alertas
+│       ├── middlewares/     # authenticate (JWT), errorHandler, requireHubAdmin
+│       └── modules/
+│           ├── agenda/  alertas/  auth/  bdr/  comissao/
+│           └── hub/  otdr/  retencao/  vendas/
 └── frontend/
     └── src/
-        ├── components/BdrForm.vue
-        ├── views/HistoryView.vue
-        ├── services/api.ts
-        ├── App.vue
-        └── main.ts
+        ├── components/   # ChartBars, ChartDonut, ChartRanking, PeriodFilter, BdrForm
+        ├── services/     # clients HTTP por módulo
+        └── views/        # uma view por módulo + views/hub/
 ```
 
----
+Cada módulo do backend segue `controller → service → repository → routes`.
 
 ## Configuração
 
-### 1. Variáveis de ambiente
-
-Edite o arquivo `.env` na raiz com os dados do servidor IXC:
-
-```env
-MYSQL_HOST=IP_DO_SERVIDOR_IXC
-MYSQL_PORT=3306
-MYSQL_USER=usuario_readonly
-MYSQL_PASSWORD=senha_readonly
-MYSQL_DATABASE=nome_do_banco
-```
-
-> O PostgreSQL é provisionado automaticamente pelo Docker Compose.
-
-### 2. Consultor IXC — adaptar a query MariaDB
-
-Se necessário, ajuste a query em `backend/src/modules/bdr/bdr.repository.ts` conforme o schema real do IXC:
-
-```sql
-SELECT
-  cc.id         AS id_contrato,
-  c.razao       AS nome_cliente,
-  cc.valor      AS valor_atual
-FROM cliente_contrato cc
-INNER JOIN cliente c ON c.id = cc.id_cliente
-WHERE cc.id = ?
-  AND cc.status = 'A'
-```
-
-### 3. Lista de consultores
-
-Edite `backend/src/config/consultants.ts` para incluir os nomes reais da equipe.
-
----
-
-## Rodando com Docker (recomendado)
-
-```bash
-# 1. Build e subir todos os serviços
-docker compose up --build -d
-
-# 2. Acessar a aplicação
-http://localhost
-
-# 3. Ver logs
-docker compose logs -f backend
-
-# 4. Parar
-docker compose down
-```
-
----
-
-## Rodando localmente (desenvolvimento)
-
-### Backend
-
 ```bash
 cd backend
-
-# Instalar dependências
-npm install
-
-# Copiar variáveis de ambiente
 cp .env.example .env
-# Edite .env com DATABASE_URL e dados MySQL
+# preencha DATABASE_URL, MYSQL_*, IXC_*, ALERT_EMAIL_*, SMTP_*, JWT_SECRET etc.
 
-# Gerar client Prisma
+npm install
 npm run prisma:generate
-
-# Rodar migrations
 npm run prisma:migrate
-
-# Iniciar servidor (hot-reload)
-npm run dev
+npm run dev          # hot-reload em desenvolvimento
 ```
-
-### Frontend
 
 ```bash
 cd frontend
-
-# Instalar dependências
 npm install
-
-# Iniciar servidor de desenvolvimento
-npm run dev
-# Acesse: http://localhost:5173
+npm run dev           # http://localhost:5173
 ```
 
----
+## Deploy (produção)
 
-## Endpoints da API
+Roda via **systemd** (não Docker):
 
-| Método | Rota                              | Descrição                              |
-|--------|-----------------------------------|----------------------------------------|
-| GET    | `/api/v1/bdr/consultants`         | Lista consultores                      |
-| GET    | `/api/v1/bdr/contracts/:id`       | Valida contrato no ERP (MySQL)         |
-| POST   | `/api/v1/bdr/commissions`         | Registra comissão (PostgreSQL)         |
-| GET    | `/api/v1/bdr/commissions`         | Lista histórico de comissões           |
-| GET    | `/health`                         | Health check                           |
+```bash
+# backend
+cd backend && npm run build && sudo systemctl restart bdr-backend
 
-### Exemplo POST `/api/v1/bdr/commissions`
-
-```json
-{
-  "id_contrato": "123456",
-  "vendedor": "Ana Paula",
-  "tipo_negociacao": "Upgrade",
-  "valor_novo": 250.00
-}
+# frontend (build estático servido via Nginx)
+cd frontend && npm run build && sudo cp -r dist/. /var/www/bdr/
 ```
 
----
+## Autenticação
 
-## Regras de Negócio
-
-| Tipo           | Cálculo da Comissão                    |
-|----------------|----------------------------------------|
-| Upgrade        | `valor_novo − valor_atual`             |
-| Downgrade      | R$ 3,00 fixo                          |
-| Refidelização  | R$ 3,00 fixo                          |
-
----
-
-## Escalabilidade
-
-O projeto usa **arquitetura modular em camadas** (`Controller → Service → Repository`).
-Para adicionar o módulo de Vendas no futuro:
-
-```
-src/modules/
-├── bdr/       ← módulo atual
-└── sales/     ← novo módulo, sem afetar o BDR
-    ├── sales.controller.ts
-    ├── sales.service.ts
-    ├── sales.repository.ts
-    └── sales.routes.ts
-```
-
-Basta registrar a nova rota em `src/app.ts`:
-
-```ts
-app.use('/api/v1/sales', salesRoutes);
-```
+Login validado contra o IXC (MariaDB, hash SHA-256). JWT com expiração de 8h. Perfis (`consultor` / `gestor` / `cs`) derivados do grupo IXC do usuário.
