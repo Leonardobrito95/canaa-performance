@@ -1,6 +1,6 @@
 # Canaã Performance
 
-Hub interno de performance da Canaã Telecom. Centraliza dashboards analíticos (Power BI) e um conjunto de módulos operacionais que substituem controles paralelos em planilha — comissionamento, retenção, vendas, agenda de salas e acesso ao monitoramento de rede.
+Hub interno de performance da Canaã Telecom. Centraliza dashboards analíticos (Power BI) e um conjunto de módulos operacionais que substituem controles paralelos em planilha, comissionamento, retenção, vendas, agenda de salas e acesso ao monitoramento de rede.
 
 O comissionamento (BDR) foi o módulo de partida do projeto; hoje é um entre vários módulos do Hub.
 
