@@ -90,21 +90,44 @@
         <span class="kpi-value">{{ kpis?.totalContratos ?? 0 }}</span>
         <span class="kpi-detail">no período filtrado</span>
       </div>
+
       <div class="kpi-card accent">
-        <span class="kpi-label">Faturamento Mensal</span>
+        <span class="kpi-label">Faturamento Total</span>
         <span class="kpi-value amber">{{ fmt(kpis?.faturamentoMensal ?? 0) }}</span>
-        <span class="kpi-detail">receita recorrente</span>
+        <span class="kpi-detail">todos os contratos ativados</span>
       </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Comissões Liberadas</span>
-        <span class="kpi-value upgrade">{{ kpis?.comissoesLiberadas ?? 0 }}</span>
-        <span class="kpi-detail">{{ fmt(kpis?.valorLiberado ?? 0) }}</span>
+
+      <!-- Base para meta: valorAtivado (todos os contratos) com barra de progresso -->
+      <div class="kpi-card kpi-meta">
+        <div class="kpi-meta-header">
+          <span class="kpi-label">Base para Meta</span>
+          <span :class="(kpis?.valorAtivado ?? 0) >= (kpis?.metaAlvo ?? 10000) ? 'meta-tag ok' : 'meta-tag nok'">
+            {{ (kpis?.valorAtivado ?? 0) >= (kpis?.metaAlvo ?? 10000) ? 'ATINGIDA' : 'ABAIXO' }}
+          </span>
+        </div>
+        <span class="kpi-value upgrade">{{ fmt(kpis?.valorAtivado ?? 0) }}</span>
+        <div class="meta-bar-wrap">
+          <div
+            class="meta-bar-fill"
+            :class="(kpis?.valorAtivado ?? 0) >= (kpis?.metaAlvo ?? 10000) ? 'meta-ok' : 'meta-nok'"
+            :style="{ width: Math.min(((kpis?.valorAtivado ?? 0) / (kpis?.metaAlvo ?? 10000)) * 100, 100) + '%' }"
+          />
+        </div>
+        <span class="kpi-detail">{{ kpis?.totalContratos ?? 0 }} ativados · meta {{ fmt(kpis?.metaAlvo ?? 10000) }}</span>
       </div>
+
       <div class="kpi-card">
-        <span class="kpi-label">Bloqueadas / Pendentes</span>
+        <span class="kpi-label">Comissão a Receber</span>
+        <span class="kpi-value upgrade">{{ fmt(kpis?.valorComissaoLiberada ?? 0) }}</span>
+        <span class="kpi-detail">sobre contratos liberados</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">Aguardando Liberação</span>
         <span class="kpi-value downgrade">{{ (kpis?.comissoesBloqueadas ?? 0) + (kpis?.comissoesPendentes ?? 0) }}</span>
-        <span class="kpi-detail">{{ fmt(kpis?.valorBloqueado ?? 0) }}</span>
+        <span class="kpi-detail">{{ fmt(kpis?.valorBloqueado ?? 0) }} fora da meta</span>
       </div>
+
       <div class="kpi-card">
         <span class="kpi-label">B2C / B2B / Cortesia</span>
         <span class="kpi-value" style="font-size:.95rem">
@@ -183,6 +206,7 @@
           <option value="">Todos</option>
           <option value="EXTERNO">Externo</option>
           <option value="INTERNO">Interno</option>
+          <option value="PLANTÃO">Plantão</option>
         </select>
       </div>
       <div class="filter-group">
@@ -190,6 +214,7 @@
         <select v-model="f.assinatura" @change="resetPage">
           <option value="">Todos</option>
           <option value="signed">ZapSign Assinado</option>
+          <option value="ixc_assina">IXC Assina</option>
           <option value="gov">Assinatura GOV</option>
           <option value="pending">Pendente</option>
           <option value="Sem Contrato">Sem documento</option>
@@ -229,7 +254,7 @@
               <th>Tipo</th>
               <th>Seg.</th>
               <th>Valor Mensal</th>
-              <th>ZapSign</th>
+              <th>Assinatura</th>
               <th>Comissão</th>
             </tr>
           </thead>
@@ -240,7 +265,7 @@
               <td class="td-cliente">{{ c.nome_cliente }}</td>
               <td v-if="isGestor"><span class="vendedor-badge">{{ c.nome_vendedor || '—' }}</span></td>
               <td class="td-plano">{{ c.plano }}</td>
-              <td><span :class="['pill-tipo', c.tipo_venda === 'EXTERNO' ? 'externo' : 'interno']">{{ c.tipo_venda }}</span></td>
+              <td><span :class="['pill-tipo', c.tipo_venda === 'EXTERNO' ? 'externo' : c.tipo_venda === 'PLANTÃO' ? 'plantao' : 'interno']">{{ c.tipo_venda }}</span></td>
               <td><span :class="['pill-seg', c.segmento.toLowerCase()]">{{ c.segmento }}</span></td>
               <td class="td-amount">{{ fmt(c.valor_mensal) }}</td>
               <td><span :class="['pill-zap', zapClass(c.assinatura_zapsign)]">{{ zapLabel(c.assinatura_zapsign) }}</span></td>
@@ -263,7 +288,7 @@
         <button class="pg-btn" @click="page--"   :disabled="page === 1">‹</button>
         <span class="pg-info">
           Página <strong>{{ page }}</strong> de <strong>{{ totalPages }}</strong>
-          <span class="pg-count"> — {{ filtered.length }} registros</span>
+          <span class="pg-count"> · {{ filtered.length }} registros</span>
         </span>
         <button class="pg-btn" @click="page++"          :disabled="page >= totalPages">›</button>
         <button class="pg-btn" @click="page = totalPages" :disabled="page >= totalPages">»</button>
@@ -500,6 +525,7 @@ function hideTooltip() {
 function zapClass(s: string) {
   if (s === 'Sem Contrato') return 'zap-none';
   if (s === 'signed')       return 'zap-ok';
+  if (s === 'ixc_assina')   return 'zap-ixc';
   if (s === 'gov')          return 'zap-gov';
   return 'zap-pending';
 }
@@ -508,6 +534,7 @@ function zapLabel(s: string) {
     'Sem Contrato': 'Sem doc.',
     signed:         'Assinado',
     pending:        'Pendente',
+    ixc_assina:     'IXC Assina',
     gov:            'Assin. GOV',
   };
   return map[s] ?? s;
@@ -529,7 +556,7 @@ function exportCSV() {
   const headers = [
     'Ativação', 'Contrato', 'Cliente',
     ...(isGestor.value ? ['Consultor'] : []),
-    'Plano', 'Tipo', 'Segmento', 'Valor Mensal', 'ZapSign', 'Status Comissão', 'Comissão (R$)',
+    'Plano', 'Tipo', 'Segmento', 'Valor Mensal', 'Assinatura', 'Status Comissão', 'Comissão (R$)',
   ];
   const rows = filtered.value.map((c) => [
     fmtDate(c.data_ativacao),
@@ -562,11 +589,11 @@ function exportPDF() {
 <style scoped>
 .view-vendas { width: 100%; }
 
-.vendas-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:1.25rem; flex-wrap:wrap; gap:1rem; }
+.vendas-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:1.25rem; flex-wrap:wrap; gap:.75rem; }
 .vendas-title { font-family:var(--font-display); font-size:1.6rem; font-weight:700; letter-spacing:-.01em; }
 .vendas-sub { font-size:.875rem; color:var(--text-2); margin-top:.25rem; }
 
-.header-actions { display:flex; align-items:center; gap:.5rem; }
+.header-actions { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
 .btn-export {
   display: flex; align-items: center; gap: .4rem;
   padding: .45rem .9rem; border-radius: var(--radius-sm);
@@ -636,16 +663,29 @@ function exportPDF() {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* KPI */
-.kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:.65rem; margin-bottom:1.25rem; }
-@media(max-width:900px){ .kpi-row{ grid-template-columns:repeat(3,1fr); } }
+.kpi-row { display:grid; grid-template-columns:repeat(6,1fr); gap:.65rem; margin-bottom:1.25rem; }
+@media(max-width:1100px) { .kpi-row{ grid-template-columns:repeat(3,1fr); } }
+@media(max-width:540px)  { .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+@media(max-width:360px)  { .kpi-row{ grid-template-columns:1fr; } }
 .kpi-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:.9rem 1.1rem; display:flex; flex-direction:column; gap:.15rem; }
 .kpi-card.accent { border-color:rgba(0,240,255,.25); }
+.kpi-card.kpi-meta { border-color:rgba(0,200,83,.2); }
 .kpi-label { font-size:.7rem; font-weight:600; color:var(--text-2); letter-spacing:.06em; text-transform:uppercase; }
 .kpi-value { font-family:var(--font-mono); font-size:1.3rem; font-weight:700; color:var(--text); line-height:1.2; }
 .kpi-value.amber    { color:var(--accent); }
 .kpi-value.upgrade  { color:var(--upgrade); }
 .kpi-value.downgrade{ color:var(--downgrade); }
 .kpi-detail { font-size:.7rem; color:var(--text-3); }
+
+/* Barra de progresso da meta */
+.kpi-meta-header { display:flex; align-items:center; justify-content:space-between; }
+.meta-bar-wrap { height:3px; background:var(--border); border-radius:2px; margin:.3rem 0 .1rem; overflow:hidden; }
+.meta-bar-fill { height:100%; border-radius:2px; transition:width .4s ease; }
+.meta-bar-fill.meta-ok  { background:var(--upgrade); }
+.meta-bar-fill.meta-nok { background:#f59e0b; }
+.meta-tag { font-size:.58rem; font-weight:700; letter-spacing:.05em; padding:.1rem .3rem; border-radius:3px; white-space:nowrap; }
+.meta-tag.ok  { background:rgba(0,200,83,.15); color:var(--upgrade); }
+.meta-tag.nok { background:rgba(245,158,11,.15); color:#f59e0b; }
 
 /* Inline span colours inside kpi-value */
 .amber-c { color:var(--accent); }
@@ -669,13 +709,15 @@ function exportPDF() {
 .pill-tipo, .pill-seg, .pill-zap, .pill-comissao {
   display:inline-block; padding:.12rem .4rem; border-radius:3px; font-size:.66rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
 }
-.pill-tipo.externo  { background:rgba(0,240,255,.1);  color:var(--accent);    border:1px solid rgba(0,240,255,.2); }
-.pill-tipo.interno  { background:rgba(199,255,0,.08); color:var(--accent-2);  border:1px solid rgba(199,255,0,.15); }
+.pill-tipo.externo  { background:rgba(0,240,255,.1);   color:var(--accent);   border:1px solid rgba(0,240,255,.2); }
+.pill-tipo.interno  { background:rgba(199,255,0,.08);  color:var(--accent-2); border:1px solid rgba(199,255,0,.15); }
+.pill-tipo.plantao  { background:rgba(245,158,11,.1);  color:#f59e0b;         border:1px solid rgba(245,158,11,.25); }
 .pill-seg.b2c { background:rgba(168,85,247,.1); color:var(--refid); border:1px solid rgba(168,85,247,.2); }
 .pill-seg.b2b { background:rgba(245,158,11,.1); color:#f59e0b;      border:1px solid rgba(245,158,11,.2); }
 .zap-none    { background:rgba(255,42,95,.1);    color:var(--downgrade); border:1px solid rgba(255,42,95,.2); }
 .zap-ok      { background:rgba(199,255,0,.1);    color:var(--success);   border:1px solid rgba(199,255,0,.2); }
 .zap-gov     { background:rgba(96,165,250,.1);   color:#60a5fa;          border:1px solid rgba(96,165,250,.2); }
+.zap-ixc     { background:rgba(167,139,250,.1);  color:#a78bfa;          border:1px solid rgba(167,139,250,.2); }
 .zap-pending { background:rgba(0,240,255,.08);   color:var(--accent);    border:1px solid rgba(0,240,255,.15); }
 .com-ok      { background:rgba(199,255,0,.1);    color:var(--success);   border:1px solid rgba(199,255,0,.2); }
 .com-blocked { background:rgba(255,42,95,.1);    color:var(--downgrade); border:1px solid rgba(255,42,95,.2); }
@@ -698,6 +740,14 @@ function exportPDF() {
   z-index: 9999;
   box-shadow: 0 4px 12px rgba(0,0,0,.4);
   line-height: 1.4;
+}
+
+/* Mobile */
+@media(max-width:600px) {
+  .vendas-title { font-size: 1.25rem; }
+  .relatorio-panel { flex-direction: column; align-items: flex-start; gap: .75rem; }
+  .relatorio-actions { margin-left: 0; }
+  .pg-count { display: none; }
 }
 
 /* Charts */

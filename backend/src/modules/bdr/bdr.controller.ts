@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as bdrService from './bdr.service';
+import { RegisterCommissionBody, CreateAdjustmentBody } from './bdr.schemas';
 
 export async function getContract(req: Request, res: Response, next: NextFunction) {
   try {
@@ -13,19 +14,14 @@ export async function getContract(req: Request, res: Response, next: NextFunctio
 
 export async function registerCommission(req: Request, res: Response, next: NextFunction) {
   try {
-    const { id_contrato, vendedor, tipo_negociacao, plano_novo, valor_novo } = req.body;
-
-    if (!id_contrato || !vendedor || !tipo_negociacao) {
-      res.status(400).json({ message: 'Campos obrigatórios: id_contrato, vendedor, tipo_negociacao.' });
-      return;
-    }
+    const { id_contrato, vendedor, tipo_negociacao, plano_novo, valor_novo } = req.body as RegisterCommissionBody;
 
     const commission = await bdrService.registerCommission({
       id_contrato,
       vendedor,
       tipo_negociacao,
       plano_novo:  plano_novo ?? undefined,
-      valor_novo:  valor_novo != null ? Number(valor_novo) : undefined,
+      valor_novo:  valor_novo ?? undefined,
       criado_por:  req.user!.nome,
     });
 
@@ -94,8 +90,8 @@ export async function createAdjustment(req: Request, res: Response, next: NextFu
       res.status(403).json({ message: 'Apenas gestores podem registrar ajustes.' });
       return;
     }
-    const { vendedor, descricao, valor } = req.body;
-    const result = await bdrService.addAdjustment({ vendedor, descricao, valor: Number(valor) }, nome);
+    const { vendedor, descricao, valor } = req.body as CreateAdjustmentBody;
+    const result = await bdrService.addAdjustment({ vendedor, descricao, valor }, nome);
     res.status(201).json(result);
   } catch (err: unknown) {
     const e = err as Error;

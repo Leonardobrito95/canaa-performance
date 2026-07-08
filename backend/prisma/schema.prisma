@@ -221,6 +221,20 @@ model ComissaoEnvioLog {
   @@schema("bdr")
 }
 
+/// Registro de negociação de valor em retenção (preenchido pelo CS após atendimento).
+model RetencaoNegociacao {
+  id_chamado      String   @id               // ID da O.S. no IXC
+  valor_original  Decimal  @db.Decimal(10, 2)
+  valor_negociado Decimal  @db.Decimal(10, 2)
+  descricao       String?
+  registrado_por  String                     // nome do operador logado
+  data_registro   DateTime @default(now())
+  atualizado_em   DateTime @updatedAt
+
+  @@map("retencao_negociacoes")
+  @@schema("bdr")
+}
+
 /// Controle de alertas disparados por email — evita reenvio no mesmo período.
 model AlertaEnviado {
   id             String   @id @default(uuid())

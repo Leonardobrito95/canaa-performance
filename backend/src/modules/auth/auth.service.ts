@@ -6,27 +6,36 @@ export interface AuthPayload {
   nome: string;
   email: string;
   id_grupo: number;
-  perfil: 'consultor' | 'gestor' | 'cs';
+  perfil: 'consultor' | 'gestor' | 'cs' | 'estoque' | 'campo';
 }
 
 // Grupos de gestor: BDR gestor + administradores IXC + admin Centro de Solução (140)
 const GESTOR_GROUPS  = [134, 101, 147, 140, 123];
 // Grupos de Centro de Solução
 const CS_GROUPS      = [109];
+// Grupos de Estoque (acesso restrito ao Hub)
+const ESTOQUE_GROUPS = [142, 128, 143];
+// Grupos de Campo (acesso restrito ao módulo de comissão de campo e hub)
+const CAMPO_GROUPS   = [138];
 
-export async function login(email: string, password: string): Promise<{ token: string; user: Omit<AuthPayload, 'id'> }> {
+const httpError = (msg: string, status: number) =>
+  Object.assign(new Error(msg), { status });
+
+export async function login(email: string, password: string): Promise<{ token: string; ixc_user_id: string; user: Omit<AuthPayload, 'id'> }> {
   if (!email || !password) {
-    throw new Error('E-mail e senha são obrigatórios.');
+    throw httpError('E-mail e senha são obrigatórios.', 400);
   }
 
   const user = await findUserByCredentials(email.toLowerCase().trim(), password);
   if (!user) {
-    throw new Error('Credenciais inválidas.');
+    throw httpError('Credenciais inválidas.', 401);
   }
 
   const perfil: AuthPayload['perfil'] =
-    GESTOR_GROUPS.includes(user.id_grupo) ? 'gestor' :
-    CS_GROUPS.includes(user.id_grupo)     ? 'cs'      :
+    GESTOR_GROUPS.includes(user.id_grupo)  ? 'gestor'   :
+    CS_GROUPS.includes(user.id_grupo)      ? 'cs'        :
+    ESTOQUE_GROUPS.includes(user.id_grupo) ? 'estoque'   :
+    CAMPO_GROUPS.includes(user.id_grupo)   ? 'campo'     :
     'consultor';
 
   const payload: AuthPayload = {
@@ -41,6 +50,7 @@ export async function login(email: string, password: string): Promise<{ token: s
 
   return {
     token,
+    ixc_user_id: user.id,
     user: { nome: user.nome, email: user.email, id_grupo: user.id_grupo, perfil },
   };
 }

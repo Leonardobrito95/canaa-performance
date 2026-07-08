@@ -222,6 +222,7 @@ const tipoValorBars = computed(() => {
   const map = new Map<string, number>();
   for (const r of filteredRows.value) {
     const t = r.tipo_negociacao;
+    if (t === 'Downgrade') continue; // comissão sempre R$ 0,00 — sem sentido no gráfico
     map.set(t, (map.get(t) ?? 0) + parseFloat(r.valor_comissao));
   }
   return [...map.entries()].map(([label, value]) => ({

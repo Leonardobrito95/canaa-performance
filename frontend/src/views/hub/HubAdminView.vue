@@ -163,7 +163,7 @@
               <td class="td-mono td-date">{{ fmtDate(l.created_at) }}</td>
               <td>{{ l.ixc_username }}</td>
               <td><span class="action-tag">{{ l.action }}</span></td>
-              <td class="td-detail">{{ l.detail ?? '—' }}</td>
+              <td class="td-detail">{{ l.dashboard?.title ?? l.detail ?? '—' }}</td>
               <td class="td-mono">{{ l.ip_address ?? '—' }}</td>
             </tr>
           </tbody>
@@ -392,7 +392,7 @@ const TABS = [
   { id: 'logs',        label: 'Logs' },
   { id: 'analytics',  label: 'Analytics' },
 ];
-const LOG_ACTIONS = ['LOGIN','VIEW_DASHBOARD','CREATE_SECTOR','UPDATE_SECTOR','DELETE_SECTOR','CREATE_DASHBOARD','UPDATE_DASHBOARD','ARCHIVE_DASHBOARD','GRANT_PERMISSION','REVOKE_PERMISSION'];
+const LOG_ACTIONS = ['LOGIN','VIEW_DASHBOARD','CREATE_SECTOR','UPDATE_SECTOR','DELETE_SECTOR','CREATE_DASHBOARD','UPDATE_DASHBOARD','ARCHIVE_DASHBOARD','GRANT_PERMISSION','REVOKE_PERMISSION','VIEW_VENDAS','VIEW_COMISSAO','VIEW_CAMPO','VIEW_REGISTRO_BDR','VIEW_BDR_DASHBOARD','VIEW_RETENCAO','VIEW_HUB','VIEW_HUB_ADMIN','VIEW_SALA_REUNIAO','VIEW_OTDR'];
 const PERIODS = [{v:7,l:'7d'},{v:30,l:'30d'},{v:90,l:'90d'}];
 
 const adminTab   = ref('sectors');

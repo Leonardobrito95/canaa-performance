@@ -57,19 +57,27 @@ async function refreshCache(): Promise<void> {
   const startMs = Date.now();
   try {
     /**
-     * Extrai o id_contrato direto do nome do arquivo.
-     * Padrão esperado: "{id_contrato}-GOV[qualquer coisa]"   ex.: "44925-GOV.pdf"
+     * Extrai o id_contrato de arquivos GOV salvos no IXC.
+     * Cobre dois padrões reais observados em produção:
+     *   1. nome_arquivo: "45017 - GOV.pdf"  (espaços ao redor do hífen)
+     *   2. descricao:    "45032 - GOV"      (ID no campo descrição, nome do arquivo diferente)
      *
-     * REGEXP filtra apenas arquivos que começam com dígitos + "-GOV" (case-insensitive).
-     * SUBSTRING_INDEX(..., '-', 1) pega tudo antes do primeiro '-' → o id_contrato.
-     *
-     * Sem JOIN, sem heurística de datas — matching 100% determinístico.
+     * REGEXP aceita espaços opcionais: '^[0-9]+ *- *[Gg][Oo][Vv]'
+     * TRIM remove espaços residuais antes/depois do id extraído.
+     * HAVING garante que só IDs puramente numéricos entrem no Set.
      */
     const [rows] = await pool.execute<RowDataPacket[]>(
       `SELECT DISTINCT
-         SUBSTRING_INDEX(ca.nome_arquivo, '-', 1) AS id_contrato
+         TRIM(SUBSTRING_INDEX(
+           CASE
+             WHEN ca.nome_arquivo REGEXP '^[0-9]+ *- *[Gg][Oo][Vv]' THEN ca.nome_arquivo
+             ELSE ca.descricao
+           END,
+         '-', 1)) AS id_contrato
        FROM cliente_arquivos ca
-       WHERE ca.nome_arquivo REGEXP '^[0-9]+-[Gg][Oo][Vv]'`
+       WHERE ca.nome_arquivo REGEXP '^[0-9]+ *- *[Gg][Oo][Vv]'
+          OR ca.descricao   REGEXP '^[0-9]+ *- *[Gg][Oo][Vv]'
+       HAVING id_contrato REGEXP '^[0-9]+$'`
     );
 
     const set = new Set<string>(rows.map((r) => String(r.id_contrato)));

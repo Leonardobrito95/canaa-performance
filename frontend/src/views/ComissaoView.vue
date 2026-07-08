@@ -40,10 +40,10 @@
     <!-- Banner de fonte dos dados -->
     <div v-if="mesReferencia && snapMeta" :class="['source-banner', snapMeta.source]">
       <span v-if="snapMeta.source === 'snapshot'">
-        <strong>Dados históricos</strong> — Snapshot salvo em {{ fmtDate(snapMeta.data_snapshot!) }}
+        <strong>Dados históricos</strong> · Snapshot salvo em {{ fmtDate(snapMeta.data_snapshot!) }}
       </span>
       <span v-else>
-        <strong>Dados ao vivo (IXC)</strong> — Nenhum snapshot salvo para {{ mesLabel }}
+        <strong>Dados ao vivo (IXC)</strong> · Nenhum snapshot salvo para {{ mesLabel }}
       </span>
     </div>
 
@@ -130,8 +130,30 @@
       <template v-if="isGestor">
         <div class="section-label">Resumo por Consultor</div>
         <div class="consultant-grid">
-          <div v-for="c in summaryByConsultor" :key="c.nome" class="consultant-card">
-            <div class="cc-name">{{ c.nome }}</div>
+          <div v-for="c in summaryByConsultor" :key="c.nome" class="consultant-card" :class="c.metaAtingida ? 'cc-ok' : 'cc-nok'">
+
+            <!-- Header: nome + tag de meta -->
+            <div class="cc-header">
+              <span class="cc-name">{{ c.nome }}</span>
+              <span :class="['cc-meta-tag', c.metaAtingida ? 'ok' : 'nok']">
+                {{ c.metaAtingida ? 'META ✓' : 'ABAIXO' }}
+              </span>
+            </div>
+
+            <!-- Barra de progresso da meta -->
+            <div class="cc-meta-bar-wrap">
+              <div
+                class="cc-meta-bar-fill"
+                :class="c.metaAtingida ? 'ok' : 'nok'"
+                :style="{ width: Math.min((c.valorAtivadoMensal / c.metaAlvo) * 100, 100) + '%' }"
+              />
+            </div>
+            <div class="cc-meta-info">
+              <span>{{ fmt(c.valorAtivadoMensal) }} / {{ fmt(c.metaAlvo) }}</span>
+              <span class="cc-meta-dim">base ativada</span>
+            </div>
+
+            <!-- Composição -->
             <div class="cc-rows">
               <div class="cc-row">
                 <span class="cc-key">Vendas</span>
@@ -146,10 +168,16 @@
                 <span class="cc-val error">-{{ fmt(c.descontos) }}</span>
               </div>
             </div>
-            <div class="cc-total-row">
-              <span class="cc-total-label">Total Líquido</span>
-              <span class="cc-total-val">{{ fmt(c.total) }}</span>
+
+            <!-- Comissão real a pagar -->
+            <div class="cc-total-row" :class="c.metaAtingida ? '' : 'cc-zero'">
+              <span class="cc-total-label">Comissão a Pagar</span>
+              <span class="cc-total-val">{{ fmt(c.comissaoReal) }}</span>
             </div>
+            <div v-if="!c.metaAtingida" class="cc-zero-hint">
+              Meta não atingida. Comissão bloqueada.
+            </div>
+
           </div>
           <div v-if="summaryByConsultor.length === 0" class="state-msg">
             Nenhuma comissão no período.
@@ -406,12 +434,58 @@ const totalLiquido = computed(() =>
   comissaoVendasLiberada.value + comissaoBdrTotal.value - totalDescontos.value
 );
 
-const vendedores = computed(() => {
-  const names = [
-    ...vendasContracts.value.map((c) => c.nome_vendedor),
-    ...bdrAll.value.map((r) => r.vendedor),
+// Mapa canônico: resolve prefixos de nomes.
+// Ex: "MARIA" e "MARIA SILVA" → ambos mapeiam para "MARIA SILVA"
+const canonicalKeyMap = computed(() => {
+  const allNames = [
+    ...vendasContracts.value.map(c => c.nome_vendedor),
+    ...bdrAll.value.map(r => r.vendedor),
+  ].filter(Boolean).map(n => (n as string).trim().toUpperCase());
+
+  // Ordena do mais longo para o mais curto para processar nomes completos primeiro
+  const unique = [...new Set(allNames)].sort((a, b) => b.length - a.length);
+  const map = new Map<string, string>();
+
+  for (const name of unique) {
+    if (map.has(name)) continue;
+    // Marca versões mais curtas (prefixos) para apontar para este nome completo
+    for (const other of unique) {
+      if (other !== name && name.startsWith(other + ' ') && !map.has(other)) {
+        map.set(other, name);
+      }
+    }
+    if (!map.has(name)) map.set(name, name);
+  }
+  return map;
+});
+
+const normKey = (nome: string): string => {
+  const upper = nome.trim().toUpperCase();
+  return canonicalKeyMap.value.get(upper) ?? upper;
+};
+
+// Mapa canônico → nome de exibição (usa a versão mais longa/completa encontrada)
+const nomeDisplay = computed(() => {
+  const map = new Map<string, string>();
+  const allRaw = [
+    ...vendasContracts.value.map(c => c.nome_vendedor),
+    ...bdrAll.value.map(r => r.vendedor),
   ].filter(Boolean) as string[];
-  return [...new Set(names)].sort();
+
+  for (const raw of allRaw) {
+    const key = normKey(raw);
+    const existing = map.get(key);
+    if (!existing || raw.trim().length > existing.length) map.set(key, raw.trim());
+  }
+  return map;
+});
+
+const vendedores = computed(() => {
+  const keys = [
+    ...vendasContracts.value.map((c) => c.nome_vendedor ? normKey(c.nome_vendedor) : ''),
+    ...bdrAll.value.map((r) => r.vendedor ? normKey(r.vendedor) : ''),
+  ].filter(Boolean) as string[];
+  return [...new Set(keys)].sort().map((k) => nomeDisplay.value.get(k) ?? k);
 });
 
 // ── Chart data ────────────────────────────────────────────────────────────────
@@ -425,44 +499,76 @@ const rankingTotalData = computed(() => {
   const map = new Map<string, { count: number; value: number }>();
   for (const c of vendasContracts.value) {
     if (!c.nome_vendedor || c.status_comissao !== 'Liberada') continue;
-    const cur = map.get(c.nome_vendedor) ?? { count: 0, value: 0 };
-    map.set(c.nome_vendedor, { count: cur.count + 1, value: cur.value + c.comissao });
+    const key = normKey(c.nome_vendedor);
+    const cur = map.get(key) ?? { count: 0, value: 0 };
+    map.set(key, { count: cur.count + 1, value: cur.value + c.comissao });
   }
   for (const r of bdrFiltered.value) {
     if (!r.vendedor) continue;
-    const cur = map.get(r.vendedor) ?? { count: 0, value: 0 };
-    map.set(r.vendedor, { count: cur.count + 1, value: cur.value + parseFloat(r.valor_comissao) });
+    const key = normKey(r.vendedor);
+    const cur = map.get(key) ?? { count: 0, value: 0 };
+    map.set(key, { count: cur.count + 1, value: cur.value + parseFloat(r.valor_comissao) });
   }
-  // Desconta os ajustes do value do ranking
   for (const a of adjustmentsFiltered.value) {
-    const cur = map.get(a.vendedor);
-    if (cur) map.set(a.vendedor, { ...cur, value: cur.value - parseFloat(a.valor) });
+    const key = normKey(a.vendedor);
+    const cur = map.get(key);
+    if (cur) map.set(key, { ...cur, value: cur.value - parseFloat(a.valor) });
   }
-  return [...map.entries()].map(([name, d]) => ({ name, count: d.count, value: Math.max(d.value, 0) }));
+  return [...map.entries()].map(([key, d]) => ({
+    name:  nomeDisplay.value.get(key) ?? key,
+    count: d.count,
+    value: Math.max(d.value, 0),
+  }));
 });
+
+const META_B2C = 10_000; // meta sobre valor total ativado
+const META_B2B = 7_000;
 
 // ── Summary per consultant ────────────────────────────────────────────────────
 const summaryByConsultor = computed(() => {
-  const map = new Map<string, { vendas: number; bdr: number; descontos: number }>();
-
-  const add = (nome: string, patch: Partial<{ vendas: number; bdr: number; descontos: number }>) => {
-    const cur = map.get(nome) ?? { vendas: 0, bdr: 0, descontos: 0 };
-    map.set(nome, { ...cur, ...{ vendas: cur.vendas + (patch.vendas ?? 0), bdr: cur.bdr + (patch.bdr ?? 0), descontos: cur.descontos + (patch.descontos ?? 0) } });
-  };
+  const map = new Map<string, {
+    vendas: number; bdr: number; descontos: number;
+    valorAtivadoMensal: number; qtdB2b: number; qtdTotal: number;
+  }>();
 
   for (const c of vendasContracts.value) {
-    if (c.nome_vendedor && c.status_comissao === 'Liberada') add(c.nome_vendedor, { vendas: c.comissao });
+    if (!c.nome_vendedor) continue;
+    const key = normKey(c.nome_vendedor);
+    const cur = map.get(key) ?? { vendas: 0, bdr: 0, descontos: 0, valorAtivadoMensal: 0, qtdB2b: 0, qtdTotal: 0 };
+    cur.qtdTotal++;
+    if (c.segmento === 'B2B') cur.qtdB2b++;
+    cur.valorAtivadoMensal += c.valor_mensal; // todos os contratos contam para meta
+    if (c.status_comissao === 'Liberada') {
+      cur.vendas += c.comissao; // comissão só sobre liberados
+    }
+    map.set(key, cur);
   }
   for (const r of bdrFiltered.value) {
-    if (r.vendedor) add(r.vendedor, { bdr: parseFloat(r.valor_comissao) });
+    if (!r.vendedor) continue;
+    const key = normKey(r.vendedor);
+    const cur = map.get(key) ?? { vendas: 0, bdr: 0, descontos: 0, valorAtivadoMensal: 0, qtdB2b: 0, qtdTotal: 0 };
+    cur.bdr += parseFloat(r.valor_comissao);
+    map.set(key, cur);
   }
   for (const a of adjustmentsFiltered.value) {
-    if (a.vendedor) add(a.vendedor, { descontos: parseFloat(a.valor) });
+    if (!a.vendedor) continue;
+    const key = normKey(a.vendedor);
+    const cur = map.get(key);
+    if (cur) cur.descontos += parseFloat(a.valor);
   }
 
-  return [...map.entries()]
-    .map(([nome, d]) => ({ nome, ...d, total: d.vendas + d.bdr - d.descontos }))
-    .sort((a, b) => b.total - a.total);
+  return [...map.entries()].map(([key, d]) => {
+    const metaAlvo      = d.qtdB2b > d.qtdTotal / 2 ? META_B2B : META_B2C;
+    const metaAtingida  = d.valorAtivadoMensal >= metaAlvo; // meta sobre ativado
+    const comissaoReal  = metaAtingida ? d.vendas + d.bdr - d.descontos : 0;
+    return {
+      nome: nomeDisplay.value.get(key) ?? key,
+      vendas: d.vendas, bdr: d.bdr, descontos: d.descontos,
+      valorAtivadoMensal: d.valorAtivadoMensal,
+      metaAlvo, metaAtingida, comissaoReal,
+      total: d.vendas + d.bdr - d.descontos,
+    };
+  }).sort((a, b) => b.total - a.total);
 });
 
 // ── Adjustment form ───────────────────────────────────────────────────────────
@@ -663,6 +769,14 @@ const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
 .gt-item.bdr    .gt-item-val  { color:var(--refid); }
 .gt-item.desconto .gt-item-val { color:var(--downgrade); }
 
+/* Mobile */
+@media(max-width:600px) {
+  .page-title { font-size: 1.25rem; }
+  .grand-total-bar { padding: .85rem 1rem; gap: 1rem; }
+  .gt-value { font-size: 1.4rem; }
+  .gt-breakdown { margin-left: 0; gap: .75rem; }
+}
+
 /* Charts */
 .charts-row { display:grid; gap:.65rem; margin-bottom:1.25rem; align-items:stretch; }
 .charts-3   { grid-template-columns: 210px 210px 1fr; }
@@ -681,7 +795,7 @@ const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
 /* Consultant grid */
 .consultant-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: .65rem;
   margin-bottom: 1.5rem;
 }
@@ -692,26 +806,44 @@ const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
   padding: .9rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: .5rem;
+  gap: .4rem;
 }
+.consultant-card.cc-ok  { border-color: rgba(0,200,83,.25); }
+.consultant-card.cc-nok { border-color: rgba(255,42,95,.15); }
+
+/* Header */
+.cc-header { display:flex; align-items:center; justify-content:space-between; gap:.4rem; }
 .cc-name { font-weight:700; font-size:.88rem; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.cc-rows { display:flex; flex-direction:column; gap:.25rem; }
-.cc-row  { display:flex; justify-content:space-between; font-size:.8rem; }
+.cc-meta-tag { font-size:.58rem; font-weight:700; letter-spacing:.05em; padding:.1rem .35rem; border-radius:3px; white-space:nowrap; flex-shrink:0; }
+.cc-meta-tag.ok  { background:rgba(0,200,83,.15); color:var(--success); }
+.cc-meta-tag.nok { background:rgba(255,42,95,.12); color:var(--downgrade); }
+
+/* Barra de meta */
+.cc-meta-bar-wrap { height:3px; background:var(--border); border-radius:2px; overflow:hidden; }
+.cc-meta-bar-fill { height:100%; border-radius:2px; transition:width .4s ease; }
+.cc-meta-bar-fill.ok  { background:var(--success); }
+.cc-meta-bar-fill.nok { background:#f59e0b; }
+.cc-meta-info { display:flex; justify-content:space-between; font-size:.65rem; color:var(--text-3); }
+.cc-meta-dim  { color:var(--text-3); opacity:.7; }
+
+/* Linhas de composição */
+.cc-rows { display:flex; flex-direction:column; gap:.2rem; border-top:1px solid var(--border); padding-top:.35rem; margin-top:.05rem; }
+.cc-row  { display:flex; justify-content:space-between; font-size:.78rem; }
 .cc-key  { color:var(--text-2); }
 .cc-val  { font-family:var(--font-mono); font-weight:600; }
 .cc-val.success { color:var(--success); }
 .cc-val.refid   { color:var(--refid); }
 .cc-val.error   { color:var(--downgrade); }
+
+/* Total */
 .cc-total-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-top: 1px solid var(--border);
-  padding-top: .4rem;
-  margin-top: .1rem;
+  display: flex; justify-content: space-between; align-items: center;
+  border-top: 1px solid var(--border); padding-top: .4rem; margin-top: .05rem;
 }
-.cc-total-label { font-size:.7rem; font-weight:600; color:var(--text-2); text-transform:uppercase; letter-spacing:.04em; }
-.cc-total-val   { font-family:var(--font-mono); font-size:1rem; font-weight:700; color:var(--accent); }
+.cc-total-row.cc-zero .cc-total-val { color: var(--text-3); }
+.cc-total-label { font-size:.68rem; font-weight:600; color:var(--text-2); text-transform:uppercase; letter-spacing:.04em; }
+.cc-total-val   { font-family:var(--font-mono); font-size:.95rem; font-weight:700; color:var(--accent); }
+.cc-zero-hint   { font-size:.62rem; color:var(--downgrade); opacity:.8; text-align:center; }
 
 /* Personal summary */
 .personal-summary {

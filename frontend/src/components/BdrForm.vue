@@ -27,10 +27,13 @@
               {{ loadingConsultants ? 'Atualizando...' : 'Atualizar lista' }}
             </button>
           </div>
-          <select id="vendedor" v-model="form.vendedor" required :disabled="!isGestor || loadingConsultants">
+          <!-- Gestor: select com lista do IXC -->
+          <select v-if="isGestor" id="vendedor" v-model="form.vendedor" required :disabled="loadingConsultants">
             <option value="" disabled>{{ loadingConsultants ? 'Carregando...' : 'Selecione o consultor' }}</option>
             <option v-for="c in consultants" :key="c" :value="c">{{ c }}</option>
           </select>
+          <!-- Consultor: exibe o próprio nome como campo fixo -->
+          <input v-else id="vendedor" :value="user?.nome" disabled />
         </div>
 
         <div class="form-group">
@@ -287,7 +290,8 @@ async function handleSubmit() {
 }
 
 function resetForm() {
-  form.value = { vendedor: '', id_contrato: '', tipo_negociacao: '', plano_novo: '', valor_novo: undefined };
+  const vendedor = !isGestor.value && user.value ? user.value.nome : '';
+  form.value = { vendedor, id_contrato: '', tipo_negociacao: '', plano_novo: '', valor_novo: undefined };
   planoSearch.value = '';
   planoOpen.value = false;
   contract.value = null;

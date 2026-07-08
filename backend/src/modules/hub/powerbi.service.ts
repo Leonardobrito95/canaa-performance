@@ -67,6 +67,11 @@ export interface EmbedTokenResult {
   expiry:     string;
 }
 
+export interface ExportResult {
+  buffer:   Buffer;
+  filename: string;
+}
+
 /**
  * Gera token de embed para um relatório Power BI.
  * Usa o Workspace ID configurado no .env.
@@ -82,17 +87,22 @@ export async function getEmbedToken(dashboardUrl: string): Promise<EmbedTokenRes
 
   const accessToken = await getAccessToken();
 
-  // Busca detalhes do relatório (incluindo embedUrl oficial)
+  // Busca detalhes do relatório (embedUrl + datasetId)
   const reportRes = await axios.get(
     `https://api.powerbi.com/v1.0/myorg/groups/${WORKSPACE_ID}/reports/${reportId}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  const embedUrl = reportRes.data.embedUrl as string;
+  const embedUrl  = reportRes.data.embedUrl  as string;
+  const datasetId = reportRes.data.datasetId as string;
 
-  // Gera token de embed com acesso de visualização
+  // Token multi-recurso: inclui o dataset para habilitar "Exportar dados" nas visuais.
+  // Endpoint raiz /GenerateToken aceita arrays reports + datasets com groupId explícito.
   const tokenRes = await axios.post(
-    `https://api.powerbi.com/v1.0/myorg/groups/${WORKSPACE_ID}/reports/${reportId}/GenerateToken`,
-    { accessLevel: 'View' },
+    `https://api.powerbi.com/v1.0/myorg/GenerateToken`,
+    {
+      reports:  [{ id: reportId,  groupId: WORKSPACE_ID, allowEdit: false }],
+      datasets: [{ id: datasetId, groupId: WORKSPACE_ID }],
+    },
     {
       headers: {
         Authorization:  `Bearer ${accessToken}`,
@@ -103,8 +113,64 @@ export async function getEmbedToken(dashboardUrl: string): Promise<EmbedTokenRes
 
   return {
     embedUrl,
-    embedToken: tokenRes.data.token    as string,
+    embedToken: tokenRes.data.token      as string,
     reportId,
     expiry:     tokenRes.data.expiration as string,
   };
+}
+
+/**
+ * Exporta um relatório Power BI como PDF via Export To File API.
+ * Fluxo assíncrono: POST para iniciar → polling de status → GET do arquivo.
+ * Máximo de 90 segundos de espera (30 tentativas × 3s).
+ */
+export async function exportReportToPdf(dashboardUrl: string): Promise<ExportResult> {
+  const reportId = extractReportId(dashboardUrl);
+  if (!reportId) {
+    throw Object.assign(
+      new Error('Não foi possível extrair o Report ID da URL configurada no dashboard.'),
+      { status: 400 }
+    );
+  }
+
+  const accessToken = await getAccessToken();
+
+  const exportRes = await axios.post(
+    `https://api.powerbi.com/v1.0/myorg/groups/${WORKSPACE_ID}/reports/${reportId}/ExportTo`,
+    { format: 'PDF' },
+    { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+  );
+
+  const exportId: string = exportRes.data.id;
+
+  for (let attempt = 0; attempt < 30; attempt++) {
+    await new Promise<void>((r) => setTimeout(r, 3000));
+
+    const statusRes = await axios.get(
+      `https://api.powerbi.com/v1.0/myorg/groups/${WORKSPACE_ID}/reports/${reportId}/exports/${exportId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    const { status, resourceFileExtension } = statusRes.data as { status: string; resourceFileExtension?: string };
+
+    if (status === 'Succeeded') {
+      const fileRes = await axios.get(
+        `https://api.powerbi.com/v1.0/myorg/groups/${WORKSPACE_ID}/reports/${reportId}/exports/${exportId}/file`,
+        { headers: { Authorization: `Bearer ${accessToken}` }, responseType: 'arraybuffer' }
+      );
+      return {
+        buffer:   Buffer.from(fileRes.data as ArrayBuffer),
+        filename: `relatorio${resourceFileExtension ?? '.pdf'}`,
+      };
+    }
+
+    if (status === 'Failed') {
+      throw new Error('O Power BI falhou ao exportar o relatório. Verifique se o Service Principal tem permissão de exportação no workspace.');
+    }
+  }
+
+  throw Object.assign(
+    new Error('Timeout: o relatório demorou mais de 90 segundos para exportar. Tente novamente.'),
+    { status: 504 }
+  );
 }

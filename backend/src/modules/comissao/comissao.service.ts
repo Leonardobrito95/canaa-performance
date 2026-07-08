@@ -164,7 +164,7 @@ export function compareRowsWithDatabase(
 
     const dataFin       = parseDateInput(db.data_fechamento);
     const statusOS      = stripStr(db.status_os);
-    const geraComissao  = stripStr(db.gera_comissao) === 'N' ? 'S' : (stripStr(db.gera_comissao) || 'S');
+    const geraComissao  = stripStr(db.gera_comissao) || 'S';
     const desconto      = parsePercent(db.su_oss_chamado_comissao);
     const improdutiva   = isImprodutivaService(row.tipoOS) || isImprodutivaService(db.servico);
     const manterValor   = improdutiva || (row.dobrada && row.valor > 0);

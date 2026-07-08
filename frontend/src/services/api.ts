@@ -121,8 +121,11 @@ export interface ContractKpis {
   comissoesLiberadas: number;
   comissoesBloqueadas: number;
   comissoesPendentes: number;
-  valorLiberado: number;
+  valorAtivado: number;          // todos os contratos — base da meta
+  valorLiberado: number;         // só liberados — base da comissão
   valorBloqueado: number;
+  valorComissaoLiberada: number;
+  metaAlvo: number;
   b2c: number;
   b2b: number;
   cortesias: number;
@@ -230,13 +233,24 @@ export interface RetencaoResult {
   operadores: RetencaoOperador[];
 }
 
+export interface NegociacaoData {
+  valor_original:  number;
+  valor_negociado: number;
+  descricao:       string | null;
+  registrado_por:  string;
+  data_registro:   string;
+}
+
 export interface RetencaoDetalhe {
   id_chamado:       string;
   data_abertura:    string;
   nome_operador:    string;
+  nome_cliente:     string;
+  valor_mensal:     number;
   id_diagnostico:   number | null;
   desc_diagnostico: string;
   resultado:        'RETIDO' | 'NAO_RETIDO' | 'PENDENTE';
+  negociacao:       NegociacaoData | null;
 }
 
 export const retencaoApiClient = {
@@ -245,4 +259,10 @@ export const retencaoApiClient = {
 
   getDetalhe: (p: { dateFrom?: string; dateTo?: string; operador?: string }): Promise<RetencaoDetalhe[]> =>
     retencaoApi.get(`/detalhe?${buildQuery(p)}`).then((r) => r.data),
+
+  registerNegociacao: (p: { id_chamado: string; valor_original: number; valor_negociado: number; descricao?: string }): Promise<NegociacaoData> =>
+    retencaoApi.post('/negociacao', p).then((r) => r.data),
+
+  deleteNegociacao: (id_chamado: string): Promise<void> =>
+    retencaoApi.delete(`/negociacao/${id_chamado}`).then((r) => r.data),
 };

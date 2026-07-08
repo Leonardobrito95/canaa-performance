@@ -6,7 +6,7 @@ interface AuthUser {
   nome: string;
   email: string;
   id_grupo: number;
-  perfil: 'consultor' | 'gestor' | 'cs';
+  perfil: 'consultor' | 'gestor' | 'cs' | 'estoque' | 'campo';
 }
 
 const TOKEN_KEY = 'bdr_token';
@@ -16,7 +16,8 @@ const user = ref<AuthUser | null>(null);
 function parseJwt(token: string): AuthUser | null {
   try {
     const payload = token.split('.')[1];
-    return JSON.parse(atob(payload));
+    const bytes = Uint8Array.from(atob(payload), c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder('utf-8').decode(bytes));
   } catch {
     return null;
   }
@@ -35,6 +36,8 @@ export function useAuth() {
   const isAuthenticated = computed(() => !!user.value);
   const isGestor        = computed(() => user.value?.perfil === 'gestor');
   const isCS            = computed(() => user.value?.perfil === 'cs');
+  const isEstoque       = computed(() => user.value?.perfil === 'estoque');
+  const isCampo         = computed(() => user.value?.perfil === 'campo');
   const isHubAdmin      = computed(() => !!user.value && HUB_ADMIN_IDS.includes(String(user.value.id)));
 
   async function login(email: string, password: string) {
@@ -48,5 +51,5 @@ export function useAuth() {
     user.value = null;
   }
 
-  return { user, isAuthenticated, isGestor, isCS, isHubAdmin, login, logout };
+  return { user, isAuthenticated, isGestor, isCS, isEstoque, isCampo, isHubAdmin, login, logout };
 }

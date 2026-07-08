@@ -9,15 +9,19 @@ import {
   listAdjustments,
   deleteAdjustment,
   ContractData,
+  findDuplicateCommission,
 } from './bdr.repository';
 
 const COMMISSION_REFIDELIZACAO = 3.0;
 const COMMISSION_DOWNGRADE    = 0.0;
 
+const httpError = (msg: string, status: number) =>
+  Object.assign(new Error(msg), { status });
+
 export async function getContract(id_contrato: string): Promise<ContractData> {
   const contract = await findContractById(id_contrato);
   if (!contract) {
-    throw new Error(`Contrato ${id_contrato} não encontrado ou inativo.`);
+    throw httpError(`Contrato ${id_contrato} não encontrado ou inativo.`, 404);
   }
   return contract;
 }
@@ -33,30 +37,41 @@ export async function registerCommission(payload: {
   const { id_contrato, vendedor, tipo_negociacao, plano_novo, valor_novo, criado_por } = payload;
 
   const consultants = await fetchConsultantsFromIXC();
-  if (!consultants.includes(vendedor)) {
-    throw new Error(`Consultor "${vendedor}" não encontrado.`);
+  const vendedorNorm = vendedor.trim().toLowerCase();
+  const encontrado = consultants.some((c) => c.trim().toLowerCase() === vendedorNorm);
+  if (!encontrado) {
+    throw httpError(`Consultor "${vendedor}" não encontrado.`, 400);
   }
 
   const contract = await findContractById(id_contrato);
   if (!contract) {
-    throw new Error(`Contrato ${id_contrato} não encontrado ou inativo.`);
+    throw httpError(`Contrato ${id_contrato} não encontrado ou inativo.`, 404);
+  }
+
+  const duplicate = await findDuplicateCommission(id_contrato, tipo_negociacao);
+  if (duplicate) {
+    const data = new Date(duplicate.data_registro).toLocaleDateString('pt-BR');
+    throw httpError(
+      `Já existe um lançamento de ${tipo_negociacao} para o contrato ${id_contrato} neste mês (registrado em ${data}).`,
+      409,
+    );
   }
 
   if (tipo_negociacao === 'Upgrade') {
     if (valor_novo == null) {
-      throw new Error('O campo valor_novo é obrigatório para Upgrade.');
+      throw httpError('O campo valor_novo é obrigatório para Upgrade.', 400);
     }
     if (valor_novo <= contract.valor_atual) {
-      throw new Error('Para Upgrade, o valor novo deve ser maior que o valor atual.');
+      throw httpError('Para Upgrade, o valor novo deve ser maior que o valor atual.', 400);
     }
   }
 
   if (tipo_negociacao === 'Downgrade') {
     if (valor_novo == null) {
-      throw new Error('O campo valor_novo é obrigatório para Downgrade.');
+      throw httpError('O campo valor_novo é obrigatório para Downgrade.', 400);
     }
     if (valor_novo >= contract.valor_atual) {
-      throw new Error('Para Downgrade, o valor novo deve ser menor que o valor atual.');
+      throw httpError('Para Downgrade, o valor novo deve ser menor que o valor atual.', 400);
     }
   }
 
@@ -82,7 +97,7 @@ export async function registerCommission(payload: {
 }
 
 export async function getAllCommissions(
-  perfil: 'consultor' | 'gestor' | 'cs',
+  perfil: 'consultor' | 'gestor' | 'cs' | 'estoque' | 'campo',
   nome: string,
   filter: { dateFrom?: string; dateTo?: string; cursor?: string; take?: number } = {},
 ) {
@@ -116,10 +131,10 @@ export async function addAdjustment(
   registrado_por: string,
 ) {
   if (!payload.vendedor || !payload.descricao || payload.valor == null) {
-    throw new Error('Campos obrigatórios: vendedor, descricao, valor.');
+    throw httpError('Campos obrigatórios: vendedor, descricao, valor.', 400);
   }
   if (payload.valor <= 0) {
-    throw new Error('O valor do desconto deve ser positivo.');
+    throw httpError('O valor do desconto deve ser positivo.', 400);
   }
   return createAdjustment({ ...payload, registrado_por });
 }

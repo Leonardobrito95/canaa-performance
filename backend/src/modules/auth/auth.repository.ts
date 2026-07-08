@@ -9,8 +9,8 @@ export interface IXCUser {
   id_grupo: number;
 }
 
-// 110 = consultor BDR, 134/101/147/140/123 = gestor, 109 = centro de solução (cs)
-const ALLOWED_GROUPS = [110, 134, 101, 147, 140, 123, 109];
+// 110 = consultor BDR, 134/101/147/140/123 = gestor, 109 = CS, 142/128/143 = estoque/compras, 138 = campo
+const ALLOWED_GROUPS = [110, 134, 101, 147, 140, 123, 109, 142, 128, 143, 138];
 
 export async function findUserByCredentials(
   email: string,
@@ -24,7 +24,7 @@ export async function findUserByCredentials(
      WHERE email = ?
        AND senha = ?
        AND status = 'A'
-       AND id_grupo IN (110, 134, 101, 147, 140, 123, 109)
+       AND id_grupo IN (110, 134, 101, 147, 140, 123, 109, 142, 128, 143, 138)
      LIMIT 1`,
     [email, senhaHash]
   );

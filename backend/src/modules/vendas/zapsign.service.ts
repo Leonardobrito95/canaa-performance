@@ -34,7 +34,11 @@ export async function getZapSignMap(): Promise<Map<string, string>> {
     if (!refreshPromise) {
       refreshPromise = refreshCache().finally(() => { refreshPromise = null; });
     }
-    await refreshPromise;
+    // Only block if there is no cached data at all (cold start).
+    // If stale data exists, serve it immediately while rebuild runs in background.
+    if (!cache) {
+      await refreshPromise;
+    }
   }
   return cache?.map ?? new Map();
 }
@@ -140,7 +144,8 @@ async function refreshCache(): Promise<void> {
  * Útil para diagnóstico ou após correção manual no ZapSign.
  */
 export async function forceRefreshCache(): Promise<{ size: number }> {
-  cache = null;
+  // Mark expired but keep stale data so concurrent getZapSignMap calls don't block.
+  if (cache) cache.expiresAt = 0;
   if (!refreshPromise) {
     refreshPromise = refreshCache().finally(() => { refreshPromise = null; });
   }

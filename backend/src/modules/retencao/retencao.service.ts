@@ -1,4 +1,13 @@
-import { fetchRetencao, fetchRetencaoDetalhe, RetencaoRecord, RetencaoFilters, getComissaoRetencao } from './retencao.repository';
+import {
+  fetchRetencao,
+  fetchRetencaoDetalhe,
+  upsertNegociacao,
+  deleteNegociacao,
+  RetencaoRecord,
+  RetencaoFilters,
+  NegociacaoInput,
+  getComissaoRetencao,
+} from './retencao.repository';
 
 export interface RetencaoKpis {
   totalTratadas:    number;
@@ -10,7 +19,7 @@ export interface RetencaoKpis {
 }
 
 export interface RetencaoResult {
-  kpis:      RetencaoKpis;
+  kpis:       RetencaoKpis;
   operadores: RetencaoRecord[];
 }
 
@@ -28,10 +37,10 @@ export async function getRetencao(
     operadorNome: operadorFilter,
   });
 
-  const totalTratadas   = operadores.reduce((s, o) => s + o.qtd_tratadas,    0);
-  const totalRetidas    = operadores.reduce((s, o) => s + o.qtd_retidas,     0);
-  const totalNaoRetidas = operadores.reduce((s, o) => s + o.qtd_nao_retidas, 0);
-  const totalComissoes  = operadores.reduce((s, o) => s + o.comissao,        0);
+  const totalTratadas    = operadores.reduce((s, o) => s + o.qtd_tratadas,    0);
+  const totalRetidas     = operadores.reduce((s, o) => s + o.qtd_retidas,     0);
+  const totalNaoRetidas  = operadores.reduce((s, o) => s + o.qtd_nao_retidas, 0);
+  const totalComissoes   = operadores.reduce((s, o) => s + o.comissao,        0);
   const operadoresNaMeta = operadores.filter((o) => o.comissao > 0).length;
 
   return {
@@ -54,7 +63,6 @@ export async function getRetencaoDetalhe(
   userName: string,
   filters:  { dateFrom?: string; dateTo?: string; operador?: string },
 ) {
-  // consultor: filtra pelo próprio nome | gestor/cs: vê todos (cs é dono do setor de retenção)
   const operadorFilter = perfil === 'consultor' ? userName : (filters.operador || undefined);
 
   return fetchRetencaoDetalhe({
@@ -62,4 +70,12 @@ export async function getRetencaoDetalhe(
     dateTo:       filters.dateTo,
     operadorNome: operadorFilter,
   });
+}
+
+export async function saveNegociacao(input: NegociacaoInput) {
+  return upsertNegociacao(input);
+}
+
+export async function removeNegociacao(idChamado: string) {
+  return deleteNegociacao(idChamado);
 }

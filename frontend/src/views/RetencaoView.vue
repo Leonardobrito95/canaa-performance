@@ -120,6 +120,7 @@
 
       <!-- Tabela por operador -->
       <div class="section-label">Desempenho por Operador</div>
+
       <div class="table-wrapper">
         <table>
           <thead>
@@ -174,13 +175,104 @@
         </table>
       </div>
 
+      <!-- Detalhe de retenções -->
+      <div class="detalhe-header">
+        <div class="section-label" style="margin:0">Retenções Detalhadas</div>
+        <div class="detalhe-search">
+          <input
+            v-model="buscaDetalhe"
+            class="detalhe-input"
+            placeholder="Buscar por O.S. ou nome do cliente..."
+          />
+          <span v-if="buscaDetalhe" class="detalhe-clear" @click="buscaDetalhe = ''">×</span>
+        </div>
+      </div>
+      <div v-if="loadingDetalhe" class="state-msg">
+        <span class="loading-dots"><span/><span/><span/></span> Carregando detalhes...
+      </div>
+      <div v-else class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>O.S.</th>
+              <th>Data</th>
+              <th>Operador</th>
+              <th>Cliente</th>
+              <th class="ta-r">Valor Mensal</th>
+              <th class="ta-c">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="detalheFiltrado.length === 0">
+              <td colspan="6" class="state-msg">Nenhuma retenção encontrada.</td>
+            </tr>
+            <tr v-for="d in detalheFiltrado" :key="d.id_chamado">
+              <td class="td-mono td-os">{{ d.id_chamado }}</td>
+              <td class="td-mono td-date">{{ fmtDate(d.data_abertura) }}</td>
+              <td class="td-nome">{{ d.nome_operador }}</td>
+              <td>
+                <div>{{ d.nome_cliente || '—' }}</div>
+                <div v-if="d.negociacao" class="negociacao-badge" title="Retenção com negociação de valor">
+                  Negociado: {{ fmt(d.negociacao.valor_negociado) }}
+                </div>
+              </td>
+              <td class="ta-r td-mono">{{ d.valor_mensal > 0 ? fmt(d.valor_mensal) : '—' }}</td>
+              <td class="ta-c">
+                <button class="btn-action" @click="abrirModalNegociacao(d)">
+                  {{ d.negociacao ? 'Editar' : 'Registrar' }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot v-if="detalheFiltrado.length > 0">
+            <tr>
+              <td colspan="4"><strong>Total ({{ detalheFiltrado.length }} retenções)</strong></td>
+              <td class="ta-r td-mono"><strong class="val-ok">{{ fmt(totalValorFiltrado) }}</strong></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
     </template>
+
+    <!-- Modal Negociação -->
+    <div v-if="modalNegociacao.open" class="modal-overlay" @click.self="fecharModalNegociacao">
+      <div class="modal-content">
+        <h3 class="modal-title">Registrar Negociação</h3>
+        <p class="modal-sub">O.S. {{ modalNegociacao.id_chamado }} — {{ modalNegociacao.nome_cliente }}</p>
+
+        <form @submit.prevent="salvarNegociacao" class="modal-form">
+          <div class="form-group">
+            <label>Valor Original (R$)</label>
+            <input type="number" step="0.01" v-model.number="modalNegociacao.valor_original" required />
+          </div>
+          <div class="form-group">
+            <label>Valor Negociado (R$)</label>
+            <input type="number" step="0.01" v-model.number="modalNegociacao.valor_negociado" required disabled />
+          </div>
+          <div class="form-group">
+            <label>Descrição (opcional mas recomendado)</label>
+            <textarea v-model="modalNegociacao.descricao" rows="3" placeholder="Ex: Cliente queria cancelar por preço, ofertamos desconto..."></textarea>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-cancel" @click="fecharModalNegociacao" :disabled="salvandoNegociacao">Cancelar</button>
+            <button v-if="modalNegociacao.isEdit" type="button" class="btn-danger" @click="excluirNegociacao" :disabled="salvandoNegociacao">Remover</button>
+            <button type="submit" class="btn-submit" :disabled="salvandoNegociacao">
+              {{ salvandoNegociacao ? 'Salvando...' : 'Salvar' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { retencaoApiClient, type RetencaoResult, type RetencaoKpis } from '../services/api';
+import { retencaoApiClient, type RetencaoResult, type RetencaoKpis, type RetencaoDetalhe } from '../services/api';
 import { useAuth } from '../composables/useAuth';
 import { type Period, getPeriodRange } from '../composables/useDateRange';
 import PeriodFilter  from '../components/PeriodFilter.vue';
@@ -193,9 +285,23 @@ watch(() => props.refresh, load);
 
 const { user, isGestor } = useAuth();
 
-const result  = ref<RetencaoResult | null>(null);
-const loading = ref(false);
-const error   = ref('');
+const result         = ref<RetencaoResult | null>(null);
+const loading        = ref(false);
+const error          = ref('');
+const detalhe        = ref<RetencaoDetalhe[]>([]);
+const loadingDetalhe = ref(false);
+
+// Modal state
+const salvandoNegociacao = ref(false);
+const modalNegociacao = ref({
+  open: false,
+  isEdit: false,
+  id_chamado: '',
+  nome_cliente: '',
+  valor_original: 0,
+  valor_negociado: 0,
+  descricao: '' as string | null,
+});
 
 const period      = ref<Period>('this_month');
 const customMonth = ref(new Date().getMonth());
@@ -262,21 +368,50 @@ const progressoPct = computed(() => {
   return Math.min(Math.round(((meuDado.value.qtd_retidas - prev) / (meta - prev)) * 100), 100);
 });
 
+const buscaDetalhe = ref('');
+
+const detalheRetidas = computed(() =>
+  detalhe.value.filter((d) => d.resultado === 'RETIDO')
+);
+
+const detalheFiltrado = computed(() => {
+  const q = buscaDetalhe.value.trim().toLowerCase();
+  if (!q) return detalheRetidas.value;
+  return detalheRetidas.value.filter((d) =>
+    d.id_chamado.toLowerCase().includes(q) ||
+    d.nome_cliente.toLowerCase().includes(q)
+  );
+});
+
+const totalValorFiltrado = computed(() =>
+  detalheFiltrado.value.reduce((s, d) => s + (d.valor_mensal ?? 0), 0)
+);
+
 // ── Load ──────────────────────────────────────────────────────────────────────
 onMounted(load);
 
 async function load() {
   loading.value = true; error.value = '';
+  loadingDetalhe.value = true;
+  const params = {
+    dateFrom: f.value.dateFrom || undefined,
+    dateTo:   f.value.dateTo   || undefined,
+    operador: isGestor.value && f.value.operador ? f.value.operador : undefined,
+  };
   try {
-    result.value = await retencaoApiClient.get({
-      dateFrom: f.value.dateFrom || undefined,
-      dateTo:   f.value.dateTo   || undefined,
-      operador: isGestor.value && f.value.operador ? f.value.operador : undefined,
-    });
+    const [res, det] = await Promise.all([
+      retencaoApiClient.get(params),
+      retencaoApiClient.getDetalhe(params),
+    ]);
+    result.value  = res;
+    detalhe.value = det;
   } catch (e: unknown) {
     const err = e as { response?: { data?: { message?: string } } };
     error.value = err.response?.data?.message ?? 'Erro ao carregar dados de retenção.';
-  } finally { loading.value = false; }
+  } finally {
+    loading.value        = false;
+    loadingDetalhe.value = false;
+  }
 }
 
 function clearFilters() {
@@ -287,7 +422,65 @@ function clearFilters() {
   load();
 }
 
-const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+function abrirModalNegociacao(d: RetencaoDetalhe) {
+  modalNegociacao.value = {
+    open: true,
+    isEdit: !!d.negociacao,
+    id_chamado: d.id_chamado,
+    nome_cliente: d.nome_cliente || 'Cliente sem nome',
+    valor_original: d.negociacao ? d.negociacao.valor_original : (0 as any as number),
+    valor_negociado: d.negociacao ? d.negociacao.valor_negociado : d.valor_mensal,
+    descricao: d.negociacao ? d.negociacao.descricao : '',
+  };
+}
+
+function fecharModalNegociacao() {
+  modalNegociacao.value.open = false;
+}
+
+async function salvarNegociacao() {
+  if (!modalNegociacao.value.id_chamado) return;
+  salvandoNegociacao.value = true;
+  try {
+    const res = await retencaoApiClient.registerNegociacao({
+      id_chamado: modalNegociacao.value.id_chamado,
+      valor_original: modalNegociacao.value.valor_original,
+      valor_negociado: modalNegociacao.value.valor_negociado,
+      descricao: modalNegociacao.value.descricao || undefined,
+    });
+    
+    // Atualiza localmente
+    const d = detalhe.value.find(x => x.id_chamado === modalNegociacao.value.id_chamado);
+    if (d) d.negociacao = res;
+    
+    fecharModalNegociacao();
+  } catch (e: any) {
+    alert(e.response?.data?.error || 'Erro ao salvar negociação');
+  } finally {
+    salvandoNegociacao.value = false;
+  }
+}
+
+async function excluirNegociacao() {
+  if (!confirm('Deseja realmente remover esta negociação?')) return;
+  salvandoNegociacao.value = true;
+  try {
+    await retencaoApiClient.deleteNegociacao(modalNegociacao.value.id_chamado);
+    
+    // Atualiza localmente
+    const d = detalhe.value.find(x => x.id_chamado === modalNegociacao.value.id_chamado);
+    if (d) d.negociacao = null;
+    
+    fecharModalNegociacao();
+  } catch (e: any) {
+    alert(e.response?.data?.error || 'Erro ao excluir negociação');
+  } finally {
+    salvandoNegociacao.value = false;
+  }
+}
+
+const fmt     = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
 </script>
 
 <style scoped>
@@ -320,7 +513,9 @@ const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency',
 
 /* KPIs */
 .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:.65rem; margin-bottom:1.1rem; }
-@media(max-width:900px){ .kpi-row{ grid-template-columns:repeat(3,1fr); } }
+@media(max-width:900px)  { .kpi-row{ grid-template-columns:repeat(3,1fr); } }
+@media(max-width:540px)  { .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+@media(max-width:360px)  { .kpi-row{ grid-template-columns:1fr; } }
 .kpi-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:.9rem 1.1rem; display:flex; flex-direction:column; gap:.15rem; }
 .kpi-card.accent      { border-color:rgba(0,240,255,.25); }
 .kpi-card.accent-green{ border-color:rgba(199,255,0,.2); }
@@ -387,6 +582,33 @@ const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency',
 .row-highlight { background:rgba(0,240,255,.04) !important; outline:1px solid rgba(0,240,255,.12); }
 
 tfoot tr td { border-top:1px solid var(--border-2); padding-top:.6rem; }
+.td-date { white-space: nowrap; }
+.td-os   { color: var(--accent); font-size: .8rem; }
+
+.detalhe-header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: .75rem;
+  margin-top: 1.25rem; margin-bottom: .65rem;
+}
+.detalhe-search {
+  position: relative; display: flex; align-items: center;
+}
+.detalhe-input {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: var(--font-body); font-size: .82rem;
+  padding: .4rem 2rem .4rem .75rem;
+  width: 280px; outline: none;
+  transition: border-color var(--transition);
+}
+.detalhe-input:focus { border-color: var(--accent); }
+.detalhe-input::placeholder { color: var(--text-3); }
+.detalhe-clear {
+  position: absolute; right: .55rem;
+  color: var(--text-3); cursor: pointer; font-size: 1rem; line-height: 1;
+  transition: color var(--transition);
+}
+.detalhe-clear:hover { color: var(--text); }
 
 /* Loading */
 .loading-dots { display:inline-flex; gap:4px; margin-right:.5rem; }
@@ -394,4 +616,56 @@ tfoot tr td { border-top:1px solid var(--border-2); padding-top:.6rem; }
 .loading-dots span:nth-child(2){ animation-delay:.16s; }
 .loading-dots span:nth-child(3){ animation-delay:.32s; }
 @keyframes ldot{ 0%,80%,100%{transform:scale(.5);opacity:.3} 40%{transform:scale(1);opacity:1} }
+
+/* Negociação Feature */
+.btn-action {
+  background: transparent; border: 1px solid var(--accent); color: var(--accent);
+  padding: .25rem .65rem; border-radius: var(--radius-sm); font-size: .75rem;
+  font-weight: 600; cursor: pointer; transition: all .2s;
+}
+.btn-action:hover { background: rgba(0,240,255, .1); }
+.ta-c { text-align: center; }
+
+.negociacao-badge {
+  display: inline-block; font-size: .7rem; font-family: var(--font-mono);
+  background: rgba(199,255,0,.15); color: var(--upgrade);
+  padding: .1rem .4rem; border-radius: 3px; margin-top: .2rem;
+  border: 1px solid rgba(199,255,0,.3);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0, .6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); width: 100%; max-width: 400px;
+  padding: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+}
+.modal-title { font-size: 1.25rem; font-weight: 700; margin-bottom: .25rem; color: var(--text); }
+.modal-sub   { font-size: .85rem; color: var(--text-3); margin-bottom: 1.25rem; font-family: var(--font-mono); }
+.modal-form { display: flex; flex-direction: column; gap: 1rem; }
+.form-group { display: flex; flex-direction: column; gap: .4rem; }
+.form-group label { font-size: .8rem; font-weight: 600; color: var(--text-2); }
+.form-group input, .form-group textarea {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+  padding: .65rem; border-radius: var(--radius-sm); font-family: var(--font-body); outline: none;
+}
+.form-group input:focus, .form-group textarea:focus { border-color: var(--accent); }
+.modal-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: .5rem; }
+.btn-cancel, .btn-danger, .btn-submit {
+  padding: .5rem 1rem; border-radius: var(--radius-sm); font-weight: 600; font-size: .85rem;
+  cursor: pointer; transition: all .2s; border: none;
+}
+.btn-cancel { background: transparent; color: var(--text-2); border: 1px solid var(--border); }
+.btn-cancel:hover { background: var(--surface-3); color: var(--text); }
+.btn-danger { background: rgba(255,42,95,.15); color: var(--downgrade); border: 1px solid rgba(255,42,95,.3); }
+.btn-danger:hover { background: rgba(255,42,95,.3); }
+.btn-submit { background: var(--accent); color: var(--surface); }
+.btn-submit:hover { opacity: .9; }
+.btn-submit:disabled, .btn-cancel:disabled, .btn-danger:disabled { opacity: .5; cursor: not-allowed; }
+
 </style>

@@ -2,7 +2,9 @@ import ExcelJS from 'exceljs';
 import prisma from '../../config/prisma';
 
 // ── Regras de negócio ────────────────────────────────────────────────────────
-const META_B2C           = 8_000;
+// Meta calculada sobre valor total ativado (liberado + bloqueado)
+// Comissão paga somente sobre o valor liberado (1º boleto recebido)
+const META_B2C           = 10_000;
 const META_B2B           = 7_000;
 const META_BDR_UPGRADES  = 50;
 const META_BDR_RENOVACOES = 80;
@@ -123,11 +125,12 @@ interface VendedorMetrics {
   qtdInterna: number; qtdExterna: number; qtdPlantao: number;
   valorComissaoVendas: number;
   // Aplicação de regras
-  valorVendasAtivasFat: number;   // sum(valor_mensal) where Liberada
-  somaVendas: number;             // comUpgrade + valorVendasAtivasFat
+  valorAtivado: number;           // sum(valor_mensal) de TODOS os contratos — base da meta
+  valorLiberado: number;          // sum(valor_mensal) where Liberada — base da comissão
+  somaVendas: number;             // comUpgrade + valorAtivado (para checar meta)
   analiseMeta: boolean;
-  valorComissaoLiberada: number;  // sum(valor_comissao) where Liberada
-  valorComissaoBloqueada: number; // sum(valor_comissao) where !Liberada
+  valorComissaoLiberada: number;  // sum(valor_comissao) where Liberada — o que é pago
+  valorComissaoBloqueada: number; // sum(valor_comissao) where !Liberada — pendente
   // Final
   comissaoAPagar: number;
 }
@@ -149,27 +152,55 @@ export async function gerarRelatorioComissao(mes_referencia: string): Promise<Bu
     }),
   ]);
 
-  // Agrupamento
-  const snapMap = new Map<string, typeof snapshots[0][]>();
+  // Resolve prefixos: "MARIA" e "MARIA SILVA" → ambos mapeiam para "MARIA SILVA"
+  const allRawNames = [
+    ...snapshots.map(s => s.nome_vendedor.trim().toUpperCase()),
+    ...commissions.map(c => c.vendedor.trim().toUpperCase()),
+  ];
+  const uniqueNames = [...new Set(allRawNames)].sort((a, b) => b.length - a.length);
+  const canonicalMap = new Map<string, string>();
+  for (const name of uniqueNames) {
+    if (canonicalMap.has(name)) continue;
+    for (const other of uniqueNames) {
+      if (other !== name && name.startsWith(other + ' ') && !canonicalMap.has(other)) {
+        canonicalMap.set(other, name);
+      }
+    }
+    if (!canonicalMap.has(name)) canonicalMap.set(name, name);
+  }
+  const toKey = (nome: string) => canonicalMap.get(nome.trim().toUpperCase()) ?? nome.trim().toUpperCase();
+
+  // Agrupamento com chave canônica
+  const snapMap     = new Map<string, typeof snapshots[0][]>();
+  const snapNomeMap = new Map<string, string>();
   for (const s of snapshots) {
-    const arr = snapMap.get(s.nome_vendedor) ?? [];
+    const key = toKey(s.nome_vendedor);
+    if (!snapNomeMap.has(key) || s.nome_vendedor.trim().length > (snapNomeMap.get(key)?.length ?? 0))
+      snapNomeMap.set(key, s.nome_vendedor.trim());
+    const arr = snapMap.get(key) ?? [];
     arr.push(s);
-    snapMap.set(s.nome_vendedor, arr);
+    snapMap.set(key, arr);
   }
 
-  const bdrMap = new Map<string, typeof commissions[0][]>();
+  const bdrMap     = new Map<string, typeof commissions[0][]>();
+  const bdrNomeMap = new Map<string, string>();
   for (const c of commissions) {
-    const arr = bdrMap.get(c.vendedor) ?? [];
+    const key = toKey(c.vendedor);
+    if (!bdrNomeMap.has(key) || c.vendedor.trim().length > (bdrNomeMap.get(key)?.length ?? 0))
+      bdrNomeMap.set(key, c.vendedor.trim());
+    const arr = bdrMap.get(key) ?? [];
     arr.push(c);
-    bdrMap.set(c.vendedor, arr);
+    bdrMap.set(key, arr);
   }
 
   const allVendedores = [...new Set([...snapMap.keys(), ...bdrMap.keys()])].sort();
 
-  // Cálculo de métricas
-  const metrics: VendedorMetrics[] = allVendedores.map((nome) => {
-    const vendas = snapMap.get(nome) ?? [];
-    const bdr    = bdrMap.get(nome)  ?? [];
+  // Cálculo de métricas — usa a chave normalizada (UPPER) para cruzar, mas preserva nome legível
+  const metrics: VendedorMetrics[] = allVendedores.map((key) => {
+    const vendas = snapMap.get(key) ?? [];
+    const bdr    = bdrMap.get(key)  ?? [];
+    // Prefere o nome do snapshot (vem do IXC com formatação original); fallback para BDR
+    const nome   = snapNomeMap.get(key) ?? bdrNomeMap.get(key) ?? key;
     const equipe = vendas[0]?.segmento ?? 'B2C';
 
     const upgrades  = bdr.filter((c) => c.tipo_negociacao === 'Upgrade');
@@ -196,8 +227,9 @@ export async function gerarRelatorioComissao(mes_referencia: string): Promise<Bu
     const valorComissaoVendas    = vendas.reduce((s, v) => s + Number(v.valor_comissao), 0);
     const valorComissaoLiberada  = liberadas.reduce((s, v) => s + Number(v.valor_comissao), 0);
     const valorComissaoBloqueada = bloqueadas.reduce((s, v) => s + Number(v.valor_comissao), 0);
-    const valorVendasAtivasFat   = liberadas.reduce((s, v) => s + Number(v.valor_mensal), 0);
-    const somaVendas             = comUpgrade + valorVendasAtivasFat;
+    const valorAtivado           = vendas.reduce((s, v) => s + Number(v.valor_mensal), 0);   // todos os contratos → base meta
+    const valorLiberado          = liberadas.reduce((s, v) => s + Number(v.valor_mensal), 0); // só liberados → base comissão
+    const somaVendas             = comUpgrade + valorAtivado; // meta sobre valor total ativado
 
     const metaLimit   = equipe === 'B2B' ? META_B2B : META_B2C;
     const analiseMeta = somaVendas >= metaLimit;
@@ -211,7 +243,7 @@ export async function gerarRelatorioComissao(mes_referencia: string): Promise<Bu
       nome, equipe,
       qtdUpgrade, comUpgrade, qtdDowngrade, comDowngrade, qtdRenovacao, comRenovacao, metaBDR,
       qtdVendas, valorVendas, qtdInterna, qtdExterna, qtdPlantao, valorComissaoVendas,
-      valorVendasAtivasFat, somaVendas, analiseMeta,
+      valorAtivado, valorLiberado, somaVendas, analiseMeta,
       valorComissaoLiberada, valorComissaoBloqueada,
       comissaoAPagar,
     };
@@ -299,9 +331,9 @@ function buildSheet1(wb: ExcelJS.Workbook, metrics: VendedorMetrics[], refLabel:
   sectionHeader(ws, row++, 'VENDAS ATIVADAS', N, C.navyDark);
   colHeaders(ws, row++, [
     'COLABORADOR','EQUIPE',
-    'QTD DE VENDAS','VALOR VENDAS',
+    'QTD DE VENDAS','VALOR ATIVADO (BASE META)',
     'QTD INTERNA','QTD EXTERNA','QTD PLANTÃO',
-    'VALOR COMISSÃO','META ALCANÇADA',
+    'COMISSÃO POTENCIAL','META ALCANÇADA',
   ], C.navyMid);
 
   const vendasRows = metrics.filter((m) => m.qtdVendas > 0);
@@ -327,14 +359,15 @@ function buildSheet1(wb: ExcelJS.Workbook, metrics: VendedorMetrics[], refLabel:
   row++; // espaço
 
   // ── Seção 3: APLICAÇÃO DE REGRAS ─────────────────────────────────────────────
-  sectionHeader(ws, row++, 'APLICAÇÃO DE REGRAS VENDAS COLABORADOR', N, C.navyDark);
+  const metaLabel = `META: R$ ${META_B2C.toLocaleString('pt-BR')}`;
+  sectionHeader(ws, row++, `APLICAÇÃO DE REGRAS — ${metaLabel} EM VALOR ATIVADO`, N, C.navyDark);
   colHeaders(ws, row++, [
     'COLABORADOR','EQUIPE',
-    'VALOR UPGRADE','VALOR DE VENDAS ATIVAS',
-    'SOMA DE VENDAS','ANÁLISE META',
-    'VALOR COMISSÃO',
-    'VALOR COMISSÃO CONTRATO SEM ASSINAR E BOLETO NÃO PAGO',
-    'VALOR COMISSÃO APENAS CONTRATOS ATIVOS',
+    'VALOR UPGRADE','VALOR ATIVADO (TODOS OS CONTRATOS)',
+    `TOTAL PARA META (${metaLabel})`,'ATINGIU A META?',
+    'VALOR LIBERADO (BASE DA COMISSÃO)',
+    'COMISSÃO A PAGAR (só sobre liberado)',
+    'COMISSÃO PENDENTE (sem liberação)',
   ], C.navyMid);
 
   for (const m of metrics) {
@@ -342,15 +375,16 @@ function buildSheet1(wb: ExcelJS.Workbook, metrics: VendedorMetrics[], refLabel:
     dataRow(ws, row++, [
       m.nome, m.equipe,
       fmt(m.comUpgrade),
-      fmt(m.valorVendasAtivasFat),
+      fmt(m.valorAtivado),
       fmt(m.somaVendas),
       m.analiseMeta ? 'SIM' : 'NÃO',
+      fmt(m.valorLiberado),
       fmt(comissaoFinal),
       fmt(m.valorComissaoBloqueada),
-      fmt(comissaoFinal),
     ], {
       5: { fontArgb: m.analiseMeta ? C.greenOk : C.red, bold: true },
-      7: { fontArgb: C.red },
+      7: { fontArgb: m.analiseMeta ? C.greenOk : 'FF888888' },
+      8: { fontArgb: C.red },
     });
   }
 

@@ -3,7 +3,7 @@ import transporter from '../../config/mailer';
 import logger from '../../config/logger';
 import { gerarRelatorioComissao } from './comissao-relatorio.service';
 
-const FROM = process.env.ALERT_EMAIL_FROM ?? 'alertas@empresa.com.br';
+const FROM = process.env.ALERT_EMAIL_FROM ?? 'contato@exemplo.com.br';
 
 function parseEmails(envVar: string | undefined, fallback: string[]): string[] {
   if (!envVar) return fallback;
@@ -11,14 +11,15 @@ function parseEmails(envVar: string | undefined, fallback: string[]): string[] {
 }
 
 const EMAILS_COMERCIAL = parseEmails(process.env.ALERT_EMAIL_COMERCIAL, [
-  'gestao.comercial@empresa.com.br',
-  'supervisao.comercial@empresa.com.br',
-  'rh@empresa.com.br',
+  'comercial@exemplo.com.br',
 ]);
 
 const EMAILS_FINANCEIRO = parseEmails(process.env.ALERT_EMAIL_FINANCEIRO, [
-  'financeiro@empresa.com.br',
+  'financeiro@exemplo.com.br',
 ]);
+
+// Cópia extra opcional (ex: gestor que quer acompanhar o envio ao financeiro).
+const EMAIL_CC_EXTRA = parseEmails(process.env.ALERT_EMAIL_CC_EXTRA, []);
 
 const MESES = ['janeiro','fevereiro','março','abril','maio','junho',
                'julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -99,7 +100,7 @@ export async function enviarRelatorioFinanceiro(
   await transporter.sendMail({
     from,
     to:      EMAILS_FINANCEIRO.join(', '),
-    cc:      EMAILS_COMERCIAL.join(', '),
+    cc:      [...EMAILS_COMERCIAL, ...EMAIL_CC_EXTRA].join(', '),
     subject: `✅ Comissão Aprovada — ${label}`,
     html:    emailBody(
       `Comissão Aprovada para Pagamento — ${label}`,

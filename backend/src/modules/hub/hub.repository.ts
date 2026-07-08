@@ -256,7 +256,7 @@ export async function findAnalytics(days: number, ixcUserId?: string) {
   for (const log of viewLogs) {
     if (log.dashboard_id) dashCounts[log.dashboard_id] = (dashCounts[log.dashboard_id] ?? 0) + 1;
     uniqueUsers.add(log.ixc_user_id);
-    const h = log.created_at.getHours();
+    const h = (log.created_at.getUTCHours() - 3 + 24) % 24; // UTC → Brasília (UTC-3)
     hourCounts[h]++;
   }
 

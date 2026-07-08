@@ -13,15 +13,15 @@ function parseEmails(envVar: string | undefined, fallback: string[]): string[] {
 
 const EMAILS_COMERCIAL = parseEmails(
   process.env.ALERT_EMAIL_COMERCIAL,
-  ['gestao.comercial@empresa.com.br', 'supervisao.comercial@empresa.com.br', 'rh@empresa.com.br', 'ti@empresa.com.br'],
+  ['comercial@exemplo.com.br'],
 );
 
 const EMAILS_SAC = parseEmails(
   process.env.ALERT_EMAIL_SAC,
-  ['sac@empresa.com.br', 'supervisao.cs@empresa.com.br', 'rh@empresa.com.br', 'ti@empresa.com.br'],
+  ['sac@exemplo.com.br'],
 );
 
-const FROM = process.env.ALERT_EMAIL_FROM ?? 'alertas@empresa.com.br';
+const FROM = process.env.ALERT_EMAIL_FROM ?? 'contato@exemplo.com.br';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -84,9 +84,12 @@ async function registrarEnvio(
 
 export async function alertaAssinaturaPendente(): Promise<void> {
   const mes = mesAtual();
+  const now = new Date();
+  const dateFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const dateTo   = now.toISOString().substring(0, 10);
 
-  // Busca contratos ativos sem filtro de data para pegar todos
-  const todos = await fetchContracts({});
+  // Foco no mês corrente: colaboradores têm até o dia 18 do mês seguinte para desbloquear
+  const todos = await fetchContracts({ dateFrom, dateTo });
 
   // Filtra: bloqueados por assinatura + ativados há mais de 10 dias
   const pendentes = todos.filter((c) => {
@@ -159,8 +162,12 @@ export async function alertaAssinaturaPendente(): Promise<void> {
 
 export async function alertaFaturaNaoQuitada(): Promise<void> {
   const mes = mesAtual();
+  const now = new Date();
+  const dateFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const dateTo   = now.toISOString().substring(0, 10);
 
-  const todos = await fetchContracts({});
+  // Foco no mês corrente: colaboradores têm até o dia 18 do mês seguinte para desbloquear
+  const todos = await fetchContracts({ dateFrom, dateTo });
 
   const pendentes = todos.filter((c) => {
     const aguardandoPagamento = c.status_comissao === 'Bloqueada — aguardando pagamento';

@@ -5,6 +5,7 @@ import * as pbiService from './powerbi.service';
 import { proxyRequest } from './hub.proxy';
 import path from 'path';
 import fs from 'fs';
+import logger from '../../config/logger';
 
 function getIp(req: Request): string {
   return (req.headers['x-real-ip'] as string) ?? req.socket.remoteAddress ?? 'unknown';
@@ -23,6 +24,25 @@ export async function listSectors(req: Request, res: Response) {
 
 // ─── Power BI Embed Token ─────────────────────────────────────────────────────
 
+export async function exportDashboard(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const dashboard = await service.getDashboard(id, req.user!.id);
+    if (dashboard.type !== 'powerbi') {
+      res.status(400).json({ message: 'Exportação disponível apenas para dashboards Power BI.' });
+      return;
+    }
+    const { buffer, filename } = await pbiService.exportReportToPdf(dashboard.url);
+    const safeTitle = dashboard.title.replace(/[^\wÀ-ɏ\s-]/g, '').trim().replace(/\s+/g, '_');
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', `attachment; filename="${safeTitle}.pdf"`);
+    res.send(buffer);
+  } catch (err: any) {
+    const msg = err?.response?.data?.error?.message ?? err.message;
+    res.status(err.status ?? 500).json({ message: msg });
+  }
+}
+
 export async function getPowerBIEmbedToken(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -36,7 +56,7 @@ export async function getPowerBIEmbedToken(req: Request, res: Response) {
   } catch (err: any) {
     // Log detalhado do erro para diagnóstico
     const axiosDetail = err?.response?.data ?? null;
-    console.error('[PowerBI EmbedToken] Erro:', err.message, axiosDetail ? JSON.stringify(axiosDetail) : '');
+    logger.error('[HUB] PowerBI EmbedToken erro', { error: err.message, detail: axiosDetail });
     const message = axiosDetail?.error_description ?? axiosDetail?.message ?? err.message;
     res.status(err.status ?? 500).json({ message });
   }
@@ -100,6 +120,21 @@ export async function logDashboardView(req: Request, res: Response) {
       ixc_user_id: req.user!.id,
       ixc_username: req.user!.nome,
       dashboard_id: req.params.id,
+      ip_address: getIp(req),
+    });
+    res.status(204).send();
+  } catch (err: any) {
+    res.status(err.status ?? 500).json({ message: err.message });
+  }
+}
+
+export async function logModuleView(req: Request, res: Response) {
+  try {
+    await service.logAdminAction({
+      ixc_user_id: req.user!.id,
+      ixc_username: req.user!.nome,
+      action: req.body.action,
+      detail: req.body.detail,
       ip_address: getIp(req),
     });
     res.status(204).send();
@@ -277,7 +312,7 @@ export async function listAccessLogs(req: Request, res: Response) {
 
 export async function getAnalytics(req: Request, res: Response) {
   try {
-    const days     = parseInt(req.query.days as string) || 30;
+    const days     = Math.min(parseInt(req.query.days as string) || 30, 365);
     const userId   = req.query.user_id as string | undefined;
     const result = await service.getAnalytics(days, userId);
     res.json(result);

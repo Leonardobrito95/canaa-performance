@@ -5,6 +5,8 @@ import fs from 'fs';
 import * as ctrl from './hub.controller';
 import { authenticate } from '../../middlewares/authenticate';
 import { requireHubAdmin } from '../../middlewares/requireHubAdmin';
+import { validate } from '../../middlewares/validate';
+import { logModuleViewSchema } from './hub.schemas';
 
 const router = Router();
 
@@ -30,6 +32,7 @@ router.delete('/sectors/:id', requireHubAdmin, ctrl.deleteSector);
 router.get('/dashboards',                    ctrl.listDashboards);
 router.get('/dashboards/:id',               ctrl.getDashboard);
 router.get('/dashboards/:id/embed-token',   ctrl.getPowerBIEmbedToken);
+router.get('/dashboards/:id/export',        ctrl.exportDashboard);
 router.post('/dashboards/:id/view',         ctrl.logDashboardView);
 
 router.post('/dashboards',                                    requireHubAdmin, ctrl.createDashboard);
@@ -47,6 +50,10 @@ router.delete('/permissions/:id', requireHubAdmin, ctrl.revokePermission);
 router.get('/users/search',      requireHubAdmin, ctrl.searchIxcUsers);
 
 // ─── Logs e Analytics ────────────────────────────────────────────────────────
+// Log genérico de "abri este módulo" — usado por Vendas, Comissões, Campo,
+// Registro BDR, Dashboard BDR, Retenção, OTDR, Sala de Reunião, etc, chamado
+// uma vez quando o usuário navega pra lá, não a cada chamada de API interna.
+router.post('/logs/view', validate('body', logModuleViewSchema), ctrl.logModuleView);
 router.get('/logs',      requireHubAdmin, ctrl.listAccessLogs);
 router.get('/analytics', requireHubAdmin, ctrl.getAnalytics);
 

@@ -2,6 +2,7 @@ import pool from '../../config/mysql';
 import { RowDataPacket } from 'mysql2';
 import { getZapSignMap } from './zapsign.service';
 import { getGovSignSet } from './govsign.service';
+import { getFisicoSet } from './fisico.service';
 import { getFinanceiroSet } from './financeiro.service';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -62,7 +63,8 @@ export async function fetchContracts(filters: ContractFilters): Promise<Contract
         MIN(vend.nome)                              AS nome_vendedor_raw,
         MIN(cc.id_carteira_cobranca)                AS id_carteira_cobranca,
         MIN(cc.id_tipo_contrato)                    AS id_tipo_contrato,
-        MIN(ct.tipo_contrato)                       AS tipo_contrato_str
+        MIN(ct.tipo_contrato)                       AS tipo_contrato_str,
+        MIN(cc.assinatura_digital)                  AS assinatura_digital_ixc
      FROM view_valor_produtos_contrato_composicao v
      LEFT JOIN cliente_contrato cc         ON cc.id = v.cliente_contrato_id
      LEFT JOIN vendedor vend               ON vend.id = cc.id_vendedor
@@ -74,25 +76,33 @@ export async function fetchContracts(filters: ContractFilters): Promise<Contract
     params as any[]
   );
 
-  const [zapMap, govSet, financeiroSet] = await Promise.all([
+  const [zapMap, govSet, fisicoSet, financeiroSet] = await Promise.all([
     getZapSignMap(),
     getGovSignSet(),
+    getFisicoSet(),
     getFinanceiroSet(),
   ]);
 
   return rows
-    .map((row) => enrichContract(row, zapMap, govSet, financeiroSet))
+    .map((row) => enrichContract(row, zapMap, govSet, fisicoSet, financeiroSet))
     .filter((c) => c.nome_vendedor !== 'Central de Relacionamento')
-    .filter((c) =>
-      !filters.vendedorNome ||
-      c.nome_vendedor.toLowerCase().includes(filters.vendedorNome.toLowerCase())
-    );
+    .filter((c) => {
+      if (!filters.vendedorNome) return true;
+      if (!c.nome_vendedor) return false;
+      const vend  = c.nome_vendedor.toLowerCase();
+      const filtro = filters.vendedorNome.toLowerCase();
+      // Cobre tanto "MARIA SILVA".includes("MARIA SILVA - EXTERNO")
+      // quanto o caso inverso onde o vendedor tem nome abreviado no IXC:
+      // ex: vendedor = "MARIA", usuário = "MARIA SILVA"
+      return vend.includes(filtro) || filtro.includes(vend);
+    });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
  * Retorna o percentual de comissão com base no nome do plano.
+ * (Não se aplica a PLANTÃO — nesses casos usa-se 50% fixo sobre o valor mensal.)
  *   >= 900 Mbps (ou Giga)  → 20%
  *   >= 700 Mbps            → 18%
  *   >= 500 Mbps            → 15%
@@ -101,8 +111,8 @@ export async function fetchContracts(filters: ContractFilters): Promise<Contract
 function getComissaoPercentual(plano: string): number {
   const upper = plano.toUpperCase();
 
-  // Planos com "GIGA" (≥ 1000 Mbps)
-  if (/\d*\s*GIGA|\d+\s*GB\b/.test(upper)) return 0.20;
+  // Planos com "GIGA" (≥ 1000 Mbps) — inclui "1G", "2G", "GB", "GIGA"
+  if (/\d*\s*GIGA|\d+\s*GB?\b/.test(upper)) return 0.20;
 
   // Extrai valor numérico seguido de mega/mb/mbps ou apenas o número isolado
   const match = upper.match(/(\d+)\s*(MEGA|MEGAS|MB|MBPS)?/);
@@ -117,9 +127,10 @@ function getComissaoPercentual(plano: string): number {
 }
 
 function enrichContract(
-  row:          RowDataPacket,
-  zapMap:       Map<string, string>,
-  govSet:       Set<string>,
+  row:           RowDataPacket,
+  zapMap:        Map<string, string>,
+  govSet:        Set<string>,
+  fisicoSet:     Set<string>,
   financeiroSet: Set<string>,
 ): ContractRecord {
   const raw      = row.nome_vendedor_raw ? String(row.nome_vendedor_raw) : '';
@@ -132,8 +143,10 @@ function enrichContract(
 
   const plano    = String(row.plano ?? '').toUpperCase();
   const segmento =
-    plano.includes('DEDICADO') || plano.includes('CORPORATE') ||
-    plano.includes('EMPRESARIAL') || plano.includes('CORPORATIV')
+    plano.includes('DEDICAD')    ||   // "Dedicada" e "Dedicado"
+    plano.includes('CORPORATE')  ||   // "Link Corporate" e similares
+    plano.includes('EMPRESARIAL') ||  // planos Empresarial
+    (plano.includes('CORPORATIV') && !plano.includes('VAREJO'))  // "Corporativo" puro, não Varejo
       ? 'B2B' : 'B2C';
 
   const cortesia =
@@ -146,14 +159,24 @@ function enrichContract(
   const idContrato     = String(row.id_contrato);
   const zapStatus      = zapMap.get(idContrato) ?? 'Sem Contrato';
   const isGovSigned    = govSet.has(idContrato);
+  const isFisicoSigned = fisicoSet.has(idContrato);
   const temFinanceiro  = financeiroSet.has(idContrato);
   const statusContrato = String(row.status_contrato ?? '');
 
-  // Considera assinado se: ZapSign signed  OU  Assinatura GOV no IXC
-  const assinaturaOk = zapStatus === 'signed' || isGovSigned;
+  // IXC Assina (substituiu o ZapSign a partir de 01/07/2026): campo nativo do
+  // IXC em cliente_contrato.assinatura_digital, enum('S','N','P').
+  const isIxcAssinaSigned = String(row.assinatura_digital_ixc ?? '').toUpperCase() === 'S';
+
+  // Considera assinado se: ZapSign signed  OU  IXC Assina  OU  GOV  OU  Físico
+  const assinaturaOk = zapStatus === 'signed' || isIxcAssinaSigned || isGovSigned || isFisicoSigned;
 
   // Valor exibido no campo assinatura_zapsign
-  const assinaturaDisplay = isGovSigned && zapStatus !== 'signed' ? 'gov' : zapStatus;
+  const assinaturaDisplay =
+    zapStatus === 'signed'  ? zapStatus :
+    isIxcAssinaSigned       ? 'ixc_assina' :
+    isGovSigned             ? 'gov'     :
+    isFisicoSigned          ? 'fisico'  :
+    zapStatus;
 
   let statusComissao: string;
   let motivoBloqueio: string | null = null;
@@ -177,7 +200,9 @@ function enrichContract(
   }
 
   const valorMensal = parseFloat(row.valor_mensal ?? 0);
-  const percentual  = statusComissao === 'Liberada' ? getComissaoPercentual(String(row.plano ?? '')) : 0;
+  const percentual  = statusComissao === 'Liberada'
+    ? (tipoVenda === 'PLANTÃO' ? 0.50 : getComissaoPercentual(String(row.plano ?? '')))
+    : 0;
   const comissao    = valorMensal * percentual;
 
   return {

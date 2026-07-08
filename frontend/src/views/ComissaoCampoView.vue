@@ -126,7 +126,7 @@
             <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M3 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5"/><path d="M5 5l5 5M10 5l-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             Exportar Excel
           </button>
-          <button v-if="results.length" class="btn-secondary" @click="salvarAuditoria">
+          <button v-if="results.length && isGestor" class="btn-secondary" @click="salvarAuditoria">
             <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M2 2h11v11H2z" stroke="currentColor" stroke-width="1.5"/><path d="M5 2v4h5V2M5 8v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             Salvar auditoria
           </button>
@@ -241,11 +241,12 @@
               <td class="td-dobrada">
                 <template v-if="row.dobrada">
                   <span class="dobrada-chip">Dobrada</span>
-                  <label v-if="isDobradaGestorElegivel(row)" class="manager-approval-toggle">
+                  <label v-if="isDobradaGestorElegivel(row)" :class="['manager-approval-toggle', { 'is-readonly': !isGestor }]">
                     <input
                       type="checkbox"
                       :checked="getDobradaGestorStatus(row) !== 'indevida'"
                       @change="toggleDobradaGestor(row, ($event.target as HTMLInputElement).checked)"
+                      :disabled="!isGestor"
                     />
                     <span>{{ getDobradaGestorStatus(row) === 'indevida' ? 'Indevida' : 'Devida' }}</span>
                   </label>
@@ -283,7 +284,7 @@
         </div>
 
         <!-- Nova empresa -->
-        <div class="empresa-form">
+        <div class="empresa-form" v-if="isGestor">
           <div class="cc-form-row" style="align-items:flex-end">
             <div class="form-group" style="flex:1">
               <label class="form-label">Nome da empresa</label>
@@ -297,7 +298,7 @@
         <div v-for="emp in empresas" :key="emp.key" class="empresa-item">
           <div class="empresa-header">
             <span class="empresa-nome">{{ emp.nome }}</span>
-            <div class="empresa-actions">
+            <div class="empresa-actions" v-if="isGestor">
               <button class="btn-icon btn-save" @click="salvarEmpresa(emp)" title="Salvar alterações">
                 <svg width="13" height="13" viewBox="0 0 15 15" fill="none"><path d="M2 2h11v11H2z" stroke="currentColor" stroke-width="1.5"/><path d="M5 2v4h5V2M5 8v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
               </button>
@@ -316,6 +317,7 @@
                 :value="emp.precos[key] ?? ''"
                 @input="updatePreco(emp, key, ($event.target as HTMLInputElement).value)"
                 placeholder="—"
+                :disabled="!isGestor"
               />
             </div>
           </div>
@@ -361,6 +363,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import * as XLSX from 'xlsx';
+import { useAuth } from '../composables/useAuth';
 import {
   comissaoApi,
   type EmpresaConfig,
@@ -371,6 +374,8 @@ import {
   SERVICE_LABELS,
   type ServiceKey,
 } from '../services/comissaoApi';
+
+const { isGestor } = useAuth();
 
 const HOLIDAY_BONUS_VALUE = 100;
 
@@ -969,8 +974,48 @@ function autoMapColumns(headers: string[]) {
     );
     if (found) map[field] = found;
   }
+
+  if (!map.id) {
+    const inferredIdColumn = inferIdColumnFromRows(headers);
+    if (inferredIdColumn) map.id = inferredIdColumn;
+  }
+
   columnMap.value = map;
   buildSheetRowsReactive();
+}
+
+function isGenericColumnHeader(header: string): boolean {
+  return /^COLUNA_\d+$/i.test(stripText(header));
+}
+
+function looksLikeOsId(value: unknown): boolean {
+  const text = stripText(value);
+  if (!/^\d+$/.test(text)) return false;
+  const id = Number(text);
+  return Number.isInteger(id) && id > 0;
+}
+
+function inferIdColumnFromRows(headers: string[]): string {
+  const rows = rawData.value.slice(0, 50);
+  let bestHeader = '';
+  let bestScore = 0;
+
+  for (const header of headers) {
+    const values = rows.map(row => row[header]).filter(value => stripText(value) !== '');
+    if (!values.length) continue;
+
+    const numericCount = values.filter(looksLikeOsId).length;
+    const genericBonus = isGenericColumnHeader(header) ? 1 : 0;
+    const score = numericCount + genericBonus;
+    const ratio = numericCount / values.length;
+
+    if (numericCount >= 3 && ratio >= 0.8 && score > bestScore) {
+      bestHeader = header;
+      bestScore = score;
+    }
+  }
+
+  return bestHeader;
 }
 
 watch(columnMap, buildSheetRowsReactive, { deep: true });

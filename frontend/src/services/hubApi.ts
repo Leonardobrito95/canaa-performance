@@ -97,6 +97,7 @@ export interface PowerBIEmbedData {
 export const getDashboards     = ()           => api.get<HubDashboard[]>('/dashboards').then(r => r.data);
 export const getDashboard      = (id: string) => api.get<HubDashboard>(`/dashboards/${id}`).then(r => r.data);
 export const getEmbedToken     = (id: string) => api.get<PowerBIEmbedData>(`/dashboards/${id}/embed-token`).then(r => r.data);
+export const exportDashboard   = (id: string) => api.get(`/dashboards/${id}/export`, { responseType: 'blob', timeout: 120_000 }).then(r => r.data as Blob);
 export const logDashboardView  = (id: string) => api.post(`/dashboards/${id}/view`).catch(() => {});
 export const createDashboard   = (d: Partial<HubDashboard>) => api.post<HubDashboard>('/dashboards', d).then(r => r.data);
 export const updateDashboard   = (id: string, d: Partial<HubDashboard>) => api.put<HubDashboard>(`/dashboards/${id}`, d).then(r => r.data);
@@ -122,6 +123,11 @@ export const searchIxcUsers    = (query: string) => api.get<{ id: string; nome: 
 // ── Logs & Analytics ──────────────────────────────────────────────────────────
 export const getAccessLogs = (params: { username?: string; action?: string; date_from?: string; date_to?: string; page?: number; per_page?: number }) =>
   api.get<{ total: number; page: number; per_page: number; pages: number; items: HubAccessLog[] }>('/logs', { params }).then(r => r.data);
+
+// Log de "abri este módulo" (Vendas, Comissões, OTDR, etc) — fire-and-forget,
+// não deve travar a navegação do usuário se falhar.
+export const logModuleView = (action: string, detail?: string) =>
+  api.post('/logs/view', { action, detail }).catch(() => {});
 
 export const getAnalytics = (days: number, userId?: string) =>
   api.get<HubAnalytics>('/analytics', { params: { days, user_id: userId } }).then(r => r.data);

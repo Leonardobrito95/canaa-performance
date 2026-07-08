@@ -2,22 +2,17 @@ node_modules/
 dist/
 .env
 *.local
-
-# Logs
+uploads/
 *.log
-logs/
+.DS_Store
+coverage/
 
-# Uploads de arquivos reais
-backend/uploads/
-
-# Cache e build
-frontend/dist/
-backend/dist/
-__pycache__/
-*.pyc
-
-# Configurações locais
+# Config local do Claude Code — contém histórico de permissões com
+# comandos que às vezes incluem senhas/segredos em texto puro, nunca commitar.
 .claude/
 
-# Arquivos de teste gerados
+# Scripts e outputs de exploração pontual (podem conter dados reais de
+# clientes/produção despejados durante debug — nunca commitar).
+scratch_*.js
+scratch_*.ts
 test_result.txt

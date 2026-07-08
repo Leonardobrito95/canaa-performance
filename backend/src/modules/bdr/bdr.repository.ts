@@ -157,6 +157,27 @@ export interface ListCommissionsFilter {
 }
 
 /**
+ * Verifica se já existe registro do mesmo tipo para o contrato no mês corrente.
+ */
+export async function findDuplicateCommission(
+  id_contrato: string,
+  tipo_negociacao: 'Upgrade' | 'Downgrade' | 'Refidelizacao',
+) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end   = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  return prisma.commission.findFirst({
+    where: {
+      id_contrato,
+      tipo_negociacao,
+      data_registro: { gte: start, lt: end },
+    },
+    select: { id: true, data_registro: true },
+  });
+}
+
+/**
  * Lista comissões com filtros server-side e cursor-based pagination.
  * Consultores veem apenas as próprias; gestores veem todas.
  */
