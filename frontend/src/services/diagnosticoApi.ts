@@ -56,16 +56,55 @@ export interface ClienteCandidato {
   endereco: string;
 }
 
+export type CategoriaRegra = 'VENDAS' | 'RETENCAO' | 'REDE' | 'COMISSAO';
+
+export interface RegraNegocio {
+  chave: string;
+  valor: string;
+  descricao: string;
+  categoria: CategoriaRegra;
+  atualizado_em: string;
+  atualizado_por: string;
+}
+
+export interface RegraNegocioInput {
+  chave: string;
+  valor: string;
+  descricao: string;
+  categoria: CategoriaRegra;
+}
+
 // ── Chamadas ─────────────────────────────────────────────────────
 
 export const buscarCliente = (termo: string) =>
   api.get<ClienteCandidato[]>('/cliente', { params: { termo } }).then((r) => r.data);
 
-export const consultarDiagnostico = (id_cliente: number, pergunta?: string) =>
-  api.post<DiagnosticoResultado>('/consulta', { id_cliente, pergunta }).then((r) => r.data);
+export interface HistoricoTurnoConversa {
+  pergunta: string;
+  resposta: string;
+}
+
+export const consultarDiagnostico = (
+  id_cliente: number,
+  pergunta?: string,
+  historico?: HistoricoTurnoConversa[],
+) =>
+  api.post<DiagnosticoResultado>('/consulta', { id_cliente, pergunta, historico }).then((r) => r.data);
 
 export const buscarHistoricoConsultas = (id_cliente: number) =>
   api.get<DiagnosticoHistoricoItem[]>(`/consulta/${id_cliente}/historico`).then((r) => r.data);
 
 export const buscarAgregados = (dimensao?: string) =>
   api.get<DiagnosticoAgregadoItem[]>('/agregado', { params: dimensao ? { dimensao } : {} }).then((r) => r.data);
+
+export const listarRegras = () =>
+  api.get<RegraNegocio[]>('/regras').then((r) => r.data);
+
+export const criarRegra = (regra: RegraNegocioInput) =>
+  api.post<RegraNegocio>('/regras', regra).then((r) => r.data);
+
+export const editarRegra = (chave: string, regra: Omit<RegraNegocioInput, 'chave'>) =>
+  api.put<RegraNegocio>(`/regras/${chave}`, regra).then((r) => r.data);
+
+export const excluirRegra = (chave: string) =>
+  api.delete<{ success: boolean }>(`/regras/${chave}`).then((r) => r.data);

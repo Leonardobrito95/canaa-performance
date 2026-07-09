@@ -48,15 +48,26 @@ export async function gerarDiagnostico(
   contextoTextual: string,
   pergunta?: string,
   imagens: ImagemAnexo[] = [],
+  historico?: { pergunta: string; resposta: string }[],
 ): Promise<DiagnosticoIaResultado> {
   const partes = [
     DIAGNOSTICO_SYSTEM_PROMPT,
     '',
     contextoTextual,
   ];
+  if (historico?.length) {
+    partes.push('', `=== CONVERSA ANTERIOR NESTE ATENDIMENTO ===`,
+      'As perguntas abaixo já foram feitas e respondidas nesta mesma conversa sobre esse cliente. ' +
+      'Use isso para entender perguntas de acompanhamento curtas ou que dependem do contexto anterior ' +
+      '(ex: "e os atendimentos?" após uma pergunta sobre técnicos de O.S.).');
+    for (const h of historico) {
+      partes.push('', `Pergunta anterior: ${h.pergunta}`, `Resposta anterior: ${h.resposta}`);
+    }
+  }
   if (pergunta) {
-    partes.push('', `=== PERGUNTA DO USUARIO ===`, pergunta,
-      'Responda a pergunta acima seguindo as instruções de formato do system prompt.');
+    partes.push('', `=== PERGUNTA ATUAL DO USUARIO ===`, pergunta,
+      'Responda a pergunta ATUAL acima (considerando a conversa anterior, se houver) seguindo as ' +
+      'instruções de formato do system prompt.');
   }
   if (!imagens.length) {
     partes.push('', `=== FOTOS DA INSTALACAO ===`, 'Nenhuma foto anexada a esta consulta.');
@@ -78,22 +89,35 @@ export async function gerarDiagnostico(
     : [];
 
   const client = getClient();
-  const resposta = await client.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: [{
-      role: 'user',
-      parts: [
-        { text: partes.join('\n') },
-        ...partesImagens,
-      ],
-    }],
-    config: {
-      maxOutputTokens: 700,
-      thinkingConfig: { thinkingBudget: 0 },
-    },
-  });
 
-  const texto = resposta.text ?? '';
-  if (!texto) throw new Error('Resposta vazia do Gemini');
-  return parseResposta(texto);
+  // Retry único: chamadas ao Gemini ocasionalmente falham por instabilidade de
+  // rede/API — uma nova tentativa evita que o usuário fique sem diagnóstico
+  // por uma falha transitória.
+  let ultimoErro: unknown;
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    try {
+      const resposta = await client.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: partes.join('\n') },
+            ...partesImagens,
+          ],
+        }],
+        config: {
+          maxOutputTokens: 700,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      });
+
+      const texto = resposta.text ?? '';
+      if (!texto) throw new Error('Resposta vazia do Gemini');
+      return parseResposta(texto);
+    } catch (err) {
+      ultimoErro = err;
+      if (tentativa < 2) await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  throw ultimoErro;
 }

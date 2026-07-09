@@ -8,6 +8,7 @@ import {
   OsEntry,
   OsMensagemEntry,
   OsArquivoEntry,
+  AtendimentoEntry,
   ContextoComercial,
   ImagemAnexo,
   OscilacaoRede,
@@ -160,10 +161,12 @@ export async function buscarOscilacaoRede(idCliente: number, equipamentoAtual: {
 
 export async function buscarOrdensServico(idCliente: number, limite = 10): Promise<OsEntry[]> {
   const [rows] = await mysqlPool.query<any[]>(
-    `SELECT id AS id_oss_chamado, mensagem, mensagem_resposta, status, data_abertura, data_fechamento, id_tecnico, endereco
-     FROM su_oss_chamado
-     WHERE id_cliente = ?
-     ORDER BY data_abertura DESC
+    `SELECT oc.id AS id_oss_chamado, oc.mensagem, oc.mensagem_resposta, oc.status, oc.data_abertura,
+            oc.data_fechamento, oc.id_tecnico, oc.endereco, ft.funcionario AS tecnico_nome
+     FROM su_oss_chamado oc
+       LEFT JOIN funcionarios ft ON ft.id = oc.id_tecnico
+     WHERE oc.id_cliente = ?
+     ORDER BY oc.data_abertura DESC
      LIMIT ?`,
     [idCliente, limite],
   );
@@ -175,7 +178,31 @@ export async function buscarOrdensServico(idCliente: number, limite = 10): Promi
     dataAbertura:    dataValidaOuNula(r.data_abertura),
     dataFechamento:  dataValidaOuNula(r.data_fechamento),
     tecnicoId:       r.id_tecnico || null,
+    tecnicoNome:     r.tecnico_nome || null,
     endereco:        r.endereco,
+  }));
+}
+
+/// "Atendimentos" (su_ticket) são um conceito separado de O.S. (su_oss_chamado)
+/// no IXC — tickets de suporte/solicitação. O responsável (id_responsavel_tecnico)
+/// resolve pela mesma tabela funcionarios usada para o técnico da O.S. (não
+/// usuarios, que é a tabela de login/acesso ao sistema, nem cliente).
+export async function buscarAtendimentos(idCliente: number, limite = 10): Promise<AtendimentoEntry[]> {
+  const [rows] = await mysqlPool.query<any[]>(
+    `SELECT t.id, t.titulo, t.status, t.data_criacao, ft.funcionario AS responsavel_nome
+     FROM su_ticket t
+       LEFT JOIN funcionarios ft ON ft.id = t.id_responsavel_tecnico
+     WHERE t.id_cliente = ?
+     ORDER BY t.data_criacao DESC
+     LIMIT ?`,
+    [idCliente, limite],
+  );
+  return rows.map((r) => ({
+    id:              r.id,
+    titulo:          r.titulo ?? '',
+    status:          r.status,
+    dataCriacao:     dataValidaOuNula(r.data_criacao),
+    responsavelNome: r.responsavel_nome || null,
   }));
 }
 

@@ -36,9 +36,11 @@ o técnico não documentou o local da instalação), não a instalação em si.
 
 ${CRITERIOS_INSTALACAO}
 
-Se a pergunta do usuário for sobre o diagnóstico do cliente (a análise padrão, ou uma
-pergunta de acompanhamento sobre a causa do problema dele), responda em três seções, cada
-uma com o rótulo exato abaixo, em maiúsculas, seguido de dois pontos:
+Existem três tipos possíveis de pergunta sobre o cliente ativo:
+
+1) Pedido de diagnóstico: a análise padrão, ou uma pergunta de acompanhamento sobre a causa
+do problema dele. Responda em três seções, cada uma com o rótulo exato abaixo, em maiúsculas,
+seguido de dois pontos:
 
 DIAGNOSTICO: o que está acontecendo com o cliente, de forma objetiva.
 ERRO: a causa raiz identificada (pode ser falha de processo, operacional — ex: instalação
@@ -49,13 +51,23 @@ abrir/agendar uma nova visita.
 SUGESTAO: uma ação concreta e específica. Deixe claro que é uma sugestão para avaliação
 humana (do gestor ou de quem fez a consulta) — a IA nunca decide ou executa a ação sozinha.
 
-Se a pergunta NÃO for sobre o diagnóstico desse cliente (pergunta genérica, fora de escopo,
-sobre outro assunto), NÃO force as três seções — responda em texto livre, curto e direto,
-explicando que esse assistente está focado em diagnóstico de clientes específicos por
-enquanto e não tem contexto pra responder isso.
+2) Pergunta factual sobre esse mesmo cliente, respondível com os dados já fornecidos acima
+(ex: quem foi o técnico responsável por uma O.S., quando foi o último atendimento, qual o
+equipamento atual, se há alguma O.S. em aberto). Responda direto e em texto livre, curto, sem
+forçar as três seções — só a informação pedida. Nunca trate uma pergunta sobre o cliente ativo
+como fora de escopo só porque ela não menciona literalmente "diagnóstico" ou "causa": se a
+resposta está nos dados acima, responda.
+
+3) Pergunta genuinamente fora de escopo (sem relação com esse cliente — outro assunto, outro
+cliente, conversa genérica). Responda em texto livre, curto, explicando que esse assistente
+está focado no diagnóstico do cliente ativo e não tem contexto pra isso.
 
 Regras:
 - Não invente informação que não está nos dados fornecidos.
+- ORDENS DE SERVICO e ATENDIMENTOS (tickets) são DUAS LISTAS DIFERENTES no contexto abaixo,
+  cada uma com seu próprio responsável — nunca responda sobre uma usando dados da outra, e
+  nunca diga que um atendimento/ticket citado pelo usuário "não está nos dados" sem antes
+  checar a lista ATENDIMENTOS (tickets) especificamente, não só ORDENS DE SERVICO.
 - Se nenhuma foto for anexada a esta consulta, não comente sobre a instalação física —
   diga apenas que não há foto disponível para essa análise, se for relevante.
 - Use as regras de negócio fornecidas (metas, faixas, categorias de sinal) como referência
@@ -122,11 +134,20 @@ function formatarOrdensServico(ctx: ContextoClienteDiagnostico): string {
       : '    Sem anexos.';
     return [
       `- O.S. #${os.idOssChamado} | ${abertura} → ${fechamento} | status ${os.status}`,
+      `  Técnico responsável: ${os.tecnicoNome ?? 'não definido'}`,
       `  Descrição: ${os.mensagem.slice(0, 300)}`,
       historicoResumo,
       arquivosResumo,
     ].filter(Boolean).join('\n');
   }).join('\n\n');
+}
+
+function formatarAtendimentos(ctx: ContextoClienteDiagnostico): string {
+  if (!ctx.atendimentos.length) return 'Sem atendimentos (tickets) registrados.';
+  return ctx.atendimentos.map((a) => {
+    const data = fmtData(a.dataCriacao);
+    return `- Atendimento #${a.id} | ${data} | status ${a.status ?? '?'} | responsável: ${a.responsavelNome ?? 'não definido'} | ${a.titulo}`;
+  }).join('\n');
 }
 
 function formatarComercial(ctx: ContextoClienteDiagnostico): string {
@@ -161,6 +182,9 @@ export function montarContextoTextual(ctx: ContextoClienteDiagnostico): string {
     '',
     `=== ORDENS DE SERVICO ===`,
     formatarOrdensServico(ctx),
+    '',
+    `=== ATENDIMENTOS (tickets) ===`,
+    formatarAtendimentos(ctx),
     '',
     `=== SITUACAO COMERCIAL ===`,
     formatarComercial(ctx),

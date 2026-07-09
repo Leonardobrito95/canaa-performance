@@ -6,6 +6,7 @@ import {
   buscarOrdensServico,
   buscarMensagensOs,
   buscarArquivosOs,
+  buscarAtendimentos,
   buscarIdsContratoPorCliente,
   buscarContextoComercial,
   buscarRegrasNegocio,
@@ -21,10 +22,11 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
   const idsContrato = await buscarIdsContratoPorCliente(idCliente);
   const equipamentoAtual = await buscarEquipamentoAtual(idCliente);
 
-  const [historicoSinal, oscilacaoRede, ordensServico, comercial, regrasNegocio] = await Promise.all([
+  const [historicoSinal, oscilacaoRede, ordensServico, atendimentos, comercial, regrasNegocio] = await Promise.all([
     buscarHistoricoSinal(idCliente),
     buscarOscilacaoRede(idCliente, equipamentoAtual),
     buscarOrdensServico(idCliente),
+    buscarAtendimentos(idCliente),
     buscarContextoComercial(idCliente, idsContrato),
     buscarRegrasNegocio(),
   ]);
@@ -43,6 +45,7 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
     ordensServico,
     osMensagens,
     osArquivos,
+    atendimentos,
     comercial,
     regrasNegocio,
   };
@@ -59,11 +62,12 @@ export async function gerarDiagnosticoIndividual(
   idCliente: number,
   solicitante: SolicitanteDiagnostico,
   pergunta?: string,
+  historico?: { pergunta: string; resposta: string }[],
 ): Promise<DiagnosticoIaResultado> {
   const contexto = await montarContextoCliente(idCliente);
   const contextoTextual = montarContextoTextual(contexto);
   const imagens = await buscarFotosRelevantes(contexto.osArquivos);
-  const resultado = await gerarDiagnostico(contextoTextual, pergunta, imagens);
+  const resultado = await gerarDiagnostico(contextoTextual, pergunta, imagens, historico);
 
   await prisma.diagnosticoConsulta.create({
     data: {

@@ -21,7 +21,20 @@ export interface OsEntry {
   dataAbertura:  Date | null;
   dataFechamento: Date | null;
   tecnicoId:     number | null;
+  tecnicoNome:   string | null;
   endereco:      string | null;
+}
+
+/// "Atendimento" (su_ticket) é um conceito diferente de O.S. (su_oss_chamado)
+/// no IXC — tickets de suporte/solicitação, cada um com seu próprio
+/// responsável (su_ticket.id_responsavel_tecnico), que resolve via a mesma
+/// tabela funcionarios usada para o técnico da O.S.
+export interface AtendimentoEntry {
+  id:            number;
+  titulo:        string;
+  status:        string | null;
+  dataCriacao:   Date | null;
+  responsavelNome: string | null;
 }
 
 export interface OsMensagemEntry {
@@ -101,6 +114,7 @@ export interface ContextoClienteDiagnostico {
   ordensServico:   OsEntry[];
   osMensagens:     Record<number, OsMensagemEntry[]>; // por idOssChamado
   osArquivos:      Record<number, OsArquivoEntry[]>;  // por idOssChamado
+  atendimentos:    AtendimentoEntry[];
   comercial:       ContextoComercial;
   regrasNegocio:   Record<string, string>;
 }

@@ -10,6 +10,7 @@
       <div v-if="isGestor" class="diag-modes">
         <button :class="['diag-mode-btn', { active: modo === 'consulta' }]" @click="modo = 'consulta'">Consulta</button>
         <button :class="['diag-mode-btn', { active: modo === 'gestao' }]" @click="modo = 'gestao'">Painel de Gestão</button>
+        <button :class="['diag-mode-btn', { active: modo === 'regras' }]" @click="modo = 'regras'">Regras de Negócio</button>
       </div>
     </div>
 
@@ -81,7 +82,7 @@
     </template>
 
     <!-- ═══════════ MODO GESTÃO (agregado) ═══════════ -->
-    <template v-else>
+    <template v-else-if="modo === 'gestao'">
       <div v-if="loadingAgregados" class="state-msg">
         <span class="loading-dots"><span/><span/><span/></span> Carregando padrões…
       </div>
@@ -105,6 +106,92 @@
       </div>
     </template>
 
+    <!-- ═══════════ MODO REGRAS DE NEGÓCIO ═══════════ -->
+    <template v-else>
+      <div class="regras-shell">
+        <div class="regras-toolbar">
+          <p class="regras-info">
+            Base de referência lida pela IA ao montar o diagnóstico (metas, faixas, padrões de campo).
+            Não altera regras de comissão/cobrança em produção — é só o que a IA enxerga.
+          </p>
+          <button class="btn-nova-regra" v-if="!formAberto" @click="abrirNovaRegra">+ Nova regra</button>
+        </div>
+
+        <div v-if="formAberto" class="regra-form">
+          <div class="regra-form-grid">
+            <label>Chave
+              <input v-model="novaRegra.chave" placeholder="EX_NOME_REGRA" />
+            </label>
+            <label>Categoria
+              <select v-model="novaRegra.categoria">
+                <option v-for="c in CATEGORIAS" :key="c" :value="c">{{ c }}</option>
+              </select>
+            </label>
+            <label>Valor
+              <input v-model="novaRegra.valor" placeholder="Valor ou fato curto" />
+            </label>
+          </div>
+          <label class="regra-form-descricao">Descrição
+            <textarea v-model="novaRegra.descricao" rows="2" placeholder="Contexto que a IA deve considerar…"></textarea>
+          </label>
+          <div v-if="erroRegra" class="regra-erro">{{ erroRegra }}</div>
+          <div class="regra-form-acoes">
+            <button class="btn-cancelar" @click="cancelarNovaRegra">Cancelar</button>
+            <button class="btn-salvar" :disabled="salvandoRegra" @click="salvarNovaRegra">Salvar</button>
+          </div>
+        </div>
+
+        <div v-if="loadingRegras" class="state-msg">
+          <span class="loading-dots"><span/><span/><span/></span> Carregando regras…
+        </div>
+        <div v-else class="regras-lista">
+          <div v-for="r in regras" :key="r.chave" class="regra-row">
+            <template v-if="editandoChave === r.chave">
+              <div class="regra-form-grid">
+                <div class="regra-chave-fixa">{{ r.chave }}</div>
+                <label>Categoria
+                  <select v-model="regraEmEdicao.categoria">
+                    <option v-for="c in CATEGORIAS" :key="c" :value="c">{{ c }}</option>
+                  </select>
+                </label>
+                <label>Valor
+                  <input v-model="regraEmEdicao.valor" />
+                </label>
+              </div>
+              <label class="regra-form-descricao">Descrição
+                <textarea v-model="regraEmEdicao.descricao" rows="2"></textarea>
+              </label>
+              <div v-if="erroRegra" class="regra-erro">{{ erroRegra }}</div>
+              <div class="regra-form-acoes">
+                <button class="btn-cancelar" @click="cancelarEdicao">Cancelar</button>
+                <button class="btn-salvar" :disabled="salvandoRegra" @click="salvarEdicao(r.chave)">Salvar</button>
+              </div>
+            </template>
+            <template v-else>
+              <div class="regra-main">
+                <span class="regra-categoria">{{ r.categoria }}</span>
+                <span class="regra-chave">{{ r.chave }}</span>
+                <span class="regra-valor">{{ r.valor }}</span>
+              </div>
+              <p class="regra-descricao">{{ r.descricao }}</p>
+              <div class="regra-rodape">
+                <span class="regra-meta">atualizado por {{ r.atualizado_por }} · {{ formatarDataHora(r.atualizado_em) }}</span>
+                <div class="regra-acoes">
+                  <button class="link-btn" @click="iniciarEdicao(r)">Editar</button>
+                  <button
+                    class="link-btn"
+                    :class="{ 'link-btn-perigo': excluindoChave === r.chave }"
+                    @click="confirmarExclusao(r.chave)"
+                  >{{ excluindoChave === r.chave ? 'Confirmar exclusão?' : 'Excluir' }}</button>
+                </div>
+              </div>
+            </template>
+          </div>
+          <p v-if="regras.length === 0" class="empty-sub">Nenhuma regra cadastrada ainda.</p>
+        </div>
+      </div>
+    </template>
+
   </div>
 </template>
 
@@ -115,14 +202,21 @@ import {
   buscarCliente,
   consultarDiagnostico,
   buscarAgregados,
+  listarRegras,
+  criarRegra,
+  editarRegra,
+  excluirRegra,
   type DiagnosticoResultado,
   type DiagnosticoAgregadoItem,
   type ClienteCandidato,
+  type RegraNegocio,
+  type CategoriaRegra,
+  type HistoricoTurnoConversa,
 } from '../services/diagnosticoApi';
 
 const { user, isGestor } = useAuth();
 
-type Modo = 'consulta' | 'gestao';
+type Modo = 'consulta' | 'gestao' | 'regras';
 const modo = ref<Modo>('consulta');
 
 interface Turno {
@@ -136,6 +230,9 @@ const turnos = ref<Turno[]>([
   { tipo: 'assistente', texto: 'Olá! Me diga o nome ou o ID do cliente que você quer analisar.' },
 ]);
 const clienteAtivo = ref<{ id: number; nome: string } | null>(null);
+// Backend não guarda sessão — mantemos aqui as últimas perguntas/respostas
+// dessa conversa para a IA entender referências curtas ("e os atendimentos?").
+const historicoConversa = ref<HistoricoTurnoConversa[]>([]);
 const inputAtual = ref('');
 const loading = ref(false);
 const loadingLabel = ref('Analisando…');
@@ -162,7 +259,12 @@ async function enviar() {
   inputAtual.value = '';
   adicionarTurno({ tipo: 'usuario', texto });
 
-  if (!clienteAtivo.value) {
+  const pareceOutroIdCliente =
+    clienteAtivo.value && /^\d+$/.test(texto) && Number(texto) !== clienteAtivo.value.id;
+
+  if (!clienteAtivo.value || pareceOutroIdCliente) {
+    clienteAtivo.value = null;
+    historicoConversa.value = [];
     await resolverCliente(texto);
   } else {
     await rodarAnalise(texto);
@@ -199,6 +301,7 @@ async function resolverCliente(termo: string) {
 
 function escolherCandidato(c: ClienteCandidato) {
   clienteAtivo.value = { id: c.id, nome: c.nome };
+  historicoConversa.value = [];
   rodarAnalise();
 }
 
@@ -207,8 +310,10 @@ async function rodarAnalise(pergunta?: string) {
   loading.value = true;
   loadingLabel.value = pergunta ? 'Buscando resposta…' : 'Cruzando rede, instalação e comercial…';
   try {
-    const resultado = await consultarDiagnostico(clienteAtivo.value.id, pergunta);
+    const resultado = await consultarDiagnostico(clienteAtivo.value.id, pergunta, historicoConversa.value);
     adicionarTurno({ tipo: 'assistente', resultado });
+    historicoConversa.value.push({ pergunta: pergunta || 'Diagnóstico geral do cliente', resposta: resultado.textoCompleto });
+    if (historicoConversa.value.length > 6) historicoConversa.value.shift();
   } catch (e: any) {
     const msg = e?.response?.data?.message || 'Não consegui gerar o diagnóstico agora.';
     adicionarTurno({ tipo: 'assistente', texto: msg });
@@ -219,6 +324,7 @@ async function rodarAnalise(pergunta?: string) {
 
 function trocarCliente() {
   clienteAtivo.value = null;
+  historicoConversa.value = [];
   adicionarTurno({ tipo: 'assistente', texto: 'Beleza. Qual o próximo cliente (nome ou ID)?' });
 }
 
@@ -234,7 +340,114 @@ async function carregarAgregados() {
   }
 }
 
-watch(modo, (m) => { if (m === 'gestao' && agregados.value.length === 0) carregarAgregados(); });
+const CATEGORIAS: CategoriaRegra[] = ['VENDAS', 'RETENCAO', 'REDE', 'COMISSAO'];
+
+const regras = ref<RegraNegocio[]>([]);
+const loadingRegras = ref(false);
+const formAberto = ref(false);
+const salvandoRegra = ref(false);
+const erroRegra = ref('');
+const novaRegra = ref({ chave: '', valor: '', descricao: '', categoria: 'REDE' as CategoriaRegra });
+const editandoChave = ref<string | null>(null);
+const regraEmEdicao = ref({ valor: '', descricao: '', categoria: 'REDE' as CategoriaRegra });
+const excluindoChave = ref<string | null>(null);
+
+async function carregarRegras() {
+  loadingRegras.value = true;
+  try {
+    regras.value = await listarRegras();
+  } finally {
+    loadingRegras.value = false;
+  }
+}
+
+function abrirNovaRegra() {
+  formAberto.value = true;
+  erroRegra.value = '';
+  novaRegra.value = { chave: '', valor: '', descricao: '', categoria: 'REDE' };
+}
+
+function cancelarNovaRegra() {
+  formAberto.value = false;
+  erroRegra.value = '';
+}
+
+async function salvarNovaRegra() {
+  const chave = novaRegra.value.chave.trim().toUpperCase();
+  if (!chave || !novaRegra.value.valor.trim() || !novaRegra.value.descricao.trim()) {
+    erroRegra.value = 'Preencha chave, valor e descrição.';
+    return;
+  }
+  if (!/^[A-Z0-9_]+$/.test(chave)) {
+    erroRegra.value = 'Chave deve usar apenas maiúsculas, números e _.';
+    return;
+  }
+  salvandoRegra.value = true;
+  erroRegra.value = '';
+  try {
+    const criada = await criarRegra({ ...novaRegra.value, chave });
+    regras.value = [...regras.value, criada].sort((a, b) => a.chave.localeCompare(b.chave));
+    formAberto.value = false;
+  } catch (e: any) {
+    erroRegra.value = e?.response?.data?.message || 'Não consegui salvar a regra agora.';
+  } finally {
+    salvandoRegra.value = false;
+  }
+}
+
+function iniciarEdicao(r: RegraNegocio) {
+  editandoChave.value = r.chave;
+  regraEmEdicao.value = { valor: r.valor, descricao: r.descricao, categoria: r.categoria };
+  erroRegra.value = '';
+}
+
+function cancelarEdicao() {
+  editandoChave.value = null;
+  erroRegra.value = '';
+}
+
+async function salvarEdicao(chave: string) {
+  if (!regraEmEdicao.value.valor.trim() || !regraEmEdicao.value.descricao.trim()) {
+    erroRegra.value = 'Preencha valor e descrição.';
+    return;
+  }
+  salvandoRegra.value = true;
+  erroRegra.value = '';
+  try {
+    const atualizada = await editarRegra(chave, regraEmEdicao.value);
+    const idx = regras.value.findIndex((r) => r.chave === chave);
+    if (idx !== -1) regras.value[idx] = atualizada;
+    editandoChave.value = null;
+  } catch (e: any) {
+    erroRegra.value = e?.response?.data?.message || 'Não consegui salvar a alteração agora.';
+  } finally {
+    salvandoRegra.value = false;
+  }
+}
+
+async function confirmarExclusao(chave: string) {
+  if (excluindoChave.value !== chave) {
+    excluindoChave.value = chave;
+    return;
+  }
+  try {
+    await excluirRegra(chave);
+    regras.value = regras.value.filter((r) => r.chave !== chave);
+  } finally {
+    excluindoChave.value = null;
+  }
+}
+
+function formatarDataHora(iso: string) {
+  return new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+watch(modo, (m) => {
+  if (m === 'gestao' && agregados.value.length === 0) carregarAgregados();
+  if (m === 'regras' && regras.value.length === 0) carregarRegras();
+});
 </script>
 
 <style scoped>
@@ -349,4 +562,65 @@ watch(modo, (m) => { if (m === 'gestao' && agregados.value.length === 0) carrega
 .agregado-dim { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); font-weight: 700; }
 .agregado-chave { font-family: var(--font-mono); font-size: .95rem; margin-top: .2rem; }
 .agregado-narrativa { font-size: .82rem; color: var(--text-2); margin-top: .5rem; line-height: 1.5; }
+
+/* ── Regras de negócio ── */
+.regras-shell { display: flex; flex-direction: column; gap: 1.1rem; overflow-y: auto; padding-bottom: 1rem; }
+.regras-toolbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.regras-info { font-size: .82rem; color: var(--text-2); line-height: 1.5; max-width: 560px; }
+.btn-nova-regra {
+  font-family: var(--font-body); font-size: .78rem; font-weight: 600; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  padding: .45rem .8rem; cursor: pointer; transition: var(--transition); flex-shrink: 0; white-space: nowrap;
+}
+.btn-nova-regra:hover { border-color: var(--accent); }
+
+.regra-form {
+  border: 1px solid var(--border-2); border-radius: var(--radius-sm); padding: .9rem 1rem;
+  display: flex; flex-direction: column; gap: .7rem; background: var(--surface);
+}
+.regra-form-grid { display: grid; grid-template-columns: 1fr 140px 1fr; gap: .7rem; }
+.regra-form label, .regra-form-descricao {
+  display: flex; flex-direction: column; gap: .3rem; font-size: .7rem; color: var(--text-3);
+  font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+}
+.regra-form input, .regra-form select, .regra-form textarea {
+  font-family: var(--font-body); font-size: .85rem; font-weight: 400; text-transform: none;
+  letter-spacing: normal; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border-2); border-radius: var(--radius-sm); padding: .5rem .7rem; outline: none;
+}
+.regra-form input:focus, .regra-form select:focus, .regra-form textarea:focus { border-color: var(--accent); }
+.regra-form textarea { resize: vertical; }
+.regra-erro { font-size: .78rem; color: var(--error); }
+.regra-form-acoes { display: flex; justify-content: flex-end; gap: .5rem; }
+.btn-cancelar, .btn-salvar {
+  font-family: var(--font-body); font-size: .78rem; font-weight: 600; border-radius: var(--radius-sm);
+  padding: .4rem .85rem; cursor: pointer; transition: var(--transition); border: 1px solid transparent;
+}
+.btn-cancelar { color: var(--text-2); background: transparent; border-color: var(--border-2); }
+.btn-cancelar:hover { color: var(--text); }
+.btn-salvar { color: #04141a; background: var(--accent); }
+.btn-salvar:hover:not(:disabled) { filter: brightness(1.1); }
+.btn-salvar:disabled { opacity: .5; cursor: not-allowed; }
+
+.regras-lista { display: flex; flex-direction: column; }
+.regra-row { padding: .9rem .2rem; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: .35rem; }
+.regra-row:last-child { border-bottom: none; }
+.regra-main { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+.regra-categoria {
+  font-family: var(--font-mono); font-size: .65rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--text-3); border: 1px solid var(--border-2); border-radius: 3px; padding: .1rem .4rem;
+}
+.regra-chave { font-family: var(--font-mono); font-size: .85rem; font-weight: 700; color: var(--text); }
+.regra-chave-fixa { font-family: var(--font-mono); font-size: .85rem; font-weight: 700; color: var(--text); display: flex; align-items: center; }
+.regra-valor { font-size: .84rem; color: var(--accent); font-weight: 600; }
+.regra-descricao { font-size: .82rem; color: var(--text-2); line-height: 1.5; }
+.regra-rodape { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: .1rem; flex-wrap: wrap; }
+.regra-meta { font-size: .7rem; color: var(--text-3); }
+.regra-acoes { display: flex; gap: .9rem; flex-shrink: 0; }
+.link-btn {
+  font-family: var(--font-body); font-size: .74rem; font-weight: 600; color: var(--text-3);
+  background: transparent; border: none; padding: 0; cursor: pointer; transition: color .15s;
+}
+.link-btn:hover { color: var(--accent); }
+.link-btn-perigo, .link-btn-perigo:hover { color: var(--error); }
 </style>
