@@ -3,7 +3,8 @@ import { RowDataPacket } from 'mysql2';
 import prisma from '../../config/prisma';
 
 // ── Operadoras autorizadas no módulo de Retenção ─────────────────────────────
-export const OPERADORES_CS = ['Juliane Miranda de Araujo', 'Tainá Nunes Ribeiro'];
+export const OPERADORES_CS = (process.env.RETENCAO_OPERADORES_CS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
 
 // ── Mapeamento de IDs de diagnóstico ─────────────────────────────────────────
 // Fonte: planilha "ID DIAGNOSTICO.xlsx"
