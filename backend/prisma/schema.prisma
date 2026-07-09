@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["bdr", "hub", "comissao"]
+  schemas  = ["bdr", "hub", "comissao", "diagnostico"]
 }
 
 model Commission {
@@ -251,4 +251,82 @@ model AlertaEnviado {
   @@unique([tipo, referencia, mes_referencia, meta_nivel])
   @@map("alertas_enviados")
   @@schema("bdr")
+}
+
+// =============================================================================
+// DIAGNOSTICO MODULE — Agente de IA (rede + instalação + comercial)
+// =============================================================================
+
+/// Consulta individual à IA — tanto o clique no botão padrão ("Analisar") quanto
+/// uma pergunta livre feita no chat. Guardado permanentemente para auditoria.
+model DiagnosticoConsulta {
+  id            String   @id @default(uuid())
+  /// 'CLIENTE' | 'CONTRATO' | 'TECNICO' | 'OS'
+  tipo_alvo     String
+  id_alvo       String
+  /// null = clique no botão padrão de análise; preenchido = pergunta livre no chat
+  pergunta      String?
+  resposta      String
+  /// Snapshot do contexto usado na resposta (rede + O.S. + comercial) — auditável
+  contexto_json Json
+  ixc_user_id   String
+  ixc_username  String
+  criado_em     DateTime @default(now())
+
+  @@index([tipo_alvo, id_alvo])
+  @@map("consultas")
+  @@schema("diagnostico")
+}
+
+/// Visão agregada (painel de gestão) — um registro por dimensão analisada,
+/// sobrescrito a cada recomputo. As métricas são calculadas em SQL (validadas);
+/// a IA só gera a narrativa em cima de números já corretos.
+model DiagnosticoAgregado {
+  /// ex: "tecnico:552291", "causa:power_fail:brasilia"
+  chave         String    @id
+  /// 'TECNICO' | 'CAUSA_REDE' | 'REGIAO'
+  dimensao      String
+  periodo_ini   DateTime
+  periodo_fim   DateTime
+  metricas_json Json
+  narrativa     String?
+  criado_em     DateTime  @default(now())
+  atualizado_em DateTime  @updatedAt
+
+  @@index([dimensao])
+  @@map("agregados")
+  @@schema("diagnostico")
+}
+
+/// Alertas automáticos gerados pelo agente a partir da visão agregada.
+/// Dedup por período, mesmo padrão do AlertaEnviado (schema bdr).
+model DiagnosticoAlerta {
+  id         String   @id @default(uuid())
+  tipo       String
+  referencia String
+  periodo    String
+  narrativa  String
+  enviado_em DateTime @default(now())
+
+  @@unique([tipo, referencia, periodo])
+  @@map("alertas")
+  @@schema("diagnostico")
+}
+
+/// Referência de regras de negócio (metas, limiares) para o prompt da IA.
+/// Cópia de leitura — não substitui as constantes usadas hoje pelo sistema de
+/// produção (comissao-relatorio.service.ts, otdr_alertas.py etc.), só evita que
+/// a IA raciocine com um limiar desatualizado ou inventado.
+model DiagnosticoRegraNegocio {
+  /// ex: 'META_B2C', 'META_B2B', 'META_BDR_UPGRADES', 'ATENUACAO_MAX_DB'
+  chave          String   @id
+  valor          String
+  descricao      String
+  /// 'VENDAS' | 'RETENCAO' | 'REDE' | 'COMISSAO'
+  categoria      String
+  atualizado_em  DateTime @updatedAt
+  atualizado_por String?
+
+  @@map("regras_negocio")
+  @@schema("diagnostico")
 }
