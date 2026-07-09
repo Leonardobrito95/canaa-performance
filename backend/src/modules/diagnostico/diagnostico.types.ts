@@ -33,6 +33,7 @@ export interface OsMensagemEntry {
 }
 
 export interface OsArquivoEntry {
+  id:             number;
   dataEnvio:      Date | null;
   nomeArquivo:    string;
   descricao:      string;
@@ -70,4 +71,9 @@ export interface ContextoClienteDiagnostico {
   osArquivos:      Record<number, OsArquivoEntry[]>;  // por idOssChamado
   comercial:       ContextoComercial;
   regrasNegocio:   Record<string, string>;
+}
+
+export interface ImagemAnexo {
+  buffer:   Buffer;
+  mimeType: string;
 }

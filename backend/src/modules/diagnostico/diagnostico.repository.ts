@@ -1,11 +1,14 @@
 import mysqlPool from '../../config/mysql';
 import prisma from '../../config/prisma';
+import logger from '../../config/logger';
+import { buscarArquivoBinario } from '../../config/ixcSession';
 import {
   HistoricoSinalEntry,
   OsEntry,
   OsMensagemEntry,
   OsArquivoEntry,
   ContextoComercial,
+  ImagemAnexo,
 } from './diagnostico.types';
 
 /// MySQL/MariaDB permite datas "zero" (0000-00-00), que o driver mysql2 entrega
@@ -105,7 +108,7 @@ export async function buscarArquivosOs(idsOssChamado: number[]): Promise<Record<
 
   const placeholders = idsOssChamado.map(() => '?').join(',');
   const [rows] = await mysqlPool.query<any[]>(
-    `SELECT id_oss_chamado, data_envio, nome_arquivo, descricao, classificacao_arquivo, local_arquivo
+    `SELECT id, id_oss_chamado, data_envio, nome_arquivo, descricao, classificacao_arquivo, local_arquivo
      FROM su_oss_chamado_arquivos
      WHERE id_oss_chamado IN (${placeholders})
      ORDER BY id_oss_chamado, data_envio DESC`,
@@ -115,6 +118,7 @@ export async function buscarArquivosOs(idsOssChamado: number[]): Promise<Record<
     const key = r.id_oss_chamado;
     if (!result[key]) result[key] = [];
     result[key].push({
+      id:            r.id,
       dataEnvio:     dataValidaOuNula(r.data_envio),
       nomeArquivo:   r.nome_arquivo,
       descricao:     r.descricao ?? '',
@@ -156,6 +160,37 @@ export async function buscarContextoComercial(idCliente: number, idsContrato: st
     })),
     retencaoNegociacoes: [],
   };
+}
+
+// ── Fotos da instalação (sessão de admin do IXC, ver config/ixcSession.ts) ────
+
+const LIMITE_FOTOS_DIAGNOSTICO = 4;
+
+const EXTENSOES_IMAGEM = /\.(jpe?g|png|webp)$/i;
+
+/// Seleciona os anexos mais recentes e relevantes (exclui assinatura do cliente
+/// e documentos como PDF de O.S., que não ajudam a avaliar qualidade de
+/// instalação) e busca o binário de cada um. Falhas individuais são ignoradas
+/// (uma foto que não carrega não derruba o diagnóstico inteiro).
+export async function buscarFotosRelevantes(
+  osArquivos: Record<number, OsArquivoEntry[]>,
+): Promise<ImagemAnexo[]> {
+  const todos = Object.values(osArquivos).flat()
+    .filter((a) => a.classificacao !== 'A' && EXTENSOES_IMAGEM.test(a.nomeArquivo))
+    .sort((a, b) => (b.dataEnvio?.getTime() ?? 0) - (a.dataEnvio?.getTime() ?? 0))
+    .slice(0, LIMITE_FOTOS_DIAGNOSTICO);
+
+  const resultados = await Promise.allSettled(todos.map((a) => buscarArquivoBinario(a.id)));
+
+  const imagens: ImagemAnexo[] = [];
+  for (const r of resultados) {
+    if (r.status === 'fulfilled' && r.value) {
+      imagens.push({ buffer: r.value.buffer, mimeType: r.value.contentType });
+    } else if (r.status === 'rejected') {
+      logger.warn('[DIAGNOSTICO] Falha ao buscar foto de instalação', { error: r.reason?.message });
+    }
+  }
+  return imagens;
 }
 
 // ── Regras de negócio centralizadas (referência para o prompt da IA) ──────────

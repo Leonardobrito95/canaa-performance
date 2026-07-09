@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { DIAGNOSTICO_SYSTEM_PROMPT } from './diagnostico.prompt';
+import { ImagemAnexo } from './diagnostico.types';
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
@@ -34,7 +35,11 @@ function parseResposta(texto: string): DiagnosticoIaResultado {
   };
 }
 
-export async function gerarDiagnostico(contextoTextual: string, pergunta?: string): Promise<DiagnosticoIaResultado> {
+export async function gerarDiagnostico(
+  contextoTextual: string,
+  pergunta?: string,
+  imagens: ImagemAnexo[] = [],
+): Promise<DiagnosticoIaResultado> {
   const partes = [
     DIAGNOSTICO_SYSTEM_PROMPT,
     '',
@@ -44,13 +49,26 @@ export async function gerarDiagnostico(contextoTextual: string, pergunta?: strin
     partes.push('', `=== PERGUNTA DO USUARIO ===`, pergunta,
       'Responda a pergunta acima, mas mantenha as três seções (DIAGNOSTICO/ERRO/SUGESTAO).');
   }
+  if (imagens.length) {
+    partes.push('', `=== FOTOS DA INSTALACAO ===`, `${imagens.length} foto(s) anexada(s) abaixo, nessa ordem.`);
+  } else {
+    partes.push('', `=== FOTOS DA INSTALACAO ===`, 'Nenhuma foto anexada a esta consulta.');
+  }
 
   const client = getClient();
   const resposta = await client.models.generateContent({
     model: GEMINI_MODEL,
-    contents: partes.join('\n'),
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: partes.join('\n') },
+        ...imagens.map((img) => ({
+          inlineData: { mimeType: img.mimeType, data: img.buffer.toString('base64') },
+        })),
+      ],
+    }],
     config: {
-      maxOutputTokens: 600,
+      maxOutputTokens: 700,
       thinkingConfig: { thinkingBudget: 0 },
     },
   });

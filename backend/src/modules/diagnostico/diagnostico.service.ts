@@ -7,6 +7,7 @@ import {
   buscarIdsContratoPorCliente,
   buscarContextoComercial,
   buscarRegrasNegocio,
+  buscarFotosRelevantes,
 } from './diagnostico.repository';
 import { ContextoClienteDiagnostico } from './diagnostico.types';
 import { montarContextoTextual } from './diagnostico.prompt';
@@ -55,7 +56,8 @@ export async function gerarDiagnosticoIndividual(
 ): Promise<DiagnosticoIaResultado> {
   const contexto = await montarContextoCliente(idCliente);
   const contextoTextual = montarContextoTextual(contexto);
-  const resultado = await gerarDiagnostico(contextoTextual, pergunta);
+  const imagens = await buscarFotosRelevantes(contexto.osArquivos);
+  const resultado = await gerarDiagnostico(contextoTextual, pergunta, imagens);
 
   await prisma.diagnosticoConsulta.create({
     data: {
