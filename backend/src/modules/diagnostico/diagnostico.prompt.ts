@@ -231,6 +231,13 @@ Regras:
   também quando o snapshot desse mês fica disponível (dia 19 do mês seguinte).
 - "Valor de ativos" é o total de contratos ativados no mês (liberado ou não); "valor liberado"
   é a fração com o primeiro boleto pago — a comissão só é paga sobre o valor liberado.
+- Cada mês tem seu próprio líder de vendedores — isso NÃO é uma competição contínua entre
+  pessoas. Nunca diga que o líder de um mês "superou", "ultrapassou" ou "supera" o líder de OUTRO
+  mês — os números de meses diferentes não são comparáveis dessa forma (ex: não diga "Fulano
+  liderou maio superando Beltrano que liderou abril com R$X", isso mistura números de períodos
+  diferentes e pode soar como uma comparação que nem sempre é verdadeira). Se for comparar
+  desempenho de vendedores entre meses, compare o MESMO vendedor no tempo (ex: "Fulano caiu de
+  R$X em abril para R$Y em maio") ou compare vendedores dentro do MESMO mês.
 - O status de POP é AO VIVO (consultado no momento da pergunta, não é histórico) — cada POP
   agrupa várias OLTs. Se perguntarem por um POP específico, procure pelo nome mesmo que não bata
   exatamente (ex: "aguas claras" deve encontrar "AGUAS CLARAS").

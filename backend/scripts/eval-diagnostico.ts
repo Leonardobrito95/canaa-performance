@@ -165,6 +165,26 @@ const casos: Caso[] = [
       return falhas;
     },
   },
+  {
+    nome: 'Gestão — não compara líder de um mês com número de outro mês como "superou" (bug real, achado via feedback do usuário)',
+    rodar: async () => {
+      const historico: { pergunta: string; resposta: string }[] = [];
+      const r1 = await gerarRespostaGestaoIndividual('Como está o setor de vendas? o que tem chamado mais atenção?', SOLICITANTE);
+      historico.push({ pergunta: 'Como está o setor de vendas? o que tem chamado mais atenção?', resposta: r1.resposta });
+      const r2 = await gerarRespostaGestaoIndividual('faça um resumo', SOLICITANTE, historico);
+      return r2.resposta;
+    },
+    verificar: (resp) => {
+      const falhas: string[] = [];
+      // Nathalia (maio, R$9152.80) NÃO supera o número de abril de Sebastião (R$10473.20) —
+      // se a resposta citar os dois números junto com linguagem de "superar", é o bug de volta.
+      const misturouMeses = /supera|ultrapass/i.test(resp) && /9152/.test(resp) && /10473/.test(resp);
+      if (misturouMeses) {
+        falhas.push('Comparou o líder de maio (Nathalia) com o número de abril de outro vendedor (Sebastião) como se fosse "superar" — números de meses diferentes não são comparáveis assim.');
+      }
+      return falhas;
+    },
+  },
 ];
 
 async function run() {
