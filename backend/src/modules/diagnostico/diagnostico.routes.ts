@@ -10,6 +10,8 @@ import {
   regraNegocioUpdateBodySchema,
   regraNegocioParamsSchema,
   gestaoConsultaBodySchema,
+  feedbackParamsSchema,
+  feedbackBodySchema,
 } from './diagnostico.schemas';
 import {
   criarConsulta,
@@ -22,6 +24,7 @@ import {
   excluirRegra,
   criarConsultaGestao,
   statusIxc,
+  registrarFeedback,
 } from './diagnostico.controller';
 
 const router = Router();
@@ -34,6 +37,13 @@ router.get(
   authenticate,
   validate('params', historicoParamsSchema),
   listarHistoricoConsultas,
+);
+router.post(
+  '/consulta/:id/feedback',
+  authenticate,
+  validate('params', feedbackParamsSchema),
+  validate('body', feedbackBodySchema),
+  registrarFeedback,
 );
 
 // Painel agregado — somente gestor

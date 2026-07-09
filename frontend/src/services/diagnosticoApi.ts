@@ -29,7 +29,10 @@ export interface DiagnosticoResultado {
   sugestao: string;
   textoCompleto: string;
   estruturado: boolean;
+  consultaId: string;
 }
+
+export type TipoFeedback = 'POSITIVO' | 'NEGATIVO';
 
 export interface DiagnosticoHistoricoItem {
   id: string;
@@ -98,7 +101,10 @@ export const buscarAgregados = (dimensao?: string) =>
   api.get<DiagnosticoAgregadoItem[]>('/agregado', { params: dimensao ? { dimensao } : {} }).then((r) => r.data);
 
 export const consultarGestao = (pergunta: string, historico?: HistoricoTurnoConversa[]) =>
-  api.post<{ resposta: string }>('/gestao/consulta', { pergunta, historico }).then((r) => r.data.resposta);
+  api.post<{ resposta: string; consultaId: string }>('/gestao/consulta', { pergunta, historico }).then((r) => r.data);
+
+export const enviarFeedback = (consultaId: string, feedback: TipoFeedback, comentario?: string) =>
+  api.post<{ success: boolean }>(`/consulta/${consultaId}/feedback`, { feedback, comentario }).then((r) => r.data);
 
 export const listarRegras = () =>
   api.get<RegraNegocio[]>('/regras').then((r) => r.data);

@@ -10,18 +10,18 @@ datasource db {
 }
 
 model Commission {
-  id              String   @id @default(uuid())
+  id              String         @id @default(uuid())
   id_contrato     String
   nome_cliente    String
   vendedor        String
   tipo_negociacao TipoNegociacao
   plano_atual     String?
   plano_novo      String?
-  valor_atual     Decimal  @db.Decimal(10, 2)
-  valor_novo      Decimal? @db.Decimal(10, 2)
-  valor_comissao  Decimal  @db.Decimal(10, 2)
+  valor_atual     Decimal        @db.Decimal(10, 2)
+  valor_novo      Decimal?       @db.Decimal(10, 2)
+  valor_comissao  Decimal        @db.Decimal(10, 2)
   criado_por      String?
-  data_registro   DateTime @default(now())
+  data_registro   DateTime       @default(now())
 
   @@map("commissions")
   @@schema("bdr")
@@ -52,26 +52,26 @@ model Adjustment {
 /// Snapshot mensal de comissões de Vendas — gerado todo dia 19 para o mês anterior.
 /// Uma vez salvo, o registro não é alterado pelo IXC; reflete o estado no momento do fechamento.
 model VendasSnapshot {
-  id               String   @id @default(uuid())
+  id                String    @id @default(uuid())
   /// Mês de referência no formato "YYYY-MM" (ex: "2025-03" = março de 2025)
-  mes_referencia   String
-  id_contrato      String
-  nome_cliente     String
-  nome_vendedor    String
-  plano            String
-  segmento         String
-  tipo_venda       String
-  valor_mensal     Decimal  @db.Decimal(10, 2)
-  percentual       Decimal  @db.Decimal(5, 4)
-  valor_comissao   Decimal  @db.Decimal(10, 2)
-  status_comissao  String
-  motivo_bloqueio  String?
-  assinatura       String
+  mes_referencia    String
+  id_contrato       String
+  nome_cliente      String
+  nome_vendedor     String
+  plano             String
+  segmento          String
+  tipo_venda        String
+  valor_mensal      Decimal   @db.Decimal(10, 2)
+  percentual        Decimal   @db.Decimal(5, 4)
+  valor_comissao    Decimal   @db.Decimal(10, 2)
+  status_comissao   String
+  motivo_bloqueio   String?
+  assinatura        String
   /// Marcado como true quando o gestor clica em "Enviar para pagamento"
-  enviado_pagamento Boolean  @default(false)
+  enviado_pagamento Boolean   @default(false)
   data_envio        DateTime?
   enviado_por       String?
-  data_snapshot     DateTime @default(now())
+  data_snapshot     DateTime  @default(now())
 
   @@unique([mes_referencia, id_contrato])
   @@map("vendas_snapshots")
@@ -136,10 +136,10 @@ model HubDashboard {
   id                String    @id @default(uuid())
   title             String
   description       String?
-  type              String    // 'internal' | 'powerbi' | 'link'
+  type              String // 'internal' | 'powerbi' | 'link'
   url               String
   status            String    @default("active") // 'active' | 'maintenance' | 'error' | 'archived'
-  embed_mode        String    @default("newtab")  // 'newtab' | 'iframe'
+  embed_mode        String    @default("newtab") // 'newtab' | 'iframe'
   thumbnail_url     String?
   business_rules    String?
   data_sources      String?
@@ -174,13 +174,13 @@ model HubDashboardSharedSector {
 /// Um registro pode apontar para um setor (acesso a todos os dashboards do setor)
 /// ou para um dashboard específico (acesso individual).
 model HubUserAccess {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   ixc_user_id   String
   ixc_user_nome String
   sector_id     String?
   dashboard_id  String?
-  created_at    DateTime  @default(now())
-  created_by    String    // IXC user ID de quem concedeu
+  created_at    DateTime @default(now())
+  created_by    String // IXC user ID de quem concedeu
 
   sector    HubSector?    @relation(fields: [sector_id], references: [id], onDelete: Cascade)
   dashboard HubDashboard? @relation(fields: [dashboard_id], references: [id], onDelete: Cascade)
@@ -194,7 +194,7 @@ model HubAccessLog {
   id           String   @id @default(uuid())
   ixc_user_id  String
   ixc_username String
-  action       String   // 'VIEW_DASHBOARD' | 'LOGIN' | 'CREATE_SECTOR' | 'UPDATE_DASHBOARD' etc.
+  action       String // 'VIEW_DASHBOARD' | 'LOGIN' | 'CREATE_SECTOR' | 'UPDATE_DASHBOARD' etc.
   detail       String?
   ip_address   String?
   created_at   DateTime @default(now())
@@ -212,7 +212,7 @@ model HubAccessLog {
 model ComissaoEnvioLog {
   id             String   @id @default(uuid())
   mes_referencia String
-  tipo_envio     String   // "COMERCIAL" | "FINANCEIRO"
+  tipo_envio     String // "COMERCIAL" | "FINANCEIRO"
   enviado_em     DateTime @default(now())
   enviado_por    String
 
@@ -223,11 +223,11 @@ model ComissaoEnvioLog {
 
 /// Registro de negociação de valor em retenção (preenchido pelo CS após atendimento).
 model RetencaoNegociacao {
-  id_chamado      String   @id               // ID da O.S. no IXC
+  id_chamado      String   @id // ID da O.S. no IXC
   valor_original  Decimal  @db.Decimal(10, 2)
   valor_negociado Decimal  @db.Decimal(10, 2)
   descricao       String?
-  registrado_por  String                     // nome do operador logado
+  registrado_por  String // nome do operador logado
   data_registro   DateTime @default(now())
   atualizado_em   DateTime @updatedAt
 
@@ -260,18 +260,24 @@ model AlertaEnviado {
 /// Consulta individual à IA — tanto o clique no botão padrão ("Analisar") quanto
 /// uma pergunta livre feita no chat. Guardado permanentemente para auditoria.
 model DiagnosticoConsulta {
-  id            String   @id @default(uuid())
+  id                  String    @id @default(uuid())
   /// 'CLIENTE' | 'CONTRATO' | 'TECNICO' | 'OS'
-  tipo_alvo     String
-  id_alvo       String
+  tipo_alvo           String
+  id_alvo             String
   /// null = clique no botão padrão de análise; preenchido = pergunta livre no chat
-  pergunta      String?
-  resposta      String
+  pergunta            String?
+  resposta            String
   /// Snapshot do contexto usado na resposta (rede + O.S. + comercial) — auditável
-  contexto_json Json
-  ixc_user_id   String
-  ixc_username  String
-  criado_em     DateTime @default(now())
+  contexto_json       Json
+  ixc_user_id         String
+  ixc_username        String
+  criado_em           DateTime  @default(now())
+  /// 'POSITIVO' | 'NEGATIVO' — feedback de quem viu a resposta, se o
+  /// diagnóstico/resposta estava correto. Fecha o loop de qualidade sem
+  /// depender só de avaliação manual (eval script).
+  feedback            String?
+  feedback_comentario String?
+  feedback_em         DateTime?
 
   @@index([tipo_alvo, id_alvo])
   @@map("consultas")
@@ -283,15 +289,15 @@ model DiagnosticoConsulta {
 /// a IA só gera a narrativa em cima de números já corretos.
 model DiagnosticoAgregado {
   /// ex: "tecnico:552291", "causa:power_fail:brasilia"
-  chave         String    @id
+  chave         String   @id
   /// 'TECNICO' | 'CAUSA_REDE' | 'REGIAO'
   dimensao      String
   periodo_ini   DateTime
   periodo_fim   DateTime
   metricas_json Json
   narrativa     String?
-  criado_em     DateTime  @default(now())
-  atualizado_em DateTime  @updatedAt
+  criado_em     DateTime @default(now())
+  atualizado_em DateTime @updatedAt
 
   @@index([dimensao])
   @@map("agregados")

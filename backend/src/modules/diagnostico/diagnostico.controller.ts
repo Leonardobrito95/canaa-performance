@@ -59,14 +59,32 @@ export async function criarConsultaGestao(req: Request, res: Response, next: Nex
       historico?: { pergunta: string; resposta: string }[];
     };
 
-    const resposta = await gerarRespostaGestaoIndividual(
+    const resultado = await gerarRespostaGestaoIndividual(
       pergunta,
       { ixcUserId: id, ixcUsername: nome },
       historico,
     );
 
-    res.json({ resposta });
+    res.json(resultado);
   } catch (err) { next(err); }
+}
+
+export async function registrarFeedback(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const { feedback, comentario } = req.body as { feedback: 'POSITIVO' | 'NEGATIVO'; comentario?: string };
+    await prisma.diagnosticoConsulta.update({
+      where: { id },
+      data: { feedback, feedback_comentario: comentario ?? null, feedback_em: new Date() },
+    });
+    res.json({ success: true });
+  } catch (err: any) {
+    if (err.code === 'P2025') {
+      res.status(404).json({ message: 'Consulta não encontrada.' });
+      return;
+    }
+    next(err);
+  }
 }
 
 export async function statusIxc(req: Request, res: Response, next: NextFunction) {

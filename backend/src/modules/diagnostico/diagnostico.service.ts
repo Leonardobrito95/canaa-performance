@@ -69,13 +69,13 @@ export async function gerarDiagnosticoIndividual(
   solicitante: SolicitanteDiagnostico,
   pergunta?: string,
   historico?: { pergunta: string; resposta: string }[],
-): Promise<DiagnosticoIaResultado> {
+): Promise<DiagnosticoIaResultado & { consultaId: string }> {
   const contexto = await montarContextoCliente(idCliente);
   const contextoTextual = montarContextoTextual(contexto);
   const imagens = await buscarFotosRelevantes(contexto.osArquivos);
   const resultado = await gerarDiagnostico(contextoTextual, pergunta, imagens, historico);
 
-  await prisma.diagnosticoConsulta.create({
+  const consulta = await prisma.diagnosticoConsulta.create({
     data: {
       tipo_alvo:     'CLIENTE',
       id_alvo:       String(idCliente),
@@ -87,7 +87,7 @@ export async function gerarDiagnosticoIndividual(
     },
   });
 
-  return resultado;
+  return { ...resultado, consultaId: consulta.id };
 }
 
 /// Responde perguntas de gestão (ranking de vendedores, evolução de vendas)
@@ -96,7 +96,7 @@ export async function gerarRespostaGestaoIndividual(
   pergunta: string,
   solicitante: SolicitanteDiagnostico,
   historico?: { pergunta: string; resposta: string }[],
-): Promise<string> {
+): Promise<{ resposta: string; consultaId: string }> {
   const [ranking, evolucao, pops] = await Promise.all([
     buscarRankingVendedores(),
     buscarEvolucaoVendas(),
@@ -108,7 +108,7 @@ export async function gerarRespostaGestaoIndividual(
   const contextoTextual = montarContextoGestaoTextual(ranking, evolucao, pops);
   const resposta = await gerarRespostaGestao(contextoTextual, pergunta, historico);
 
-  await prisma.diagnosticoConsulta.create({
+  const consulta = await prisma.diagnosticoConsulta.create({
     data: {
       tipo_alvo:     'GESTAO',
       id_alvo:       'GERAL',
@@ -120,5 +120,5 @@ export async function gerarRespostaGestaoIndividual(
     },
   });
 
-  return resposta;
+  return { resposta, consultaId: consulta.id };
 }

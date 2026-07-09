@@ -127,7 +127,7 @@ const casos: Caso[] = [
   },
   {
     nome: 'Gestão — ranking de vendedores de abril/2026 (mês fechado, não muda)',
-    rodar: () => gerarRespostaGestaoIndividual('quem foram os melhores vendedores em abril de 2026?', SOLICITANTE),
+    rodar: () => gerarRespostaGestaoIndividual('quem foram os melhores vendedores em abril de 2026?', SOLICITANTE).then((r) => r.resposta),
     verificar: (resp) => {
       const falhas: string[] = [];
       if (!/sebasti[aã]o/i.test(resp)) falhas.push('Não citou o vendedor real (Sebastião) líder em valor de ativos em abril/2026.');
@@ -136,7 +136,7 @@ const casos: Caso[] = [
   },
   {
     nome: 'Gestão — pergunta sobre mês sem snapshot explica a defasagem',
-    rodar: () => gerarRespostaGestaoIndividual('como esta a evolucao de vendas de junho de 2026?', SOLICITANTE),
+    rodar: () => gerarRespostaGestaoIndividual('como esta a evolucao de vendas de junho de 2026?', SOLICITANTE).then((r) => r.resposta),
     verificar: (resp) => {
       const falhas: string[] = [];
       if (!/19|n[aã]o (est[aá]|h[aá])|dispon[ií]vel/i.test(resp)) {
@@ -147,7 +147,7 @@ const casos: Caso[] = [
   },
   {
     nome: 'Gestão — status de POP real responde com dados ao vivo',
-    rodar: () => gerarRespostaGestaoIndividual('como esta o pop aguas claras hoje?', SOLICITANTE),
+    rodar: () => gerarRespostaGestaoIndividual('como esta o pop aguas claras hoje?', SOLICITANTE).then((r) => r.resposta),
     verificar: (resp) => {
       const falhas: string[] = [];
       if (!/\d/.test(resp)) falhas.push('Não trouxe nenhum número (ONUs/status) para um POP que existe na lista.');
@@ -156,7 +156,7 @@ const casos: Caso[] = [
   },
   {
     nome: 'Gestão — POP inexistente não inventa dado',
-    rodar: () => gerarRespostaGestaoIndividual('como esta o pop centro hoje?', SOLICITANTE),
+    rodar: () => gerarRespostaGestaoIndividual('como esta o pop centro hoje?', SOLICITANTE).then((r) => r.resposta),
     verificar: (resp) => {
       const falhas: string[] = [];
       if (!/n[ãa]o (h[áa]|encontrei|possui|tem|existe)|n[ãa]o est[áa]/i.test(resp)) {

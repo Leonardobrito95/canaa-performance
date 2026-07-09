@@ -52,6 +52,17 @@
               </div>
             </div>
             <p v-else-if="turno.resultado" class="turno-texto">{{ turno.resultado.textoCompleto }}</p>
+
+            <div v-if="turno.resultado" class="feedback-row">
+              <span v-if="turno.feedback" class="feedback-obrigado">
+                {{ turno.feedback === 'POSITIVO' ? 'Obrigado! Marcado como correto.' : 'Obrigado! Marcado como incorreto.' }}
+              </span>
+              <template v-else>
+                <span class="feedback-pergunta">Esse diagnóstico estava correto?</span>
+                <button class="link-btn" @click="darFeedback(turno, turno.resultado.consultaId, 'POSITIVO')">Sim</button>
+                <button class="link-btn link-btn-perigo" @click="darFeedback(turno, turno.resultado.consultaId, 'NEGATIVO')">Não</button>
+              </template>
+            </div>
           </div>
 
           <div v-if="loading" class="turno">
@@ -88,6 +99,17 @@
           <div v-for="(turno, i) in turnosGestao" :key="i" class="turno">
             <div class="turno-label">{{ turno.tipo === 'assistente' ? 'IA' : (user?.nome?.split(' ')[0] || 'Você') }}</div>
             <p class="turno-texto">{{ turno.texto }}</p>
+
+            <div v-if="turno.consultaId" class="feedback-row">
+              <span v-if="turno.feedback" class="feedback-obrigado">
+                {{ turno.feedback === 'POSITIVO' ? 'Obrigado! Marcado como correto.' : 'Obrigado! Marcado como incorreto.' }}
+              </span>
+              <template v-else>
+                <span class="feedback-pergunta">Essa resposta estava correta?</span>
+                <button class="link-btn" @click="darFeedback(turno, turno.consultaId, 'POSITIVO')">Sim</button>
+                <button class="link-btn link-btn-perigo" @click="darFeedback(turno, turno.consultaId, 'NEGATIVO')">Não</button>
+              </template>
+            </div>
           </div>
           <div v-if="loadingGestao" class="turno">
             <div class="turno-label">IA</div>
@@ -229,6 +251,7 @@ import {
   consultarDiagnostico,
   buscarAgregados,
   consultarGestao,
+  enviarFeedback,
   listarRegras,
   criarRegra,
   editarRegra,
@@ -239,6 +262,7 @@ import {
   type RegraNegocio,
   type CategoriaRegra,
   type HistoricoTurnoConversa,
+  type TipoFeedback,
 } from '../services/diagnosticoApi';
 
 const { user, isGestor } = useAuth();
@@ -251,6 +275,17 @@ interface Turno {
   texto?: string;
   candidatos?: ClienteCandidato[];
   resultado?: DiagnosticoResultado;
+  feedback?: TipoFeedback;
+}
+
+async function darFeedback(turno: { feedback?: TipoFeedback }, consultaId: string, feedback: TipoFeedback) {
+  if (turno.feedback) return;
+  turno.feedback = feedback;
+  try {
+    await enviarFeedback(consultaId, feedback);
+  } catch {
+    turno.feedback = undefined;
+  }
 }
 
 const turnos = ref<Turno[]>([
@@ -367,7 +402,7 @@ async function carregarAgregados() {
   }
 }
 
-interface TurnoGestao { tipo: 'usuario' | 'assistente'; texto: string }
+interface TurnoGestao { tipo: 'usuario' | 'assistente'; texto: string; consultaId?: string; feedback?: TipoFeedback }
 
 const turnosGestao = ref<TurnoGestao[]>([
   { tipo: 'assistente', texto: 'Pergunte sobre ranking de vendedores ou evolução de vendas por período/segmento.' },
@@ -391,8 +426,8 @@ async function enviarGestao() {
   rolarGestaoParaFinal();
   loadingGestao.value = true;
   try {
-    const resposta = await consultarGestao(pergunta, historicoGestao.value);
-    turnosGestao.value.push({ tipo: 'assistente', texto: resposta });
+    const { resposta, consultaId } = await consultarGestao(pergunta, historicoGestao.value);
+    turnosGestao.value.push({ tipo: 'assistente', texto: resposta, consultaId });
     historicoGestao.value.push({ pergunta, resposta });
     if (historicoGestao.value.length > 6) historicoGestao.value.shift();
   } catch (e: any) {
@@ -691,4 +726,9 @@ watch(modo, (m) => {
 }
 .link-btn:hover { color: var(--accent); }
 .link-btn-perigo, .link-btn-perigo:hover { color: var(--error); }
+
+/* ── Feedback (acertou/errou) ── */
+.feedback-row { display: flex; align-items: center; gap: .6rem; margin-top: .6rem; }
+.feedback-pergunta { font-size: .74rem; color: var(--text-3); }
+.feedback-obrigado { font-size: .74rem; color: var(--text-3); font-style: italic; }
 </style>
