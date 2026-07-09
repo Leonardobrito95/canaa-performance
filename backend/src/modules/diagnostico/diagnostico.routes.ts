@@ -9,6 +9,7 @@ import {
   regraNegocioBodySchema,
   regraNegocioUpdateBodySchema,
   regraNegocioParamsSchema,
+  gestaoConsultaBodySchema,
 } from './diagnostico.schemas';
 import {
   criarConsulta,
@@ -19,6 +20,7 @@ import {
   criarRegra,
   editarRegra,
   excluirRegra,
+  criarConsultaGestao,
 } from './diagnostico.controller';
 
 const router = Router();
@@ -35,6 +37,13 @@ router.get(
 
 // Painel agregado — somente gestor
 router.get('/agregado', authenticate, requirePerfil('gestor'), listarAgregados);
+router.post(
+  '/gestao/consulta',
+  authenticate,
+  requirePerfil('gestor'),
+  validate('body', gestaoConsultaBodySchema),
+  criarConsultaGestao,
+);
 
 // Regras de negócio (referência lida pelo prompt da IA) — somente gestor
 router.get('/regras', authenticate, requirePerfil('gestor'), listarRegras);

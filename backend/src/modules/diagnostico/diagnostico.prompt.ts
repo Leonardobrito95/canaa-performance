@@ -1,4 +1,4 @@
-import { ContextoClienteDiagnostico } from './diagnostico.types';
+import { ContextoClienteDiagnostico, RankingVendedorEntry, EvolucaoMensalEntry } from './diagnostico.types';
 
 const CRITERIOS_INSTALACAO = `Critérios de boa instalação verificáveis visualmente numa foto (use como
 referência ao analisar fotos, não recalcule ou invente outros critérios):
@@ -72,6 +72,11 @@ Regras:
   diga apenas que não há foto disponível para essa análise, se for relevante.
 - Use as regras de negócio fornecidas (metas, faixas, categorias de sinal) como referência
   de interpretação — não recalcule limiares por conta própria.
+- O status de comissão vem de um snapshot mensal imutável (veja o mês de referência e a data
+  do snapshot em cada contrato). Se o mês de referência for anterior ao mês atual, não
+  descreva o bloqueio como algo "em aberto" ou "aguardando" — deixe claro que é o retrato
+  congelado daquele mês e que pode não refletir pagamento feito depois, já que o snapshot
+  não é recalculado.
 - Não use travessão em nenhuma frase.
 - Seja direto e técnico, sem saudação nem introdução.
 - Cada seção deve ter no máximo 3 frases.`;
@@ -154,9 +159,15 @@ function formatarComercial(ctx: ContextoClienteDiagnostico): string {
   const { vendas, comissoesBdr } = ctx.comercial;
   const linhas: string[] = [];
   if (vendas.length) {
-    linhas.push('Contratos:');
+    linhas.push(
+      'Contratos (cada um com o snapshot mensal MAIS RECENTE disponível — o snapshot é ' +
+      'imutável, gerado uma vez no dia 19 do mês seguinte ao de referência, e NUNCA é ' +
+      'recalculado depois; se o mês de referência já passou, o status é um retrato ' +
+      'congelado daquele mês e pode não refletir pagamento feito posteriormente):'
+    );
     for (const v of vendas.slice(0, 5)) {
-      linhas.push(`- ${v.idContrato} | ${v.plano} | R$${v.valorMensal.toFixed(2)} | comissão: ${v.statusComissao}${v.motivoBloqueio ? ` (${v.motivoBloqueio})` : ''}`);
+      const snapshot = fmtData(v.dataSnapshot);
+      linhas.push(`- ${v.idContrato} | ${v.plano} | R$${v.valorMensal.toFixed(2)} | referência: ${v.mesReferencia} (snapshot de ${snapshot}) | comissão: ${v.statusComissao}${v.motivoBloqueio ? ` (${v.motivoBloqueio})` : ''}`);
     }
   }
   if (comissoesBdr.length) {
@@ -188,5 +199,55 @@ export function montarContextoTextual(ctx: ContextoClienteDiagnostico): string {
     '',
     `=== SITUACAO COMERCIAL ===`,
     formatarComercial(ctx),
+  ].join('\n');
+}
+
+// ============================================================
+// PAINEL DE GESTÃO — perguntas agregadas, sem cliente específico
+// ============================================================
+
+export const GESTAO_SYSTEM_PROMPT = `Você é um analista sênior do Canaã Performance, o hub interno da
+Canaã Telecom. Aqui você responde perguntas de GESTÃO sobre o negócio como um todo (ranking de
+vendedores, evolução de vendas por período/segmento) — não é sobre um cliente específico.
+
+Regras:
+- Responda em texto livre, direto e objetivo, sem seções fixas — não force um formato de
+  diagnóstico/erro/sugestão aqui, isso é só para consultas de cliente individual.
+- Use apenas os dados fornecidos abaixo. Não invente vendedor, valor ou período que não estejam
+  nos dados.
+- Os dados vêm de snapshots mensais imutáveis (gerados no dia 19 do mês seguinte ao de
+  referência) — o mês mais recente disponível normalmente é o mês anterior ao atual, isso é
+  esperado, não um erro ou atraso. SEMPRE que a pergunta pedir um mês que ainda não tem
+  snapshot, explique isso na mesma resposta (não assuma que quem pergunta já sabe, mesmo que
+  essa explicação já tenha aparecido antes na conversa) — não basta dizer "não há dados", diga
+  também quando o snapshot desse mês fica disponível (dia 19 do mês seguinte).
+- "Valor de ativos" é o total de contratos ativados no mês (liberado ou não); "valor liberado"
+  é a fração com o primeiro boleto pago — a comissão só é paga sobre o valor liberado.
+- Se a pergunta pedir algo fora do que os dados cobrem (ex: um cliente específico, status de
+  rede/POP, alertas de sinal), diga que esse assistente de gestão cobre vendedores e evolução
+  de vendas por enquanto, e não tem dado para o que foi pedido.
+- Não use travessão em nenhuma frase. Seja direto, sem saudação nem introdução.`;
+
+function formatarRankingVendedores(ranking: RankingVendedorEntry[]): string {
+  if (!ranking.length) return 'Sem dados de vendedores nos snapshots disponíveis.';
+  return ranking.map((r) =>
+    `- ${r.mesReferencia} | ${r.nomeVendedor} | ${r.qtdContratos} contratos | ativos R$${r.valorAtivos.toFixed(2)} | liberado R$${r.valorLiberado.toFixed(2)}`
+  ).join('\n');
+}
+
+function formatarEvolucaoVendas(evolucao: EvolucaoMensalEntry[]): string {
+  if (!evolucao.length) return 'Sem dados de evolução de vendas nos snapshots disponíveis.';
+  return evolucao.map((e) =>
+    `- ${e.mesReferencia} | ${e.segmento} | ${e.qtdContratos} contratos | ativos R$${e.valorAtivos.toFixed(2)} | liberado R$${e.valorLiberado.toFixed(2)}`
+  ).join('\n');
+}
+
+export function montarContextoGestaoTextual(ranking: RankingVendedorEntry[], evolucao: EvolucaoMensalEntry[]): string {
+  return [
+    `=== RANKING DE VENDEDORES POR MES (snapshots mensais) ===`,
+    formatarRankingVendedores(ranking),
+    '',
+    `=== EVOLUCAO DE VENDAS POR MES E SEGMENTO ===`,
+    formatarEvolucaoVendas(evolucao),
   ].join('\n');
 }

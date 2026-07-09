@@ -83,6 +83,32 @@
 
     <!-- ═══════════ MODO GESTÃO (agregado) ═══════════ -->
     <template v-else-if="modo === 'gestao'">
+      <div class="gestao-chat-shell">
+        <div class="chat-scroll chat-scroll-compacto" ref="scrollGestaoRef">
+          <div v-for="(turno, i) in turnosGestao" :key="i" class="turno">
+            <div class="turno-label">{{ turno.tipo === 'assistente' ? 'IA' : (user?.nome?.split(' ')[0] || 'Você') }}</div>
+            <p class="turno-texto">{{ turno.texto }}</p>
+          </div>
+          <div v-if="loadingGestao" class="turno">
+            <div class="turno-label">IA</div>
+            <span class="loading-dots"><span/><span/><span/></span>
+          </div>
+        </div>
+        <div class="chat-input-row">
+          <input
+            v-model="inputGestao"
+            placeholder="Ex: quais são os melhores vendedores?"
+            :disabled="loadingGestao"
+            @keydown.enter="enviarGestao"
+          />
+          <button class="btn-enviar" :disabled="loadingGestao || !inputGestao.trim()" @click="enviarGestao">
+            <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M1.5 7.5 13 2 8.5 13 6.5 8.5 1.5 7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="gestao-divisor"></div>
+
       <div v-if="loadingAgregados" class="state-msg">
         <span class="loading-dots"><span/><span/><span/></span> Carregando padrões…
       </div>
@@ -93,8 +119,8 @@
         </svg>
         <p class="empty-title">Nenhum padrão calculado ainda</p>
         <p class="empty-sub">
-          O painel de gestão mostra correlações validadas em SQL (ex: técnico com reincidência
-          acima da média) assim que a rotina de agregação rodar pela primeira vez.
+          Correlações validadas em SQL (ex: técnico com reincidência acima da média) aparecem
+          aqui assim que a rotina de agregação rodar pela primeira vez.
         </p>
       </div>
       <div v-else class="agregado-grid">
@@ -202,6 +228,7 @@ import {
   buscarCliente,
   consultarDiagnostico,
   buscarAgregados,
+  consultarGestao,
   listarRegras,
   criarRegra,
   editarRegra,
@@ -337,6 +364,43 @@ async function carregarAgregados() {
     agregados.value = await buscarAgregados();
   } finally {
     loadingAgregados.value = false;
+  }
+}
+
+interface TurnoGestao { tipo: 'usuario' | 'assistente'; texto: string }
+
+const turnosGestao = ref<TurnoGestao[]>([
+  { tipo: 'assistente', texto: 'Pergunte sobre ranking de vendedores ou evolução de vendas por período/segmento.' },
+]);
+const historicoGestao = ref<HistoricoTurnoConversa[]>([]);
+const inputGestao = ref('');
+const loadingGestao = ref(false);
+const scrollGestaoRef = ref<HTMLElement | null>(null);
+
+function rolarGestaoParaFinal() {
+  nextTick(() => {
+    if (scrollGestaoRef.value) scrollGestaoRef.value.scrollTop = scrollGestaoRef.value.scrollHeight;
+  });
+}
+
+async function enviarGestao() {
+  const pergunta = inputGestao.value.trim();
+  if (!pergunta || loadingGestao.value) return;
+  inputGestao.value = '';
+  turnosGestao.value.push({ tipo: 'usuario', texto: pergunta });
+  rolarGestaoParaFinal();
+  loadingGestao.value = true;
+  try {
+    const resposta = await consultarGestao(pergunta, historicoGestao.value);
+    turnosGestao.value.push({ tipo: 'assistente', texto: resposta });
+    historicoGestao.value.push({ pergunta, resposta });
+    if (historicoGestao.value.length > 6) historicoGestao.value.shift();
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || 'Não consegui responder agora.';
+    turnosGestao.value.push({ tipo: 'assistente', texto: msg });
+  } finally {
+    loadingGestao.value = false;
+    rolarGestaoParaFinal();
   }
 }
 
@@ -549,6 +613,10 @@ watch(modo, (m) => {
 .btn-enviar:disabled { opacity: .35; cursor: not-allowed; }
 
 /* ── Painel de gestão ── */
+.gestao-chat-shell { display: flex; flex-direction: column; gap: .7rem; max-width: 720px; }
+.chat-scroll-compacto { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; padding-right: .25rem; }
+.gestao-divisor { border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
 .empty-agregado {
   display: flex; flex-direction: column; align-items: center; text-align: center; gap: .6rem;
   padding: 3.5rem 1rem; color: var(--text-2);

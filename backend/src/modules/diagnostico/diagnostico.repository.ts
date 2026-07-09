@@ -12,6 +12,8 @@ import {
   ContextoComercial,
   ImagemAnexo,
   OscilacaoRede,
+  RankingVendedorEntry,
+  EvolucaoMensalEntry,
 } from './diagnostico.types';
 
 const OTDR_BASE = process.env.OTDR_API_URL ?? 'http://127.0.0.1:5008';
@@ -284,6 +286,8 @@ export async function buscarContextoComercial(idCliente: number, idsContrato: st
       statusComissao: v.status_comissao,
       motivoBloqueio: v.motivo_bloqueio,
       valorMensal:    Number(v.valor_mensal),
+      mesReferencia:  v.mes_referencia,
+      dataSnapshot:   v.data_snapshot,
     })),
     comissoesBdr: comissoesBdr.map((c) => ({
       tipoNegociacao: c.tipo_negociacao,
@@ -292,6 +296,52 @@ export async function buscarContextoComercial(idCliente: number, idsContrato: st
     })),
     retencaoNegociacoes: [],
   };
+}
+
+// ── Painel de Gestão (agregados, sem cliente específico) ─────────────────────
+
+export async function buscarRankingVendedores(limiteMeses = 6): Promise<RankingVendedorEntry[]> {
+  const rows = await prisma.$queryRaw<any[]>`
+    SELECT
+      nome_vendedor,
+      mes_referencia,
+      COUNT(*)::int AS qtd_contratos,
+      SUM(valor_mensal)::numeric AS valor_ativos,
+      SUM(CASE WHEN status_comissao = 'Liberada' THEN valor_mensal ELSE 0 END)::numeric AS valor_liberado
+    FROM bdr.vendas_snapshots
+    WHERE mes_referencia >= to_char(now() - make_interval(months => ${limiteMeses}::int), 'YYYY-MM')
+    GROUP BY nome_vendedor, mes_referencia
+    ORDER BY mes_referencia DESC, valor_ativos DESC
+  `;
+  return rows.map((r) => ({
+    nomeVendedor:  r.nome_vendedor,
+    mesReferencia: r.mes_referencia,
+    qtdContratos:  Number(r.qtd_contratos),
+    valorAtivos:   Number(r.valor_ativos),
+    valorLiberado: Number(r.valor_liberado),
+  }));
+}
+
+export async function buscarEvolucaoVendas(limiteMeses = 12): Promise<EvolucaoMensalEntry[]> {
+  const rows = await prisma.$queryRaw<any[]>`
+    SELECT
+      mes_referencia,
+      segmento,
+      COUNT(*)::int AS qtd_contratos,
+      SUM(valor_mensal)::numeric AS valor_ativos,
+      SUM(CASE WHEN status_comissao = 'Liberada' THEN valor_mensal ELSE 0 END)::numeric AS valor_liberado
+    FROM bdr.vendas_snapshots
+    WHERE mes_referencia >= to_char(now() - make_interval(months => ${limiteMeses}::int), 'YYYY-MM')
+    GROUP BY mes_referencia, segmento
+    ORDER BY mes_referencia DESC, segmento ASC
+  `;
+  return rows.map((r) => ({
+    mesReferencia: r.mes_referencia,
+    segmento:      r.segmento,
+    qtdContratos:  Number(r.qtd_contratos),
+    valorAtivos:   Number(r.valor_ativos),
+    valorLiberado: Number(r.valor_liberado),
+  }));
 }
 
 // ── Fotos da instalação (sessão de admin do IXC, ver config/ixcSession.ts) ────

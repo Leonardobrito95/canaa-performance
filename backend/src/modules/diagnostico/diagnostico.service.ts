@@ -11,10 +11,12 @@ import {
   buscarContextoComercial,
   buscarRegrasNegocio,
   buscarFotosRelevantes,
+  buscarRankingVendedores,
+  buscarEvolucaoVendas,
 } from './diagnostico.repository';
 import { ContextoClienteDiagnostico } from './diagnostico.types';
-import { montarContextoTextual } from './diagnostico.prompt';
-import { gerarDiagnostico, DiagnosticoIaResultado } from './diagnostico.ia';
+import { montarContextoTextual, montarContextoGestaoTextual } from './diagnostico.prompt';
+import { gerarDiagnostico, gerarRespostaGestao, DiagnosticoIaResultado } from './diagnostico.ia';
 
 /// Monta o contexto completo de um cliente (rede + O.S. + comercial) para a IA.
 /// Cada fonte é buscada fresca a cada chamada — nada fica em cache permanente.
@@ -82,4 +84,33 @@ export async function gerarDiagnosticoIndividual(
   });
 
   return resultado;
+}
+
+/// Responde perguntas de gestão (ranking de vendedores, evolução de vendas)
+/// sem cliente específico — mesma auditoria de consultas do Diagnóstico.
+export async function gerarRespostaGestaoIndividual(
+  pergunta: string,
+  solicitante: SolicitanteDiagnostico,
+  historico?: { pergunta: string; resposta: string }[],
+): Promise<string> {
+  const [ranking, evolucao] = await Promise.all([
+    buscarRankingVendedores(),
+    buscarEvolucaoVendas(),
+  ]);
+  const contextoTextual = montarContextoGestaoTextual(ranking, evolucao);
+  const resposta = await gerarRespostaGestao(contextoTextual, pergunta, historico);
+
+  await prisma.diagnosticoConsulta.create({
+    data: {
+      tipo_alvo:     'GESTAO',
+      id_alvo:       'GERAL',
+      pergunta,
+      resposta,
+      contexto_json: { ranking, evolucao } as any,
+      ixc_user_id:   solicitante.ixcUserId,
+      ixc_username:  solicitante.ixcUsername,
+    },
+  });
+
+  return resposta;
 }

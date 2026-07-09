@@ -12,12 +12,18 @@ export const OPERADORES_CS = (process.env.RETENCAO_OPERADORES_CS || '')
 export const RETIDO_IDS = [
   20, 21, 22, 23, 24, 25, 26, 27, 29, 30, 31, 32,
   33, 34, 35, 58, 94, 316, 318, 320, 322, 324, 326,
+  375, // RETIDO OFERTA DA CONCORRENCIA COMBO (criado 06/07/2026)
 ];
 
 export const NAO_RETIDO_IDS = [
   37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49,
   50, 51, 52, 56, 57, 59, 319, 321, 323, 325, 327,
+  374, // NAO RETIDO OFERTA DA CONCORRENCIA COMBO (criado 06/07/2026)
 ];
+// Nota: 376 "FALTA DE INTERAÇÃO OFERTA DA CONCORRENCIA COMBO" fica de fora de
+// ambas as listas de propósito, seguindo o mesmo padrão do diagnóstico 257
+// ("FALTA DE INTERAÇÃO - Oferta Concorrência") — conta em qtd_tratadas mas não
+// em retidas/não-retidas, já que não houve interação do cliente.
 
 // ── Comissão por faixa ────────────────────────────────────────────────────────
 export function getComissaoRetencao(qtdRetidas: number): number {

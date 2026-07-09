@@ -22,6 +22,11 @@ export const historicoParamsSchema = z.object({
   id_cliente: z.string().regex(/^\d+$/, 'id_cliente deve ser numérico'),
 });
 
+export const gestaoConsultaBodySchema = z.object({
+  pergunta: z.string().min(1).max(2000),
+  historico: z.array(historicoTurnoSchema).max(8).optional(),
+});
+
 const CATEGORIAS_REGRA = ['VENDAS', 'RETENCAO', 'REDE', 'COMISSAO'] as const;
 
 export const regraNegocioBodySchema = z.object({

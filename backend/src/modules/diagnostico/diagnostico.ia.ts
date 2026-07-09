@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { DIAGNOSTICO_SYSTEM_PROMPT } from './diagnostico.prompt';
+import { DIAGNOSTICO_SYSTEM_PROMPT, GESTAO_SYSTEM_PROMPT } from './diagnostico.prompt';
 import { ImagemAnexo } from './diagnostico.types';
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
@@ -114,6 +114,48 @@ export async function gerarDiagnostico(
       const texto = resposta.text ?? '';
       if (!texto) throw new Error('Resposta vazia do Gemini');
       return parseResposta(texto);
+    } catch (err) {
+      ultimoErro = err;
+      if (tentativa < 2) await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  throw ultimoErro;
+}
+
+/// Igual a gerarDiagnostico, mas para perguntas de gestão (sem cliente
+/// específico, sem fotos, sem formato de 3 seções) — ranking de vendedores,
+/// evolução de vendas etc.
+export async function gerarRespostaGestao(
+  contextoTextual: string,
+  pergunta: string,
+  historico?: { pergunta: string; resposta: string }[],
+): Promise<string> {
+  const partes = [GESTAO_SYSTEM_PROMPT, '', contextoTextual];
+  if (historico?.length) {
+    partes.push('', `=== CONVERSA ANTERIOR NESTE ATENDIMENTO ===`,
+      'As perguntas abaixo já foram feitas e respondidas nesta mesma conversa de gestão. ' +
+      'Use isso para entender perguntas de acompanhamento curtas que dependem do contexto anterior.');
+    for (const h of historico) {
+      partes.push('', `Pergunta anterior: ${h.pergunta}`, `Resposta anterior: ${h.resposta}`);
+    }
+  }
+  partes.push('', `=== PERGUNTA ATUAL DO USUARIO ===`, pergunta,
+    'Responda a pergunta ATUAL acima (considerando a conversa anterior, se houver) seguindo as ' +
+    'instruções do system prompt.');
+
+  const client = getClient();
+
+  let ultimoErro: unknown;
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    try {
+      const resposta = await client.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [{ text: partes.join('\n') }] }],
+        config: { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } },
+      });
+      const texto = resposta.text ?? '';
+      if (!texto) throw new Error('Resposta vazia do Gemini');
+      return texto.trim();
     } catch (err) {
       ultimoErro = err;
       if (tentativa < 2) await new Promise((r) => setTimeout(r, 1500));

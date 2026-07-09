@@ -97,6 +97,9 @@ export const buscarHistoricoConsultas = (id_cliente: number) =>
 export const buscarAgregados = (dimensao?: string) =>
   api.get<DiagnosticoAgregadoItem[]>('/agregado', { params: dimensao ? { dimensao } : {} }).then((r) => r.data);
 
+export const consultarGestao = (pergunta: string, historico?: HistoricoTurnoConversa[]) =>
+  api.post<{ resposta: string }>('/gestao/consulta', { pergunta, historico }).then((r) => r.data.resposta);
+
 export const listarRegras = () =>
   api.get<RegraNegocio[]>('/regras').then((r) => r.data);
 

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthPayload } from '../auth/auth.service';
 import prisma from '../../config/prisma';
-import { gerarDiagnosticoIndividual } from './diagnostico.service';
+import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual } from './diagnostico.service';
 import { buscarClientePorNome } from './diagnostico.repository';
 
 type AuthRequest = Request & { user: AuthPayload };
@@ -47,6 +47,24 @@ export async function listarHistoricoConsultas(req: Request, res: Response, next
       },
     });
     res.json(consultas);
+  } catch (err) { next(err); }
+}
+
+export async function criarConsultaGestao(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id, nome } = (req as AuthRequest).user;
+    const { pergunta, historico } = req.body as {
+      pergunta: string;
+      historico?: { pergunta: string; resposta: string }[];
+    };
+
+    const resposta = await gerarRespostaGestaoIndividual(
+      pergunta,
+      { ixcUserId: id, ixcUsername: nome },
+      historico,
+    );
+
+    res.json({ resposta });
   } catch (err) { next(err); }
 }
 

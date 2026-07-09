@@ -61,6 +61,12 @@ export interface ContextoComercial {
     statusComissao: string;
     motivoBloqueio: string | null;
     valorMensal:   number;
+    /// Mês de referência do snapshot (ex: "2026-04") e quando ele foi gerado.
+    /// O snapshot é imutável (cron do dia 19) — status/motivoBloqueio refletem
+    /// a situação EXATA daquele mês e nunca são recalculados depois, mesmo que
+    /// o cliente pague em um mês seguinte.
+    mesReferencia: string;
+    dataSnapshot:  Date;
   }[];
   comissoesBdr: {
     tipoNegociacao: string;
@@ -104,6 +110,26 @@ export interface OscilacaoRede {
 export interface EquipamentoAtual {
   descricao:   string;
   numeroSerie: string;
+}
+
+// ============================================================
+// PAINEL DE GESTÃO — agregados sem cliente específico
+// ============================================================
+
+export interface RankingVendedorEntry {
+  nomeVendedor:   string;
+  mesReferencia:  string;
+  qtdContratos:   number;
+  valorAtivos:    number;
+  valorLiberado:  number;
+}
+
+export interface EvolucaoMensalEntry {
+  mesReferencia:  string;
+  segmento:       string;
+  qtdContratos:   number;
+  valorAtivos:    number;
+  valorLiberado:  number;
 }
 
 export interface ContextoClienteDiagnostico {
