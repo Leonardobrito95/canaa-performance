@@ -2,8 +2,17 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthPayload } from '../auth/auth.service';
 import prisma from '../../config/prisma';
 import { gerarDiagnosticoIndividual } from './diagnostico.service';
+import { buscarClientePorNome } from './diagnostico.repository';
 
 type AuthRequest = Request & { user: AuthPayload };
+
+export async function buscarCliente(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { termo } = req.query as { termo: string };
+    const candidatos = await buscarClientePorNome(termo);
+    res.json(candidatos);
+  } catch (err) { next(err); }
+}
 
 export async function criarConsulta(req: Request, res: Response, next: NextFunction) {
   try {

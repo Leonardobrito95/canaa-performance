@@ -15,6 +15,36 @@ import {
 
 const OTDR_BASE = process.env.OTDR_API_URL ?? 'http://127.0.0.1:5008';
 
+export interface ClienteCandidato {
+  id:       number;
+  nome:     string;
+  cpfCnpj:  string;
+  endereco: string;
+}
+
+/// Busca cliente por nome (parcial) ou CPF/CNPJ (dígitos), para o chat de
+/// Diagnóstico resolver "qual cliente" antes de rodar a análise. Limitado a
+/// poucos resultados — quando ambíguo, quem decide é o usuário, não a IA.
+export async function buscarClientePorNome(termo: string): Promise<ClienteCandidato[]> {
+  const limpo = termo.trim();
+  const apenasDigitos = limpo.replace(/\D/g, '');
+
+  const porDocumento = apenasDigitos.length >= 11;
+  const [rows] = await mysqlPool.query<any[]>(
+    porDocumento
+      ? `SELECT id, razao, cnpj_cpf, endereco FROM cliente WHERE cnpj_cpf = ? LIMIT 10`
+      : `SELECT id, razao, cnpj_cpf, endereco FROM cliente WHERE razao LIKE ? LIMIT 10`,
+    [porDocumento ? apenasDigitos : `%${limpo}%`],
+  );
+
+  return rows.map((r) => ({
+    id:       r.id,
+    nome:     r.razao,
+    cpfCnpj:  r.cnpj_cpf,
+    endereco: r.endereco || '',
+  }));
+}
+
 /// MySQL/MariaDB permite datas "zero" (0000-00-00), que o driver mysql2 entrega
 /// como um objeto Date inválido (não null). Isso passa despercebido em checagens
 /// truthy e quebra tanto formatação (.toISOString) quanto a serialização JSON do

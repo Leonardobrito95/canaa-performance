@@ -19,6 +19,11 @@ export interface DiagnosticoIaResultado {
   erro: string;
   sugestao: string;
   textoCompleto: string;
+  /// true quando a resposta veio nas três seções (pergunta era sobre o
+  /// diagnóstico do cliente); false quando o modelo respondeu em texto livre
+  /// (pergunta fora de escopo) — nesse caso diagnostico/erro/sugestao ficam
+  /// vazios e quem consome deve mostrar textoCompleto como texto simples.
+  estruturado: boolean;
 }
 
 function parseResposta(texto: string): DiagnosticoIaResultado {
@@ -27,11 +32,15 @@ function parseResposta(texto: string): DiagnosticoIaResultado {
     const m = texto.match(regex);
     return m ? m[1].trim() : '';
   };
+  const diagnostico = extrair('DIAGNOSTICO');
+  const erro = extrair('ERRO');
+  const sugestao = extrair('SUGESTAO');
   return {
-    diagnostico: extrair('DIAGNOSTICO'),
-    erro: extrair('ERRO'),
-    sugestao: extrair('SUGESTAO'),
+    diagnostico,
+    erro,
+    sugestao,
     textoCompleto: texto.trim(),
+    estruturado: Boolean(diagnostico || erro || sugestao),
   };
 }
 
@@ -47,7 +56,7 @@ export async function gerarDiagnostico(
   ];
   if (pergunta) {
     partes.push('', `=== PERGUNTA DO USUARIO ===`, pergunta,
-      'Responda a pergunta acima, mas mantenha as três seções (DIAGNOSTICO/ERRO/SUGESTAO).');
+      'Responda a pergunta acima seguindo as instruções de formato do system prompt.');
   }
   if (!imagens.length) {
     partes.push('', `=== FOTOS DA INSTALACAO ===`, 'Nenhuma foto anexada a esta consulta.');

@@ -28,6 +28,7 @@ export interface DiagnosticoResultado {
   erro: string;
   sugestao: string;
   textoCompleto: string;
+  estruturado: boolean;
 }
 
 export interface DiagnosticoHistoricoItem {
@@ -48,7 +49,17 @@ export interface DiagnosticoAgregadoItem {
   atualizado_em: string;
 }
 
+export interface ClienteCandidato {
+  id: number;
+  nome: string;
+  cpfCnpj: string;
+  endereco: string;
+}
+
 // ── Chamadas ─────────────────────────────────────────────────────
+
+export const buscarCliente = (termo: string) =>
+  api.get<ClienteCandidato[]>('/cliente', { params: { termo } }).then((r) => r.data);
 
 export const consultarDiagnostico = (id_cliente: number, pergunta?: string) =>
   api.post<DiagnosticoResultado>('/consulta', { id_cliente, pergunta }).then((r) => r.data);
