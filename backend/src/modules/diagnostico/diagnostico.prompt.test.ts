@@ -101,6 +101,28 @@ describe('montarContextoTextual — Situação comercial (snapshot)', () => {
     // continuar presente no prompt — se essa frase sumir do código, o teste falha.
     expect(texto.toLowerCase()).toContain('imutável');
   });
+
+  it('inclui negociações de retenção quando existentes (guarda contra ficar hardcoded vazio)', () => {
+    const ctx = makeContexto({
+      comercial: {
+        vendas: [], comissoesBdr: [],
+        retencaoNegociacoes: [{
+          idChamado: '558426', valorOriginal: 129.9, valorNegociado: 99.9,
+          descricao: 'Cliente ameaçou cancelar por lentidão recorrente', dataRegistro: new Date('2026-07-09'),
+        }],
+      },
+    });
+    const texto = montarContextoTextual(ctx);
+    expect(texto).toContain('O.S. #558426');
+    expect(texto).toContain('R$129.90');
+    expect(texto).toContain('R$99.90');
+    expect(texto).toContain('Cliente ameaçou cancelar por lentidão recorrente');
+  });
+
+  it('usa a mensagem de fallback quando não há dado comercial nenhum', () => {
+    const texto = montarContextoTextual(makeContexto());
+    expect(texto).toContain('Sem dados comerciais associados.');
+  });
 });
 
 describe('montarContextoTextual — Regras de negócio e equipamento', () => {

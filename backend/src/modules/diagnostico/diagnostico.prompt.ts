@@ -156,7 +156,7 @@ function formatarAtendimentos(ctx: ContextoClienteDiagnostico): string {
 }
 
 function formatarComercial(ctx: ContextoClienteDiagnostico): string {
-  const { vendas, comissoesBdr } = ctx.comercial;
+  const { vendas, comissoesBdr, retencaoNegociacoes } = ctx.comercial;
   const linhas: string[] = [];
   if (vendas.length) {
     linhas.push(
@@ -175,6 +175,13 @@ function formatarComercial(ctx: ContextoClienteDiagnostico): string {
     for (const c of comissoesBdr.slice(0, 5)) {
       const data = fmtData(c.dataRegistro);
       linhas.push(`- ${data} | ${c.tipoNegociacao} | R$${c.valorComissao.toFixed(2)}`);
+    }
+  }
+  if (retencaoNegociacoes.length) {
+    linhas.push('Negociações de retenção (O.S. onde o cliente ameaçou cancelar e recebeu desconto):');
+    for (const r of retencaoNegociacoes.slice(0, 5)) {
+      const data = fmtData(r.dataRegistro);
+      linhas.push(`- O.S. #${r.idChamado} | ${data} | valor original R$${r.valorOriginal.toFixed(2)} → negociado R$${r.valorNegociado.toFixed(2)}${r.descricao ? ` | ${r.descricao}` : ''}`);
     }
   }
   return linhas.length ? linhas.join('\n') : 'Sem dados comerciais associados.';

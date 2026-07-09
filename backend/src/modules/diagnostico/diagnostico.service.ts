@@ -10,6 +10,7 @@ import {
   buscarAtendimentos,
   buscarIdsContratoPorCliente,
   buscarContextoComercial,
+  buscarRetencaoNegociacoes,
   buscarRegrasNegocio,
   buscarFotosRelevantes,
   buscarRankingVendedores,
@@ -36,9 +37,10 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
   ]);
 
   const idsOssChamado = ordensServico.map((os) => os.idOssChamado);
-  const [osMensagens, osArquivos] = await Promise.all([
+  const [osMensagens, osArquivos, retencaoNegociacoes] = await Promise.all([
     buscarMensagensOs(idsOssChamado),
     buscarArquivosOs(idsOssChamado),
+    buscarRetencaoNegociacoes(idsOssChamado),
   ]);
 
   return {
@@ -50,7 +52,7 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
     osMensagens,
     osArquivos,
     atendimentos,
-    comercial,
+    comercial: { ...comercial, retencaoNegociacoes },
     regrasNegocio,
   };
 }

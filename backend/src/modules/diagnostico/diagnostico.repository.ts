@@ -299,6 +299,24 @@ export async function buscarContextoComercial(idCliente: number, idsContrato: st
   };
 }
 
+/// Negociações de retenção (CS) registradas para as O.S. desse cliente —
+/// RetencaoNegociacao.id_chamado é o mesmo id de su_oss_chamado, então
+/// reaproveita os ids já buscados em buscarOrdensServico.
+export async function buscarRetencaoNegociacoes(idsOssChamado: number[]): Promise<ContextoComercial['retencaoNegociacoes']> {
+  if (!idsOssChamado.length) return [];
+  const negociacoes = await prisma.retencaoNegociacao.findMany({
+    where: { id_chamado: { in: idsOssChamado.map(String) } },
+    orderBy: { data_registro: 'desc' },
+  });
+  return negociacoes.map((n) => ({
+    idChamado:      n.id_chamado,
+    valorOriginal:  Number(n.valor_original),
+    valorNegociado: Number(n.valor_negociado),
+    descricao:      n.descricao,
+    dataRegistro:   n.data_registro,
+  }));
+}
+
 // ── Painel de Gestão (agregados, sem cliente específico) ─────────────────────
 
 export async function buscarRankingVendedores(limiteMeses = 6): Promise<RankingVendedorEntry[]> {
