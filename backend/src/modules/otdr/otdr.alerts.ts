@@ -29,7 +29,7 @@ async function enviarWhatsapp(mensagem: string, tipo: string): Promise<void> {
 
 // ── Resumo diário — 7h ───────────────────────────────────────────────────────
 
-function htmlResumoDiario(resumos: ResumoOlt[], data: string, causas: CausaCliente[]): string {
+export function htmlResumoDiario(resumos: ResumoOlt[], data: string, causas: CausaCliente[]): string {
   const linhas = resumos.map(r =>
     `<tr>
       <td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${r.olt}</td>
