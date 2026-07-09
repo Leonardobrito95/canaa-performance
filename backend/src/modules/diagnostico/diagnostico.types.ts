@@ -132,6 +132,19 @@ export interface EvolucaoMensalEntry {
   valorLiberado:  number;
 }
 
+/// Um POP agrupa várias OLTs (ex: "AGUAS CLARAS-1/2/3" -> POP AGUAS CLARAS) —
+/// nome derivado removendo o sufixo numérico/N da OLT, não vem pronto da API.
+export interface PopStatusEntry {
+  pop:            string;
+  totalOnus:      number;
+  normal:         number;
+  atencao:        number;
+  critico:        number;
+  foraDeOperacao: number;
+  semLeitura:     number;
+  piorSinalRx:    number | null;
+}
+
 export interface ContextoClienteDiagnostico {
   idCliente:       number;
   equipamentoAtual: EquipamentoAtual[];

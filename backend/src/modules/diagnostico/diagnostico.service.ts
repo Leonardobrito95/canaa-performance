@@ -1,4 +1,5 @@
 import prisma from '../../config/prisma';
+import logger from '../../config/logger';
 import {
   buscarHistoricoSinal,
   buscarOscilacaoRede,
@@ -13,6 +14,7 @@ import {
   buscarFotosRelevantes,
   buscarRankingVendedores,
   buscarEvolucaoVendas,
+  buscarStatusPops,
 } from './diagnostico.repository';
 import { ContextoClienteDiagnostico } from './diagnostico.types';
 import { montarContextoTextual, montarContextoGestaoTextual } from './diagnostico.prompt';
@@ -93,11 +95,15 @@ export async function gerarRespostaGestaoIndividual(
   solicitante: SolicitanteDiagnostico,
   historico?: { pergunta: string; resposta: string }[],
 ): Promise<string> {
-  const [ranking, evolucao] = await Promise.all([
+  const [ranking, evolucao, pops] = await Promise.all([
     buscarRankingVendedores(),
     buscarEvolucaoVendas(),
+    buscarStatusPops().catch((err) => {
+      logger.warn('[DIAGNOSTICO] Falha ao buscar status de POPs para o chat de gestão', { error: err.message });
+      return [];
+    }),
   ]);
-  const contextoTextual = montarContextoGestaoTextual(ranking, evolucao);
+  const contextoTextual = montarContextoGestaoTextual(ranking, evolucao, pops);
   const resposta = await gerarRespostaGestao(contextoTextual, pergunta, historico);
 
   await prisma.diagnosticoConsulta.create({
@@ -106,7 +112,7 @@ export async function gerarRespostaGestaoIndividual(
       id_alvo:       'GERAL',
       pergunta,
       resposta,
-      contexto_json: { ranking, evolucao } as any,
+      contexto_json: { ranking, evolucao, pops } as any,
       ixc_user_id:   solicitante.ixcUserId,
       ixc_username:  solicitante.ixcUsername,
     },

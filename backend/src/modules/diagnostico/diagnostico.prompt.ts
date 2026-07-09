@@ -1,4 +1,4 @@
-import { ContextoClienteDiagnostico, RankingVendedorEntry, EvolucaoMensalEntry } from './diagnostico.types';
+import { ContextoClienteDiagnostico, RankingVendedorEntry, EvolucaoMensalEntry, PopStatusEntry } from './diagnostico.types';
 
 const CRITERIOS_INSTALACAO = `Critérios de boa instalação verificáveis visualmente numa foto (use como
 referência ao analisar fotos, não recalcule ou invente outros critérios):
@@ -208,14 +208,15 @@ export function montarContextoTextual(ctx: ContextoClienteDiagnostico): string {
 
 export const GESTAO_SYSTEM_PROMPT = `Você é um analista sênior do Canaã Performance, o hub interno da
 Canaã Telecom. Aqui você responde perguntas de GESTÃO sobre o negócio como um todo (ranking de
-vendedores, evolução de vendas por período/segmento) — não é sobre um cliente específico.
+vendedores, evolução de vendas por período/segmento, status de rede por POP agora) — não é sobre
+um cliente específico.
 
 Regras:
 - Responda em texto livre, direto e objetivo, sem seções fixas — não force um formato de
   diagnóstico/erro/sugestão aqui, isso é só para consultas de cliente individual.
-- Use apenas os dados fornecidos abaixo. Não invente vendedor, valor ou período que não estejam
-  nos dados.
-- Os dados vêm de snapshots mensais imutáveis (gerados no dia 19 do mês seguinte ao de
+- Use apenas os dados fornecidos abaixo. Não invente vendedor, valor, período ou POP que não
+  estejam nos dados.
+- Os dados de vendas vêm de snapshots mensais imutáveis (gerados no dia 19 do mês seguinte ao de
   referência) — o mês mais recente disponível normalmente é o mês anterior ao atual, isso é
   esperado, não um erro ou atraso. SEMPRE que a pergunta pedir um mês que ainda não tem
   snapshot, explique isso na mesma resposta (não assuma que quem pergunta já sabe, mesmo que
@@ -223,9 +224,13 @@ Regras:
   também quando o snapshot desse mês fica disponível (dia 19 do mês seguinte).
 - "Valor de ativos" é o total de contratos ativados no mês (liberado ou não); "valor liberado"
   é a fração com o primeiro boleto pago — a comissão só é paga sobre o valor liberado.
-- Se a pergunta pedir algo fora do que os dados cobrem (ex: um cliente específico, status de
-  rede/POP, alertas de sinal), diga que esse assistente de gestão cobre vendedores e evolução
-  de vendas por enquanto, e não tem dado para o que foi pedido.
+- O status de POP é AO VIVO (consultado no momento da pergunta, não é histórico) — cada POP
+  agrupa várias OLTs. Se perguntarem por um POP específico, procure pelo nome mesmo que não bata
+  exatamente (ex: "aguas claras" deve encontrar "AGUAS CLARAS").
+- Se a pergunta pedir algo fora do que os dados cobrem (ex: um cliente específico, alertas
+  históricos de sinal, um POP que não existe na lista), diga que esse assistente de gestão cobre
+  vendedores, evolução de vendas e status de POP por enquanto, e não tem dado para o que foi
+  pedido.
 - Não use travessão em nenhuma frase. Seja direto, sem saudação nem introdução.`;
 
 function formatarRankingVendedores(ranking: RankingVendedorEntry[]): string {
@@ -242,12 +247,27 @@ function formatarEvolucaoVendas(evolucao: EvolucaoMensalEntry[]): string {
   ).join('\n');
 }
 
-export function montarContextoGestaoTextual(ranking: RankingVendedorEntry[], evolucao: EvolucaoMensalEntry[]): string {
+function formatarStatusPops(pops: PopStatusEntry[]): string {
+  if (!pops.length) return 'Sem dados de POPs disponíveis agora.';
+  return pops.map((p) =>
+    `- ${p.pop} | ${p.totalOnus} ONUs | Normal: ${p.normal} | Atenção: ${p.atencao} | Crítico: ${p.critico} | Fora de operação: ${p.foraDeOperacao} | Sem leitura: ${p.semLeitura}` +
+    (p.piorSinalRx !== null ? ` | Pior sinal: ${p.piorSinalRx.toFixed(2)}dBm` : '')
+  ).join('\n');
+}
+
+export function montarContextoGestaoTextual(
+  ranking: RankingVendedorEntry[],
+  evolucao: EvolucaoMensalEntry[],
+  pops: PopStatusEntry[] = [],
+): string {
   return [
     `=== RANKING DE VENDEDORES POR MES (snapshots mensais) ===`,
     formatarRankingVendedores(ranking),
     '',
     `=== EVOLUCAO DE VENDAS POR MES E SEGMENTO ===`,
     formatarEvolucaoVendas(evolucao),
+    '',
+    `=== STATUS DE POPS AGORA (ao vivo) ===`,
+    formatarStatusPops(pops),
   ].join('\n');
 }

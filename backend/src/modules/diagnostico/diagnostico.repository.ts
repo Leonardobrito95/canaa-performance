@@ -14,6 +14,7 @@ import {
   OscilacaoRede,
   RankingVendedorEntry,
   EvolucaoMensalEntry,
+  PopStatusEntry,
 } from './diagnostico.types';
 
 const OTDR_BASE = process.env.OTDR_API_URL ?? 'http://127.0.0.1:5008';
@@ -342,6 +343,44 @@ export async function buscarEvolucaoVendas(limiteMeses = 12): Promise<EvolucaoMe
     valorAtivos:   Number(r.valor_ativos),
     valorLiberado: Number(r.valor_liberado),
   }));
+}
+
+/// Deriva o nome do POP a partir do nome da OLT — a API do OTDR não expõe POP
+/// diretamente, mas várias OLTs compartilham um POP (ex: "AGUAS CLARAS-1",
+/// "AGUAS CLARAS-2", "AGUAS CLARAS-3" -> POP AGUAS CLARAS), removendo o sufixo
+/// numérico/N. Confirmado batendo com os nomes reais de POP já vistos no
+/// histórico de sinal (ex: "POP AGUAS CLARAS", "POP TAGUATINGA").
+function popDaOlt(olt: string): string {
+  return olt.replace(/-N?\d+$/, '').trim();
+}
+
+export async function buscarStatusPops(): Promise<PopStatusEntry[]> {
+  const { data } = await axios.get(`${OTDR_BASE}/api/onus`, { timeout: 30_000 });
+  const onus: any[] = data.onus ?? [];
+
+  const porPop = new Map<string, any[]>();
+  for (const onu of onus) {
+    const pop = popDaOlt(onu.olt);
+    if (!porPop.has(pop)) porPop.set(pop, []);
+    porPop.get(pop)!.push(onu);
+  }
+
+  const resultado: PopStatusEntry[] = [];
+  for (const [pop, lista] of porPop) {
+    const comLeitura = lista.filter((o) => typeof o.sinal_rx === 'number');
+    resultado.push({
+      pop,
+      totalOnus:      lista.length,
+      normal:         lista.filter((o) => o.nivel === 'Normal').length,
+      atencao:        lista.filter((o) => o.nivel === 'Atencao').length,
+      critico:        lista.filter((o) => o.nivel === 'Critico').length,
+      foraDeOperacao: lista.filter((o) => o.nivel === 'Fora de Operacao').length,
+      semLeitura:     lista.filter((o) => o.nivel === 'Sem leitura').length,
+      piorSinalRx:    comLeitura.length ? Math.min(...comLeitura.map((o) => o.sinal_rx)) : null,
+    });
+  }
+
+  return resultado.sort((a, b) => a.pop.localeCompare(b.pop));
 }
 
 // ── Fotos da instalação (sessão de admin do IXC, ver config/ixcSession.ts) ────

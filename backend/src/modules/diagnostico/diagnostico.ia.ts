@@ -2,7 +2,11 @@ import { GoogleGenAI } from '@google/genai';
 import { DIAGNOSTICO_SYSTEM_PROMPT, GESTAO_SYSTEM_PROMPT } from './diagnostico.prompt';
 import { ImagemAnexo } from './diagnostico.types';
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// 'gemini-2.5-flash' foi descontinuado para geração (ainda aparece em
+// models.list() mas generateContent retorna 404). Usa o alias "latest" em vez
+// de fixar uma versão — a Google atualiza o que ele aponta, evitando esse
+// mesmo tipo de quebra silenciosa de novo.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 let _client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {

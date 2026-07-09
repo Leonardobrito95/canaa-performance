@@ -93,7 +93,7 @@ const casos: Caso[] = [
       const { texto, estruturado } = JSON.parse(respRaw);
       const falhas: string[] = [];
       if (estruturado) falhas.push('Forçou o formato de diagnóstico para uma pergunta sem relação com o cliente.');
-      if (!/não tem contexto|fora de escopo|focado (em|no) diagn/i.test(texto)) {
+      if (!/não tem contexto|fora d[eo] escopo|focado (em|no) diagn/i.test(texto)) {
         falhas.push('Não deixou claro que a pergunta está fora do escopo do assistente.');
       }
       return falhas;
@@ -146,11 +146,22 @@ const casos: Caso[] = [
     },
   },
   {
-    nome: 'Gestão — pergunta fora do escopo atual (POP) é recusada sem inventar dado',
+    nome: 'Gestão — status de POP real responde com dados ao vivo',
+    rodar: () => gerarRespostaGestaoIndividual('como esta o pop aguas claras hoje?', SOLICITANTE),
+    verificar: (resp) => {
+      const falhas: string[] = [];
+      if (!/\d/.test(resp)) falhas.push('Não trouxe nenhum número (ONUs/status) para um POP que existe na lista.');
+      return falhas;
+    },
+  },
+  {
+    nome: 'Gestão — POP inexistente não inventa dado',
     rodar: () => gerarRespostaGestaoIndividual('como esta o pop centro hoje?', SOLICITANTE),
     verificar: (resp) => {
       const falhas: string[] = [];
-      if (!/vendedores e evolu|n[aã]o tem dado/i.test(resp)) falhas.push('Não recusou de forma clara uma pergunta fora do escopo (POP).');
+      if (!/n[ãa]o (h[áa]|encontrei|possui|tem|existe)|n[ãa]o est[áa]/i.test(resp)) {
+        falhas.push('Não deixou claro que o POP "Centro" não existe na lista, em vez de inventar dado.');
+      }
       return falhas;
     },
   },
