@@ -239,7 +239,7 @@ export async function buscarContextoComercial(idCliente: number, idsContrato: st
 
 // ── Fotos da instalação (sessão de admin do IXC, ver config/ixcSession.ts) ────
 
-const LIMITE_FOTOS_DIAGNOSTICO = 5;
+const LIMITE_FOTOS_DIAGNOSTICO = 12;
 
 const EXTENSOES_IMAGEM = /\.(jpe?g|png|webp)$/i;
 
@@ -255,16 +255,39 @@ const DESCRICAO_LOCAL_INSTALADO = /local\s*instalad/i;
 /// e documentos como PDF de O.S., que não ajudam a avaliar qualidade de
 /// instalação) e busca o binário de cada um. Falhas individuais são ignoradas
 /// (uma foto que não carrega não derruba o diagnóstico inteiro).
+///
+/// Muitas fotos de vistoria têm nome/descrição genérica no IXC (ex:
+/// "os_img_243612300678814882", sem indicar o que mostram) — não dá pra saber
+/// qual é "a boa" sem olhar. Por isso a seleção é por LOTE de O.S., não por
+/// corte simples de "N mais recentes": pega o lote inteiro da O.S. com foto
+/// mais recente (evita cortar no meio de uma sequência de 10+ fotos da mesma
+/// visita e acabar só com um recorte arbitrário dela), completando com lotes
+/// mais antigos até o limite.
 export async function buscarFotosRelevantes(
   osArquivos: Record<number, OsArquivoEntry[]>,
 ): Promise<ImagemAnexo[]> {
-  const candidatos = Object.values(osArquivos).flat()
+  const fotoLocal = Object.values(osArquivos).flat()
     .filter((a) => a.classificacao !== 'A' && EXTENSOES_IMAGEM.test(a.nomeArquivo))
-    .sort((a, b) => (b.dataEnvio?.getTime() ?? 0) - (a.dataEnvio?.getTime() ?? 0));
+    .find((a) => DESCRICAO_LOCAL_INSTALADO.test(a.descricao));
 
-  const fotoLocal = candidatos.find((a) => DESCRICAO_LOCAL_INSTALADO.test(a.descricao));
-  const outras = candidatos.filter((a) => a !== fotoLocal).slice(0, LIMITE_FOTOS_DIAGNOSTICO - (fotoLocal ? 1 : 0));
-  const todos = fotoLocal ? [fotoLocal, ...outras] : outras;
+  const lotesPorOs = Object.values(osArquivos)
+    .map((arquivos) => arquivos.filter((a) => a.classificacao !== 'A' && EXTENSOES_IMAGEM.test(a.nomeArquivo)))
+    .filter((lote) => lote.length > 0)
+    .map((lote) => ({
+      arquivos: lote,
+      dataMaisRecente: Math.max(...lote.map((a) => a.dataEnvio?.getTime() ?? 0)),
+    }))
+    .sort((a, b) => b.dataMaisRecente - a.dataMaisRecente);
+
+  const todos: OsArquivoEntry[] = fotoLocal ? [fotoLocal] : [];
+  for (const lote of lotesPorOs) {
+    if (todos.length >= LIMITE_FOTOS_DIAGNOSTICO) break;
+    for (const a of lote.arquivos) {
+      if (todos.length >= LIMITE_FOTOS_DIAGNOSTICO) break;
+      if (a === fotoLocal) continue;
+      todos.push(a);
+    }
+  }
 
   const resultados = await Promise.allSettled(todos.map((a) => buscarArquivoBinario(a.id)));
 
