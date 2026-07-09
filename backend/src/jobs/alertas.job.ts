@@ -8,9 +8,35 @@ import {
 } from '../modules/alertas/alertas.service';
 import { enviarRelatorioComercial } from '../modules/vendas/comissao-envio.service';
 import { gerarSnapshot } from '../modules/vendas/snapshot.service';
-import { buscarPiorasHoje, buscarEstadoPorOlt, EstadoOlt } from '../modules/otdr/otdr.service';
-import { enviarResumoDiario, enviarAlertaQueda } from '../modules/otdr/otdr.alerts';
+import { buscarPiorasHoje, buscarPioresClientesHoje, buscarEstadoPorOlt, EstadoOlt } from '../modules/otdr/otdr.service';
+import { enviarResumoDiario, enviarAlertaQueda, CausaCliente } from '../modules/otdr/otdr.alerts';
 import { enviarRelatorioGovernanca } from '../modules/otdr/otdr.governance';
+import { gerarDiagnosticoIndividual } from '../modules/diagnostico/diagnostico.service';
+
+const SOLICITANTE_CRON = { ixcUserId: 'cron-alertas', ixcUsername: 'cron-alertas' };
+const LIMITE_CAUSAS_RESUMO_DIARIO = 3;
+
+/// Roda o Diagnóstico IA só nos piores clientes do dia ("poucos, fundamentados
+/// na causa" — não um por ONU degradada) e extrai a causa raiz para anexar no
+/// resumo diário já existente. Falha de um cliente não derruba os outros nem
+/// o resumo em si — na pior hipótese, o resumo sai sem a seção de causas.
+async function coletarCausasDoDia(): Promise<CausaCliente[]> {
+  const piores = await buscarPioresClientesHoje(LIMITE_CAUSAS_RESUMO_DIARIO);
+  const causas: CausaCliente[] = [];
+
+  for (const cliente of piores) {
+    try {
+      const resultado = await gerarDiagnosticoIndividual(cliente.idCliente, SOLICITANTE_CRON);
+      causas.push({ nome: cliente.nome, causa: resultado.erro || resultado.textoCompleto });
+    } catch (err) {
+      logger.error('[ALERTA] Falha ao gerar causa do Diagnóstico IA para o resumo diário', {
+        idCliente: cliente.idCliente, error: String(err),
+      });
+    }
+  }
+
+  return causas;
+}
 
 const DIAS_VENDAS   = [15, 25, 30];
 const DIA_COMISSAO  = 19;
@@ -58,7 +84,9 @@ export function iniciarJobs(): void {
   cron.schedule('0 7 * * *', async () => {
     await runSafe('OTDR Resumo Diário', async () => {
       const resumos = await buscarPiorasHoje();
-      await enviarResumoDiario(resumos);
+      if (!resumos.length) return;
+      const causas = await coletarCausasDoDia();
+      await enviarResumoDiario(resumos, causas);
     });
   }, { timezone: 'America/Sao_Paulo' });
 

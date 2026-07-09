@@ -3,6 +3,13 @@ import transporter from '../../config/mailer';
 import logger from '../../config/logger';
 import { ResumoOlt, EstadoOlt } from './otdr.service';
 
+/// Causa provável levantada pelo Diagnóstico IA para um dos piores clientes do
+/// dia — "poucos, fundamentados na causa" (não um por ONU degradada).
+export interface CausaCliente {
+  nome: string;
+  causa: string;
+}
+
 const EMAILS_INFRA = (process.env.OTDR_ALERT_EMAIL ?? '')
   .split(',').map(s => s.trim()).filter(Boolean);
 const WEBHOOK_URL  = process.env.OTDR_WEBHOOK_URL ?? '';
@@ -22,7 +29,7 @@ async function enviarWhatsapp(mensagem: string, tipo: string): Promise<void> {
 
 // ── Resumo diário — 7h ───────────────────────────────────────────────────────
 
-function htmlResumoDiario(resumos: ResumoOlt[], data: string): string {
+function htmlResumoDiario(resumos: ResumoOlt[], data: string, causas: CausaCliente[]): string {
   const linhas = resumos.map(r =>
     `<tr>
       <td style="padding:8px 12px;border-bottom:1px solid #1e293b;">${r.olt}</td>
@@ -32,6 +39,15 @@ function htmlResumoDiario(resumos: ResumoOlt[], data: string): string {
       <td style="padding:8px 12px;border-bottom:1px solid #1e293b;font-family:monospace;font-size:11px;color:#94a3b8;">${r.piorSn}</td>
     </tr>`
   ).join('');
+
+  const blocoCausas = causas.length ? `
+        <p style="margin:24px 0 10px;font-size:11px;color:#38bdf8;letter-spacing:.08em;text-transform:uppercase;">🔎 Causa provável (Diagnóstico IA) — piores casos de hoje</p>
+        ${causas.map(c => `
+        <div style="background:#0f172a;border-radius:8px;padding:12px 16px;margin-bottom:8px;">
+          <p style="margin:0 0 4px;font-size:13px;color:#fff;font-weight:600;">${c.nome}</p>
+          <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.5;">${c.causa}</p>
+        </div>`).join('')}
+        <p style="margin:8px 0 0;font-size:11px;color:#64748b;">Sugestão gerada por IA para avaliação humana — não é uma ação automática.</p>` : '';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;">
@@ -56,6 +72,7 @@ function htmlResumoDiario(resumos: ResumoOlt[], data: string): string {
           </thead>
           <tbody style="color:#e2e8f0;">${linhas}</tbody>
         </table>
+        ${blocoCausas}
         <div style="margin-top:24px;text-align:center;">
           <a href="${DASHBOARD}" style="display:inline-block;background:#1d4ed8;color:#fff;text-decoration:none;font-weight:600;font-size:13px;padding:10px 24px;border-radius:8px;">Abrir Dashboard OTDR</a>
         </div>
@@ -66,7 +83,7 @@ function htmlResumoDiario(resumos: ResumoOlt[], data: string): string {
 </body></html>`;
 }
 
-export async function enviarResumoDiario(resumos: ResumoOlt[]): Promise<void> {
+export async function enviarResumoDiario(resumos: ResumoOlt[], causas: CausaCliente[] = []): Promise<void> {
   if (!resumos.length) {
     logger.info('[OTDR] Nenhuma piora registrada hoje — resumo não enviado.');
     return;
@@ -80,7 +97,10 @@ export async function enviarResumoDiario(resumos: ResumoOlt[]): Promise<void> {
   const linhasWpp = resumos
     .map(r => `  • ${r.olt}: ${r.qtdPioraram} ONU${r.qtdPioraram > 1 ? 's' : ''} ↓ (pior: ${r.piorRx.toFixed(1)} dBm)`)
     .join('\n');
-  const msgWpp = `📡 *OTDR · ${data}*\n\n${totalOnus} ONU${totalOnus > 1 ? 's' : ''} degradaram:\n${linhasWpp}\n\n🔗 ${DASHBOARD}`;
+  const linhasCausasWpp = causas.length
+    ? `\n\n🔎 *Causa provável (IA) — piores casos:*\n` + causas.map(c => `  • ${c.nome}: ${c.causa}`).join('\n')
+    : '';
+  const msgWpp = `📡 *OTDR · ${data}*\n\n${totalOnus} ONU${totalOnus > 1 ? 's' : ''} degradaram:\n${linhasWpp}${linhasCausasWpp}\n\n🔗 ${DASHBOARD}`;
   await enviarWhatsapp(msgWpp, 'resumo_diario');
 
   // Email
@@ -90,7 +110,7 @@ export async function enviarResumoDiario(resumos: ResumoOlt[]): Promise<void> {
       from: FROM,
       to: EMAILS_INFRA,
       subject: `📡 OTDR ${data} — ${totalOnus} ONUs degradadas | Pior: ${piorOlt.olt} (${piorOlt.piorRx.toFixed(1)} dBm)`,
-      html: htmlResumoDiario(resumos, data),
+      html: htmlResumoDiario(resumos, data, causas),
     });
     logger.info(`[OTDR] Resumo diário enviado → ${EMAILS_INFRA.join(', ')}`);
   } catch (err: any) {
