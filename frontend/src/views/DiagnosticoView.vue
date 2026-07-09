@@ -244,7 +244,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useAuth } from '../composables/useAuth';
 import {
   buscarCliente,
@@ -270,6 +270,30 @@ const { user, isGestor } = useAuth();
 type Modo = 'consulta' | 'gestao' | 'regras';
 const modo = ref<Modo>('consulta');
 
+// ── Persistência local do chat (F5 não perde a conversa) ──────────────────
+// O backend não guarda sessão de propósito — tudo aqui é só pra sobreviver
+// a um reload de página, não é a fonte de verdade (essa é o banco).
+const STORAGE_KEY_CONSULTA = 'diagnostico_chat_consulta_v1';
+const STORAGE_KEY_GESTAO = 'diagnostico_chat_gestao_v1';
+const LIMITE_TURNOS_PERSISTIDOS = 50;
+
+function carregarDoStorage<T>(chave: string, padrao: T): T {
+  try {
+    const raw = localStorage.getItem(chave);
+    return raw ? (JSON.parse(raw) as T) : padrao;
+  } catch {
+    return padrao;
+  }
+}
+
+function salvarNoStorage(chave: string, valor: unknown) {
+  try {
+    localStorage.setItem(chave, JSON.stringify(valor));
+  } catch {
+    // localStorage cheio/indisponível (modo anônimo etc.) — não é crítico, ignora.
+  }
+}
+
 interface Turno {
   tipo: 'usuario' | 'assistente';
   texto?: string;
@@ -288,13 +312,18 @@ async function darFeedback(turno: { feedback?: TipoFeedback }, consultaId: strin
   }
 }
 
-const turnos = ref<Turno[]>([
-  { tipo: 'assistente', texto: 'Olá! Me diga o nome ou o ID do cliente que você quer analisar.' },
-]);
-const clienteAtivo = ref<{ id: number; nome: string } | null>(null);
+const SAUDACAO_INICIAL: Turno = { tipo: 'assistente', texto: 'Olá! Me diga o nome ou o ID do cliente que você quer analisar.' };
+const estadoConsultaSalvo = carregarDoStorage(STORAGE_KEY_CONSULTA, {
+  turnos: [SAUDACAO_INICIAL] as Turno[],
+  clienteAtivo: null as { id: number; nome: string } | null,
+  historicoConversa: [] as HistoricoTurnoConversa[],
+});
+
+const turnos = ref<Turno[]>(estadoConsultaSalvo.turnos);
+const clienteAtivo = ref<{ id: number; nome: string } | null>(estadoConsultaSalvo.clienteAtivo);
 // Backend não guarda sessão — mantemos aqui as últimas perguntas/respostas
 // dessa conversa para a IA entender referências curtas ("e os atendimentos?").
-const historicoConversa = ref<HistoricoTurnoConversa[]>([]);
+const historicoConversa = ref<HistoricoTurnoConversa[]>(estadoConsultaSalvo.historicoConversa);
 const inputAtual = ref('');
 const loading = ref(false);
 const loadingLabel = ref('Analisando…');
@@ -303,6 +332,14 @@ const scrollRef = ref<HTMLElement | null>(null);
 const placeholderInput = computed(() =>
   clienteAtivo.value ? 'Pergunte algo sobre esse cliente…' : 'Nome ou ID do cliente…'
 );
+
+watch([turnos, clienteAtivo, historicoConversa], () => {
+  salvarNoStorage(STORAGE_KEY_CONSULTA, {
+    turnos: turnos.value.slice(-LIMITE_TURNOS_PERSISTIDOS),
+    clienteAtivo: clienteAtivo.value,
+    historicoConversa: historicoConversa.value,
+  });
+}, { deep: true });
 
 function rolarParaFinal() {
   nextTick(() => {
@@ -404,13 +441,24 @@ async function carregarAgregados() {
 
 interface TurnoGestao { tipo: 'usuario' | 'assistente'; texto: string; consultaId?: string; feedback?: TipoFeedback }
 
-const turnosGestao = ref<TurnoGestao[]>([
-  { tipo: 'assistente', texto: 'Pergunte sobre ranking de vendedores ou evolução de vendas por período/segmento.' },
-]);
-const historicoGestao = ref<HistoricoTurnoConversa[]>([]);
+const SAUDACAO_GESTAO: TurnoGestao = { tipo: 'assistente', texto: 'Pergunte sobre ranking de vendedores ou evolução de vendas por período/segmento.' };
+const estadoGestaoSalvo = carregarDoStorage(STORAGE_KEY_GESTAO, {
+  turnosGestao: [SAUDACAO_GESTAO] as TurnoGestao[],
+  historicoGestao: [] as HistoricoTurnoConversa[],
+});
+
+const turnosGestao = ref<TurnoGestao[]>(estadoGestaoSalvo.turnosGestao);
+const historicoGestao = ref<HistoricoTurnoConversa[]>(estadoGestaoSalvo.historicoGestao);
 const inputGestao = ref('');
 const loadingGestao = ref(false);
 const scrollGestaoRef = ref<HTMLElement | null>(null);
+
+watch([turnosGestao, historicoGestao], () => {
+  salvarNoStorage(STORAGE_KEY_GESTAO, {
+    turnosGestao: turnosGestao.value.slice(-LIMITE_TURNOS_PERSISTIDOS),
+    historicoGestao: historicoGestao.value,
+  });
+}, { deep: true });
 
 function rolarGestaoParaFinal() {
   nextTick(() => {
@@ -546,7 +594,12 @@ function formatarDataHora(iso: string) {
 watch(modo, (m) => {
   if (m === 'gestao' && agregados.value.length === 0) carregarAgregados();
   if (m === 'regras' && regras.value.length === 0) carregarRegras();
+  if (m === 'gestao') rolarGestaoParaFinal();
 });
+
+// Ao restaurar uma conversa salva (F5), abre já rolado pra última mensagem,
+// não pro topo do histórico.
+onMounted(() => rolarParaFinal());
 </script>
 
 <style scoped>
