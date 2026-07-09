@@ -23,28 +23,84 @@ function getClient(): GoogleGenAI {
   return _client;
 }
 
+export interface MetricasGemini {
+  latenciaMs:    number;
+  tokensEntrada: number;
+  tokensSaida:   number;
+  modeloUsado:   string;
+}
+
+// ── Observabilidade de custo/latência (desde o início do processo) ───────────
+// Preço opcional via env — sem ele, o agregado mostra só tokens/latência, sem
+// inventar um valor em R$/US$ sem taxa real configurada.
+const agregado = {
+  chamadas: 0,
+  falhas: 0,
+  usosFallback: 0,
+  tokensEntradaTotal: 0,
+  tokensSaidaTotal: 0,
+  latenciaTotalMs: 0,
+};
+
+function calcularCustoEstimado(tokensEntrada: number, tokensSaida: number): number | null {
+  const precoInput = process.env.GEMINI_PRECO_INPUT_POR_1M_USD;
+  const precoOutput = process.env.GEMINI_PRECO_OUTPUT_POR_1M_USD;
+  if (!precoInput || !precoOutput) return null;
+  return (tokensEntrada / 1_000_000) * Number(precoInput) + (tokensSaida / 1_000_000) * Number(precoOutput);
+}
+
+export function obterMetricasAgregadasGemini() {
+  const { chamadas, falhas, usosFallback, tokensEntradaTotal, tokensSaidaTotal, latenciaTotalMs } = agregado;
+  return {
+    chamadas,
+    falhas,
+    usosFallback,
+    tokensEntradaTotal,
+    tokensSaidaTotal,
+    latenciaMediaMs: chamadas ? Math.round(latenciaTotalMs / chamadas) : 0,
+    custoEstimadoUsd: calcularCustoEstimado(tokensEntradaTotal, tokensSaidaTotal),
+    custoConfigurado: Boolean(process.env.GEMINI_PRECO_INPUT_POR_1M_USD && process.env.GEMINI_PRECO_OUTPUT_POR_1M_USD),
+  };
+}
+
 /// Chama o Gemini com retry no modelo principal e fallback para um modelo
 /// diferente se o principal falhar em todas as tentativas — cobre tanto
 /// instabilidade transitória quanto uma descontinuação/outage do modelo
-/// principal (já aconteceu uma vez nesta mesma base de código).
-async function chamarGemini(contents: any[], config: Record<string, unknown>): Promise<string> {
+/// principal (já aconteceu uma vez nesta mesma base de código). Também
+/// acumula latência/tokens no agregado em memória e devolve as métricas
+/// dessa chamada específica, pra persistir por consulta.
+async function chamarGemini(contents: any[], config: Record<string, unknown>): Promise<{ texto: string; metricas: MetricasGemini }> {
   const client = getClient();
   const tentativas = [GEMINI_MODEL, GEMINI_MODEL, GEMINI_MODEL_FALLBACK];
 
   let ultimoErro: unknown;
   for (let i = 0; i < tentativas.length; i++) {
     const model = tentativas[i];
+    const inicio = Date.now();
     try {
       const resposta = await client.models.generateContent({ model, contents, config });
+      const latenciaMs = Date.now() - inicio;
       const texto = resposta.text ?? '';
       if (!texto) throw new Error('Resposta vazia do Gemini');
+
+      const tokensEntrada = resposta.usageMetadata?.promptTokenCount ?? 0;
+      const tokensSaida = resposta.usageMetadata?.candidatesTokenCount ?? 0;
+
+      agregado.chamadas++;
+      agregado.tokensEntradaTotal += tokensEntrada;
+      agregado.tokensSaidaTotal += tokensSaida;
+      agregado.latenciaTotalMs += latenciaMs;
+
       if (model !== GEMINI_MODEL) {
+        agregado.usosFallback++;
         logger.warn('[GEMINI] Modelo principal falhou em todas as tentativas — resposta veio do fallback', {
           modeloFallback: model, modeloPrincipal: GEMINI_MODEL,
         });
       }
-      return texto;
+
+      return { texto, metricas: { latenciaMs, tokensEntrada, tokensSaida, modeloUsado: model } };
     } catch (err: any) {
+      agregado.falhas++;
       ultimoErro = err;
       logger.warn('[GEMINI] Tentativa falhou', { model, numeroTentativa: i + 1, error: err.message });
       if (i < tentativas.length - 1) await new Promise((r) => setTimeout(r, 1500));
@@ -63,9 +119,10 @@ export interface DiagnosticoIaResultado {
   /// (pergunta fora de escopo) — nesse caso diagnostico/erro/sugestao ficam
   /// vazios e quem consome deve mostrar textoCompleto como texto simples.
   estruturado: boolean;
+  metricas: MetricasGemini;
 }
 
-function parseResposta(texto: string): DiagnosticoIaResultado {
+function parseResposta(texto: string, metricas: MetricasGemini): DiagnosticoIaResultado {
   const extrair = (rotulo: string): string => {
     const regex = new RegExp(`${rotulo}:\\s*([\\s\\S]*?)(?=\\n[A-Z]+:|$)`, 'i');
     const m = texto.match(regex);
@@ -80,6 +137,7 @@ function parseResposta(texto: string): DiagnosticoIaResultado {
     sugestao,
     textoCompleto: texto.trim(),
     estruturado: Boolean(diagnostico || erro || sugestao),
+    metricas,
   };
 }
 
@@ -134,8 +192,8 @@ export async function gerarDiagnostico(
       ...partesImagens,
     ],
   }];
-  const texto = await chamarGemini(contents, { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } });
-  return parseResposta(texto);
+  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } });
+  return parseResposta(texto, metricas);
 }
 
 /// Igual a gerarDiagnostico, mas para perguntas de gestão (sem cliente
@@ -145,7 +203,7 @@ export async function gerarRespostaGestao(
   contextoTextual: string,
   pergunta: string,
   historico?: { pergunta: string; resposta: string }[],
-): Promise<string> {
+): Promise<{ texto: string; metricas: MetricasGemini }> {
   const partes = [GESTAO_SYSTEM_PROMPT, '', contextoTextual];
   if (historico?.length) {
     partes.push('', `=== CONVERSA ANTERIOR NESTE ATENDIMENTO ===`,
@@ -160,6 +218,6 @@ export async function gerarRespostaGestao(
     'instruções do system prompt.');
 
   const contents = [{ role: 'user', parts: [{ text: partes.join('\n') }] }];
-  const texto = await chamarGemini(contents, { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } });
-  return texto.trim();
+  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } });
+  return { texto: texto.trim(), metricas };
 }

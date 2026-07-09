@@ -278,6 +278,12 @@ model DiagnosticoConsulta {
   feedback            String?
   feedback_comentario String?
   feedback_em         DateTime?
+  /// Observabilidade da chamada ao Gemini que gerou essa resposta — custo e
+  /// latência, pra ter visibilidade se o uso crescer, sem depender de vasculhar log.
+  latencia_ms         Int?
+  tokens_entrada      Int?
+  tokens_saida        Int?
+  modelo_usado        String?
 
   @@index([tipo_alvo, id_alvo])
   @@map("consultas")

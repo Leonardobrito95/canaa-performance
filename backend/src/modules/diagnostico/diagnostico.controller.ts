@@ -4,6 +4,7 @@ import prisma from '../../config/prisma';
 import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual } from './diagnostico.service';
 import { buscarClientePorNome } from './diagnostico.repository';
 import { obterMetricasIxc } from '../../config/ixcSession';
+import { obterMetricasAgregadasGemini } from './diagnostico.ia';
 
 type AuthRequest = Request & { user: AuthPayload };
 
@@ -90,6 +91,12 @@ export async function registrarFeedback(req: Request, res: Response, next: NextF
 export async function statusIxc(req: Request, res: Response, next: NextFunction) {
   try {
     res.json(obterMetricasIxc());
+  } catch (err) { next(err); }
+}
+
+export async function statusGemini(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json(obterMetricasAgregadasGemini());
   } catch (err) { next(err); }
 }
 

@@ -24,6 +24,7 @@ import {
   excluirRegra,
   criarConsultaGestao,
   statusIxc,
+  statusGemini,
   registrarFeedback,
 } from './diagnostico.controller';
 
@@ -51,6 +52,8 @@ router.get('/agregado', authenticate, requirePerfil('gestor'), listarAgregados);
 
 // Saúde da dependência de sessão do IXC (fotos de O.S.) — somente gestor
 router.get('/_health/ixc', authenticate, requirePerfil('gestor'), statusIxc);
+// Custo/latência agregados do Gemini (desde o início do processo) — somente gestor
+router.get('/_health/gemini', authenticate, requirePerfil('gestor'), statusGemini);
 router.post(
   '/gestao/consulta',
   authenticate,

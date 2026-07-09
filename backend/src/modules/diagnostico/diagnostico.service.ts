@@ -77,13 +77,17 @@ export async function gerarDiagnosticoIndividual(
 
   const consulta = await prisma.diagnosticoConsulta.create({
     data: {
-      tipo_alvo:     'CLIENTE',
-      id_alvo:       String(idCliente),
-      pergunta:      pergunta ?? null,
-      resposta:      resultado.textoCompleto,
-      contexto_json: contexto as any,
-      ixc_user_id:   solicitante.ixcUserId,
-      ixc_username:  solicitante.ixcUsername,
+      tipo_alvo:      'CLIENTE',
+      id_alvo:        String(idCliente),
+      pergunta:       pergunta ?? null,
+      resposta:       resultado.textoCompleto,
+      contexto_json:  contexto as any,
+      ixc_user_id:    solicitante.ixcUserId,
+      ixc_username:   solicitante.ixcUsername,
+      latencia_ms:    resultado.metricas.latenciaMs,
+      tokens_entrada: resultado.metricas.tokensEntrada,
+      tokens_saida:   resultado.metricas.tokensSaida,
+      modelo_usado:   resultado.metricas.modeloUsado,
     },
   });
 
@@ -106,17 +110,21 @@ export async function gerarRespostaGestaoIndividual(
     }),
   ]);
   const contextoTextual = montarContextoGestaoTextual(ranking, evolucao, pops);
-  const resposta = await gerarRespostaGestao(contextoTextual, pergunta, historico);
+  const { texto: resposta, metricas } = await gerarRespostaGestao(contextoTextual, pergunta, historico);
 
   const consulta = await prisma.diagnosticoConsulta.create({
     data: {
-      tipo_alvo:     'GESTAO',
-      id_alvo:       'GERAL',
+      tipo_alvo:      'GESTAO',
+      id_alvo:        'GERAL',
       pergunta,
       resposta,
-      contexto_json: { ranking, evolucao, pops } as any,
-      ixc_user_id:   solicitante.ixcUserId,
-      ixc_username:  solicitante.ixcUsername,
+      contexto_json:  { ranking, evolucao, pops } as any,
+      ixc_user_id:    solicitante.ixcUserId,
+      ixc_username:   solicitante.ixcUsername,
+      latencia_ms:    metricas.latenciaMs,
+      tokens_entrada: metricas.tokensEntrada,
+      tokens_saida:   metricas.tokensSaida,
+      modelo_usado:   metricas.modeloUsado,
     },
   });
 
