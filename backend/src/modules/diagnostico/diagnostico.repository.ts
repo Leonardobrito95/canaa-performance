@@ -239,9 +239,17 @@ export async function buscarContextoComercial(idCliente: number, idsContrato: st
 
 // ── Fotos da instalação (sessão de admin do IXC, ver config/ixcSession.ts) ────
 
-const LIMITE_FOTOS_DIAGNOSTICO = 4;
+const LIMITE_FOTOS_DIAGNOSTICO = 5;
 
 const EXTENSOES_IMAGEM = /\.(jpe?g|png|webp)$/i;
+
+/// Fotos com essa descrição mostram onde/como o equipamento está posicionado —
+/// o dado mais valioso para avaliar qualidade de instalação. Sem essa
+/// priorização, a seleção "mais recentes por data" tende a trazer só fotos de
+/// visitas de suporte recentes (teste de sinal, speedtest), que nunca mostram
+/// a instalação física, enquanto a foto do local (tirada só na instalação
+/// original ou troca de equipamento) fica de fora por ser mais antiga.
+const DESCRICAO_LOCAL_INSTALADO = /local\s*instalad/i;
 
 /// Seleciona os anexos mais recentes e relevantes (exclui assinatura do cliente
 /// e documentos como PDF de O.S., que não ajudam a avaliar qualidade de
@@ -250,10 +258,13 @@ const EXTENSOES_IMAGEM = /\.(jpe?g|png|webp)$/i;
 export async function buscarFotosRelevantes(
   osArquivos: Record<number, OsArquivoEntry[]>,
 ): Promise<ImagemAnexo[]> {
-  const todos = Object.values(osArquivos).flat()
+  const candidatos = Object.values(osArquivos).flat()
     .filter((a) => a.classificacao !== 'A' && EXTENSOES_IMAGEM.test(a.nomeArquivo))
-    .sort((a, b) => (b.dataEnvio?.getTime() ?? 0) - (a.dataEnvio?.getTime() ?? 0))
-    .slice(0, LIMITE_FOTOS_DIAGNOSTICO);
+    .sort((a, b) => (b.dataEnvio?.getTime() ?? 0) - (a.dataEnvio?.getTime() ?? 0));
+
+  const fotoLocal = candidatos.find((a) => DESCRICAO_LOCAL_INSTALADO.test(a.descricao));
+  const outras = candidatos.filter((a) => a !== fotoLocal).slice(0, LIMITE_FOTOS_DIAGNOSTICO - (fotoLocal ? 1 : 0));
+  const todos = fotoLocal ? [fotoLocal, ...outras] : outras;
 
   const resultados = await Promise.allSettled(todos.map((a) => buscarArquivoBinario(a.id)));
 
