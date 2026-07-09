@@ -68,6 +68,10 @@
                 <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z" stroke="currentColor" stroke-width="1.5"/><path d="M5 7.5l2 2 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span>Retenção</span>
               </button>
+              <button :class="['nav-btn', { active: tab === 'diagnostico' }]" @click="tab = 'diagnostico'">
+                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M1 8h2.3l1.4-3.6 2.3 7.2 1.4-4.5 1 .9H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>Diagnóstico IA</span>
+              </button>
             </div>
           </div>
 
@@ -238,6 +242,10 @@
             <RetencaoView :refresh="refreshTick" />
           </section>
 
+          <section v-else-if="tab === 'diagnostico'" key="diagnostico">
+            <DiagnosticoView />
+          </section>
+
           <section v-else-if="tab === 'hub'" key="hub" class="hub-section">
             <HubView :refresh="refreshTick" @open-viewer="openViewer" />
           </section>
@@ -268,6 +276,7 @@ import ComissaoView          from './views/ComissaoView.vue';
 import ComissaoCampoView     from './views/ComissaoCampoView.vue';
 import BdrDashboardView      from './views/BdrDashboardView.vue';
 import RetencaoView          from './views/RetencaoView.vue';
+import DiagnosticoView       from './views/DiagnosticoView.vue';
 import HubView               from './views/hub/HubView.vue';
 import HubViewerView         from './views/hub/HubViewerView.vue';
 import HubAdminView          from './views/hub/HubAdminView.vue';
@@ -294,7 +303,7 @@ async function abrirOtdr() {
   }
 }
 
-type Tab = 'form' | 'vendas' | 'comissao' | 'comissao-campo' | 'bdr-dash' | 'retencao' | 'hub' | 'hub-viewer' | 'hub-admin' | 'sala-reuniao';
+type Tab = 'form' | 'vendas' | 'comissao' | 'comissao-campo' | 'bdr-dash' | 'retencao' | 'diagnostico' | 'hub' | 'hub-viewer' | 'hub-admin' | 'sala-reuniao';
 const tab = ref<Tab>(isEstoque.value ? 'hub' : isCampo.value ? 'comissao-campo' : isCS.value ? 'retencao' : 'vendas');
 const refreshTick = ref(0);
 const menuOpen = ref(false);
@@ -308,6 +317,7 @@ const TAB_LOG_ACTION: Partial<Record<Tab, string>> = {
   form: 'VIEW_REGISTRO_BDR',
   'bdr-dash': 'VIEW_BDR_DASHBOARD',
   retencao: 'VIEW_RETENCAO',
+  diagnostico: 'VIEW_DIAGNOSTICO',
   hub: 'VIEW_HUB',
   'hub-admin': 'VIEW_HUB_ADMIN',
   'sala-reuniao': 'VIEW_SALA_REUNIAO',
