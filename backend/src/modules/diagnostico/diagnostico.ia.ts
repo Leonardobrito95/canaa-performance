@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import logger from '../../config/logger';
 import { DIAGNOSTICO_SYSTEM_PROMPT, GESTAO_SYSTEM_PROMPT } from './diagnostico.prompt';
 import { ImagemAnexo } from './diagnostico.types';
 
@@ -7,6 +8,10 @@ import { ImagemAnexo } from './diagnostico.types';
 // de fixar uma versão — a Google atualiza o que ele aponta, evitando esse
 // mesmo tipo de quebra silenciosa de novo.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+// Modelo de fallback, usado só se o principal falhar em todas as tentativas —
+// alias diferente (não apenas outra versão do mesmo), pra não compartilhar a
+// mesma causa de falha (ex: descontinuação, outage específico daquele modelo).
+const GEMINI_MODEL_FALLBACK = process.env.GEMINI_MODEL_FALLBACK || 'gemini-flash-lite-latest';
 
 let _client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
@@ -16,6 +21,36 @@ function getClient(): GoogleGenAI {
     _client = new GoogleGenAI({ apiKey });
   }
   return _client;
+}
+
+/// Chama o Gemini com retry no modelo principal e fallback para um modelo
+/// diferente se o principal falhar em todas as tentativas — cobre tanto
+/// instabilidade transitória quanto uma descontinuação/outage do modelo
+/// principal (já aconteceu uma vez nesta mesma base de código).
+async function chamarGemini(contents: any[], config: Record<string, unknown>): Promise<string> {
+  const client = getClient();
+  const tentativas = [GEMINI_MODEL, GEMINI_MODEL, GEMINI_MODEL_FALLBACK];
+
+  let ultimoErro: unknown;
+  for (let i = 0; i < tentativas.length; i++) {
+    const model = tentativas[i];
+    try {
+      const resposta = await client.models.generateContent({ model, contents, config });
+      const texto = resposta.text ?? '';
+      if (!texto) throw new Error('Resposta vazia do Gemini');
+      if (model !== GEMINI_MODEL) {
+        logger.warn('[GEMINI] Modelo principal falhou em todas as tentativas — resposta veio do fallback', {
+          modeloFallback: model, modeloPrincipal: GEMINI_MODEL,
+        });
+      }
+      return texto;
+    } catch (err: any) {
+      ultimoErro = err;
+      logger.warn('[GEMINI] Tentativa falhou', { model, numeroTentativa: i + 1, error: err.message });
+      if (i < tentativas.length - 1) await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  throw ultimoErro;
 }
 
 export interface DiagnosticoIaResultado {
@@ -92,38 +127,15 @@ export async function gerarDiagnostico(
       ]
     : [];
 
-  const client = getClient();
-
-  // Retry único: chamadas ao Gemini ocasionalmente falham por instabilidade de
-  // rede/API — uma nova tentativa evita que o usuário fique sem diagnóstico
-  // por uma falha transitória.
-  let ultimoErro: unknown;
-  for (let tentativa = 1; tentativa <= 2; tentativa++) {
-    try {
-      const resposta = await client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: partes.join('\n') },
-            ...partesImagens,
-          ],
-        }],
-        config: {
-          maxOutputTokens: 700,
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      });
-
-      const texto = resposta.text ?? '';
-      if (!texto) throw new Error('Resposta vazia do Gemini');
-      return parseResposta(texto);
-    } catch (err) {
-      ultimoErro = err;
-      if (tentativa < 2) await new Promise((r) => setTimeout(r, 1500));
-    }
-  }
-  throw ultimoErro;
+  const contents = [{
+    role: 'user',
+    parts: [
+      { text: partes.join('\n') },
+      ...partesImagens,
+    ],
+  }];
+  const texto = await chamarGemini(contents, { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } });
+  return parseResposta(texto);
 }
 
 /// Igual a gerarDiagnostico, mas para perguntas de gestão (sem cliente
@@ -147,23 +159,7 @@ export async function gerarRespostaGestao(
     'Responda a pergunta ATUAL acima (considerando a conversa anterior, se houver) seguindo as ' +
     'instruções do system prompt.');
 
-  const client = getClient();
-
-  let ultimoErro: unknown;
-  for (let tentativa = 1; tentativa <= 2; tentativa++) {
-    try {
-      const resposta = await client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [{ role: 'user', parts: [{ text: partes.join('\n') }] }],
-        config: { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } },
-      });
-      const texto = resposta.text ?? '';
-      if (!texto) throw new Error('Resposta vazia do Gemini');
-      return texto.trim();
-    } catch (err) {
-      ultimoErro = err;
-      if (tentativa < 2) await new Promise((r) => setTimeout(r, 1500));
-    }
-  }
-  throw ultimoErro;
+  const contents = [{ role: 'user', parts: [{ text: partes.join('\n') }] }];
+  const texto = await chamarGemini(contents, { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } });
+  return texto.trim();
 }
