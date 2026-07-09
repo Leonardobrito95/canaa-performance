@@ -49,11 +49,24 @@ export async function gerarDiagnostico(
     partes.push('', `=== PERGUNTA DO USUARIO ===`, pergunta,
       'Responda a pergunta acima, mas mantenha as três seções (DIAGNOSTICO/ERRO/SUGESTAO).');
   }
-  if (imagens.length) {
-    partes.push('', `=== FOTOS DA INSTALACAO ===`, `${imagens.length} foto(s) anexada(s) abaixo, nessa ordem.`);
-  } else {
+  if (!imagens.length) {
     partes.push('', `=== FOTOS DA INSTALACAO ===`, 'Nenhuma foto anexada a esta consulta.');
   }
+
+  // Cada foto é intercalada com a legenda original do IXC (geralmente a
+  // pergunta do checklist que ela deveria responder, ex: "Foto do local
+  // instalado"). Isso permite a IA notar quando o que a foto mostra não
+  // corresponde ao que era esperado, ou quando falta uma foto essencial
+  // (ex: nenhuma foto realmente mostra onde/como o equipamento foi instalado).
+  const partesImagens = imagens.length
+    ? [
+        { text: `=== FOTOS DA INSTALACAO (${imagens.length}) ===` },
+        ...imagens.flatMap((img, i) => [
+          { text: `Foto ${i + 1} — legenda original no IXC: "${img.descricao}"` },
+          { inlineData: { mimeType: img.mimeType, data: img.buffer.toString('base64') } },
+        ]),
+      ]
+    : [];
 
   const client = getClient();
   const resposta = await client.models.generateContent({
@@ -62,9 +75,7 @@ export async function gerarDiagnostico(
       role: 'user',
       parts: [
         { text: partes.join('\n') },
-        ...imagens.map((img) => ({
-          inlineData: { mimeType: img.mimeType, data: img.buffer.toString('base64') },
-        })),
+        ...partesImagens,
       ],
     }],
     config: {

@@ -19,6 +19,15 @@ Você tem acesso a três fontes de dados sobre um cliente: histórico de sinal d
 ordens de serviço e atendimentos (IXC), e situação comercial (vendas/comissão). Quando
 fotos da instalação forem fornecidas, analise-as visualmente contra os critérios abaixo.
 
+IMPORTANTE sobre as fotos: antes de concluir qualquer coisa, identifique o que CADA foto
+realmente mostra (ex: etiqueta técnica do equipamento, tela de um medidor de sinal,
+checklist preenchido, local onde o equipamento está instalado). Só é possível avaliar um
+critério de instalação (posição, conexão, organização) se alguma foto realmente mostrar
+esse aspecto. Se nenhuma foto mostrar, por exemplo, onde/como o equipamento está
+posicionado, você NÃO PODE concluir que a instalação está inadequada — isso seria
+especulação. Nesse caso, aponte como ERRO a ausência da foto necessária (falha de processo:
+o técnico não documentou o local da instalação), não a instalação em si.
+
 ${CRITERIOS_INSTALACAO}
 
 Com base SOMENTE nos dados fornecidos, produza uma resposta em três seções, cada uma

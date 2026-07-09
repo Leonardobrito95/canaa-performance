@@ -74,6 +74,11 @@ export interface ContextoClienteDiagnostico {
 }
 
 export interface ImagemAnexo {
-  buffer:   Buffer;
-  mimeType: string;
+  buffer:      Buffer;
+  mimeType:    string;
+  /// Descrição/legenda original do anexo no IXC (ex: pergunta do checklist
+  /// que a foto deveria responder) — ajuda a IA a saber o que cada foto
+  /// deveria mostrar, para poder apontar quando o que está na foto não
+  /// corresponde ao que era esperado (ou quando falta uma foto essencial).
+  descricao:   string;
 }

@@ -183,13 +183,17 @@ export async function buscarFotosRelevantes(
   const resultados = await Promise.allSettled(todos.map((a) => buscarArquivoBinario(a.id)));
 
   const imagens: ImagemAnexo[] = [];
-  for (const r of resultados) {
+  resultados.forEach((r, i) => {
     if (r.status === 'fulfilled' && r.value) {
-      imagens.push({ buffer: r.value.buffer, mimeType: r.value.contentType });
+      imagens.push({
+        buffer: r.value.buffer,
+        mimeType: r.value.contentType,
+        descricao: todos[i].descricao || todos[i].nomeArquivo,
+      });
     } else if (r.status === 'rejected') {
       logger.warn('[DIAGNOSTICO] Falha ao buscar foto de instalação', { error: r.reason?.message });
     }
-  }
+  });
   return imagens;
 }
 
