@@ -53,8 +53,11 @@ function isStarkExpressCollaborator(value: unknown): boolean {
   return normalize(value).includes('STARK EXPRESS');
 }
 
+const STARK_VALIDADOR_NOME = normalize(process.env.STARK_VALIDADOR_NOME || 'VALIDADOR STARK');
+const STARK_VALIDADOR_NOME_COMPLETO = process.env.STARK_VALIDADOR_NOME_COMPLETO || 'VALIDADOR STARK (NAO CONFIGURADO)';
+
 function isDaviMoraesCollaborator(value: unknown): boolean {
-  return normalize(value).includes('DAVI MORAES');
+  return normalize(value).includes(STARK_VALIDADOR_NOME);
 }
 
 function isStarkSuccessCollaboratorMatch(expected: unknown, actual: unknown): boolean {
@@ -96,7 +99,7 @@ export async function fetchStarkAttemptData(ids: number[]): Promise<StarkAttempt
     SELECT id_chamado, data, status, historico, mensagem
     FROM su_oss_chamado_mensagem
     WHERE id_chamado IN (${placeholders})
-      AND historico LIKE '%DAVI MORAES%'
+      AND historico LIKE ?
       AND status IN ('RAG', 'AG')
     ORDER BY id_chamado, data DESC
   `;
@@ -116,7 +119,7 @@ export async function fetchStarkAttemptData(ids: number[]): Promise<StarkAttempt
     ORDER BY m.id_chamado, m.data DESC
   `;
 
-  const [messageRows] = await mysqlPool.query<any[]>(messageSql, ids);
+  const [messageRows] = await mysqlPool.query<any[]>(messageSql, [...ids, `%${STARK_VALIDADOR_NOME}%`]);
   const [fileRows]    = await mysqlPool.query<any[]>(fileSql, ids);
   const [finRows]     = await mysqlPool.query<any[]>(finalizationSql, ids);
 
@@ -281,7 +284,7 @@ export function compareStarkRows(
       ? referenceDate > endDate && referenceDate <= endDateExtended
       : false;
 
-    // Tentativa com sucesso de finalização por Davi Moraes
+    // Tentativa com sucesso de finalização pelo validador STARK
     if (successFin) {
       const valorRetirada = getPrecoServicoPorChave(empresaConfig, 'RETIRADA');
       const valorBaseSuc  = valorRetirada != null && valorRetirada > 0 ? valorRetirada : valorBase;
@@ -336,7 +339,7 @@ export function compareStarkRows(
     }
 
     if (!periodMsgEntries.length) {
-      divergencias.push('Tentativa STARK sem interacao de DAVI MORAES em aguardando agendamento dentro do periodo filtrado');
+      divergencias.push(`Tentativa STARK sem interacao de ${STARK_VALIDADOR_NOME_COMPLETO} em aguardando agendamento dentro do periodo filtrado`);
     }
 
     if (!fileEntries.length) {
@@ -347,7 +350,7 @@ export function compareStarkRows(
 
     if (validationMsg) {
       const label = validationMsg.status === 'RAG' ? 'Reagendada' : 'Agendada';
-      infos.push(`Tentativa STARK validada por DAVI MORAES em ${label}${validationMsg.data ? ` (${validationMsg.data.toLocaleDateString('pt-BR')})` : ''}`);
+      infos.push(`Tentativa STARK validada por ${STARK_VALIDADOR_NOME_COMPLETO} em ${label}${validationMsg.data ? ` (${validationMsg.data.toLocaleDateString('pt-BR')})` : ''}`);
     }
 
     if (validationMsg && fileEntries.length && validationDate) {
@@ -375,7 +378,7 @@ export function compareStarkRows(
 
     return {
       ...baseResult,
-      tecnico:    stripStr(baseResult.tecnico) || (validationMsg ? 'DAVI MORAES DE OLIVEIRA SILVA (STARK)' : ''),
+      tecnico:    stripStr(baseResult.tecnico) || (validationMsg ? STARK_VALIDADOR_NOME_COMPLETO : ''),
       geraComissao: stripStr(db.gera_comissao) || 'S',
       valorAdj:   divergencias.length ? 0 : valorAdjCalc,
       status,
