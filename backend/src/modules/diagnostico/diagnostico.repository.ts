@@ -2,7 +2,7 @@ import axios from 'axios';
 import mysqlPool from '../../config/mysql';
 import prisma from '../../config/prisma';
 import logger from '../../config/logger';
-import { buscarArquivoBinario } from '../../config/ixcSession';
+import { buscarArquivoBinario, registrarFalhaFotosEsperadas } from '../../config/ixcSession';
 import {
   HistoricoSinalEntry,
   OsEntry,
@@ -410,6 +410,11 @@ export async function buscarFotosRelevantes(
       logger.warn('[DIAGNOSTICO] Falha ao buscar foto de instalação', { error: r.reason?.message });
     }
   });
+
+  if (todos.length > 0 && imagens.length === 0) {
+    registrarFalhaFotosEsperadas();
+  }
+
   return imagens;
 }
 

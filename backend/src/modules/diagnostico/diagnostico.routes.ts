@@ -21,6 +21,7 @@ import {
   editarRegra,
   excluirRegra,
   criarConsultaGestao,
+  statusIxc,
 } from './diagnostico.controller';
 
 const router = Router();
@@ -37,6 +38,9 @@ router.get(
 
 // Painel agregado — somente gestor
 router.get('/agregado', authenticate, requirePerfil('gestor'), listarAgregados);
+
+// Saúde da dependência de sessão do IXC (fotos de O.S.) — somente gestor
+router.get('/_health/ixc', authenticate, requirePerfil('gestor'), statusIxc);
 router.post(
   '/gestao/consulta',
   authenticate,

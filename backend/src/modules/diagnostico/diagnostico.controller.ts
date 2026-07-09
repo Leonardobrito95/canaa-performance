@@ -3,6 +3,7 @@ import { AuthPayload } from '../auth/auth.service';
 import prisma from '../../config/prisma';
 import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual } from './diagnostico.service';
 import { buscarClientePorNome } from './diagnostico.repository';
+import { obterMetricasIxc } from '../../config/ixcSession';
 
 type AuthRequest = Request & { user: AuthPayload };
 
@@ -65,6 +66,12 @@ export async function criarConsultaGestao(req: Request, res: Response, next: Nex
     );
 
     res.json({ resposta });
+  } catch (err) { next(err); }
+}
+
+export async function statusIxc(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json(obterMetricasIxc());
   } catch (err) { next(err); }
 }
 

@@ -20,6 +20,36 @@ let sessionObtidaEm = 0;
 let loginEmAndamento: Promise<string> | null = null;
 const SESSION_TTL_MS = 20 * 60 * 1000; // 20min — margem de segurança sobre o timeout real do IXC
 
+// ── Observabilidade ──────────────────────────────────────────────────────────
+// Essa sessão depende de um endpoint de sessão de navegador do IXC (não é API
+// oficial) — a peça mais frágil do pipeline de fotos do Diagnóstico. Nada aqui
+// aciona alerta sozinho; os contadores existem para dar visibilidade rápida
+// (via /diagnostico/_health/ixc) de quando essa dependência começa a falhar
+// mais do que o normal, em vez de só descobrir quando um diagnóstico vier sem
+// fotos e ninguém souber por quê.
+const LIMITE_FALHAS_CONSECUTIVAS_ALERTA = 3;
+
+const metricas = {
+  loginsOk:            0,
+  loginsFalhos:        0,
+  falhasConsecutivas:  0,
+  ultimoSucessoEm:      null as string | null,
+  ultimaFalhaEm:        null as string | null,
+  ultimoErro:           null as string | null,
+  fotosEsperadasZero:  0, // fotos que existiam no IXC mas nenhuma foi obtida
+};
+
+export function obterMetricasIxc() {
+  return { ...metricas };
+}
+
+export function registrarFalhaFotosEsperadas(): void {
+  metricas.fotosEsperadasZero++;
+  logger.warn('[IXC] Havia anexos candidatos mas nenhuma foto foi obtida — possível degradação do fetch de fotos', {
+    fotosEsperadasZero: metricas.fotosEsperadasZero,
+  });
+}
+
 /// Acumula cookies de várias respostas num único jar (nome -> valor), mesclando
 /// em vez de substituir — o login em duas etapas do IXC só reenvia os cookies
 /// que mudaram a cada etapa, não o conjunto completo.
@@ -72,10 +102,14 @@ async function autenticar(): Promise<string> {
       throw new Error(`IXC: falha na etapa 2 do login (HTTP ${res2.status})`);
     }
     if (res2.data?.status !== '0') {
+      if (tentativa > 1) {
+        logger.info('[IXC] Login recuperado após nova tentativa', { tentativa });
+      }
       mesclarCookies(jar, res2.headers['set-cookie']);
       return serializarCookies(jar);
     }
     ultimoErro = res2.data?.messages?.[0]?.body || 'sessão ativa';
+    logger.warn('[IXC] Tentativa de login recusada, tentando de novo', { tentativa, motivo: ultimoErro });
     await new Promise((r) => setTimeout(r, 1500));
   }
   throw new Error(`IXC: login recusado após 3 tentativas (${ultimoErro})`);
@@ -94,8 +128,24 @@ export async function getSessaoIxc(forcarNova = false): Promise<string> {
       .then((cookie) => {
         sessionCookie = cookie;
         sessionObtidaEm = Date.now();
+        metricas.loginsOk++;
+        metricas.falhasConsecutivas = 0;
+        metricas.ultimoSucessoEm = new Date().toISOString();
         logger.info('[IXC] Sessão de admin renovada (busca de anexos)');
         return cookie;
+      })
+      .catch((err) => {
+        metricas.loginsFalhos++;
+        metricas.falhasConsecutivas++;
+        metricas.ultimaFalhaEm = new Date().toISOString();
+        metricas.ultimoErro = err.message;
+        if (metricas.falhasConsecutivas >= LIMITE_FALHAS_CONSECUTIVAS_ALERTA) {
+          logger.error('[IXC] Falhas consecutivas de login acima do limite — dependência de sessão pode estar quebrada', {
+            falhasConsecutivas: metricas.falhasConsecutivas,
+            erro: err.message,
+          });
+        }
+        throw err;
       })
       .finally(() => { loginEmAndamento = null; });
   }
