@@ -2,6 +2,7 @@ import prisma from '../../config/prisma';
 import {
   buscarHistoricoSinal,
   buscarOscilacaoRede,
+  buscarEquipamentoAtual,
   buscarOrdensServico,
   buscarMensagensOs,
   buscarArquivosOs,
@@ -18,10 +19,11 @@ import { gerarDiagnostico, DiagnosticoIaResultado } from './diagnostico.ia';
 /// Cada fonte é buscada fresca a cada chamada — nada fica em cache permanente.
 export async function montarContextoCliente(idCliente: number): Promise<ContextoClienteDiagnostico> {
   const idsContrato = await buscarIdsContratoPorCliente(idCliente);
+  const equipamentoAtual = await buscarEquipamentoAtual(idCliente);
 
   const [historicoSinal, oscilacaoRede, ordensServico, comercial, regrasNegocio] = await Promise.all([
     buscarHistoricoSinal(idCliente),
-    buscarOscilacaoRede(idCliente),
+    buscarOscilacaoRede(idCliente, equipamentoAtual),
     buscarOrdensServico(idCliente),
     buscarContextoComercial(idCliente, idsContrato),
     buscarRegrasNegocio(),
@@ -35,6 +37,7 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
 
   return {
     idCliente,
+    equipamentoAtual,
     historicoSinal,
     oscilacaoRede,
     ordensServico,

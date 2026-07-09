@@ -5,6 +5,12 @@ referência ao analisar fotos, não recalcule ou invente outros critérios):
 - Posição: equipamento em local elevado (prateleira, mesa), nunca direto no chão.
 - Posição: longe de paredes grossas, espelhos, aquários, caixas de som e outros obstáculos.
 - Posição: não excessivamente próximo de micro-ondas ou outros aparelhos que causem interferência.
+- Posição CRÍTICA: equipamento dentro de caixa ou armário fechado (mesmo que pareça um quadro
+  de distribuição/luz, mas não seja) é pior do que só estar perto de parede — causa
+  superaquecimento e bloqueia o sinal Wi-Fi de forma significativa. Se a foto mostrar o
+  equipamento dentro de qualquer caixa/nicho fechado, aponte isso explicitamente.
+- Múltiplos repetidores Wi-Fi na residência podem indicar que a cobertura do roteador
+  principal já era insuficiente — mencione se a foto ou o histórico da O.S. indicar isso.
 - Conexão: cabo de fibra/rede ligado na porta correta (WAN), sem folga excessiva ou tensão no cabo.
 - Conexão: cabos Ethernet (LAN) bem encaixados, sem conectores danificados ou soltos.
 - Conexão: fonte de alimentação ligada corretamente, sem fios expostos.
@@ -61,6 +67,11 @@ function fmtData(data: unknown, fallback = '?'): string {
 function formatarRegrasNegocio(regras: Record<string, string>): string {
   const linhas = Object.entries(regras).map(([chave, valor]) => `- ${chave}: ${valor}`);
   return linhas.length ? linhas.join('\n') : '(nenhuma regra cadastrada)';
+}
+
+function formatarEquipamentoAtual(ctx: ContextoClienteDiagnostico): string {
+  if (!ctx.equipamentoAtual.length) return 'Nenhum equipamento em comodato ativo identificado.';
+  return ctx.equipamentoAtual.map((e) => `- ${e.descricao} (S/N ${e.numeroSerie})`).join('\n');
 }
 
 function formatarHistoricoSinal(ctx: ContextoClienteDiagnostico): string {
@@ -134,7 +145,10 @@ export function montarContextoTextual(ctx: ContextoClienteDiagnostico): string {
     `=== REGRAS DE NEGOCIO (referencia) ===`,
     formatarRegrasNegocio(ctx.regrasNegocio),
     '',
-    `=== HISTORICO DE SINAL (cliente ${ctx.idCliente}) ===`,
+    `=== EQUIPAMENTO ATUAL EM COMODATO (cliente ${ctx.idCliente}) ===`,
+    formatarEquipamentoAtual(ctx),
+    '',
+    `=== HISTORICO DE SINAL ===`,
     formatarHistoricoSinal(ctx),
     '',
     `=== ORDENS DE SERVICO ===`,

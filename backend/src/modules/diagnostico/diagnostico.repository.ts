@@ -55,33 +55,32 @@ export async function buscarIdsContratoPorCliente(idCliente: number): Promise<st
   return rows.map((r) => String(r.id));
 }
 
-/// Resolve o número de série do equipamento (ONU) atualmente em comodato ativo
-/// com o cliente. Equipamentos são trocados ao longo do tempo (upgrade, defeito
-/// etc.) — usar o histórico de comodato (status_comodato = 'E', "Emprestado")
-/// é a forma confiável de achar o equipamento em uso agora, em vez de confiar
-/// em campos que podem ficar desatualizados (ex: radusuarios.onu_mac) ou em
-/// fotos antigas que podem mostrar um equipamento já devolvido.
-export async function buscarSerialOnuAtual(idCliente: number): Promise<string | null> {
+/// Resolve todo equipamento atualmente em comodato ativo com o cliente (ONU,
+/// roteador etc). Equipamentos são trocados ao longo do tempo (upgrade,
+/// defeito etc.) — usar o histórico de comodato (status_comodato = 'E',
+/// "Emprestado") é a forma confiável de achar o que está em uso agora, em vez
+/// de confiar em campos que podem ficar desatualizados (ex: radusuarios.onu_mac)
+/// ou em fotos antigas que podem mostrar um equipamento já devolvido.
+export async function buscarEquipamentoAtual(idCliente: number): Promise<{ descricao: string; numeroSerie: string }[]> {
   const [rows] = await mysqlPool.query<any[]>(
-    `SELECT mp.numero_serie
+    `SELECT mp.descricao, mp.numero_serie
      FROM movimento_comodatos mc
      JOIN movimento_produtos mp ON mp.id = mc.id_movimento_produtos
-     WHERE mc.id_cliente = ? AND mp.status_comodato = 'E' AND mp.descricao LIKE '%ONU%'
-     ORDER BY mp.data DESC
-     LIMIT 1`,
+     WHERE mc.id_cliente = ? AND mp.status_comodato = 'E'
+     ORDER BY mp.data DESC`,
     [idCliente],
   );
-  return rows[0]?.numero_serie || null;
+  return rows.map((r) => ({ descricao: r.descricao, numeroSerie: r.numero_serie }));
 }
 
 /// Busca a oscilação/degradação de sinal via o próprio OTDR (/api/consulta_cliente).
-/// Resolve o SN da ONU atual aqui mesmo (ver buscarSerialOnuAtual) e busca por SN
-/// direto — a busca por CPF do OTDR depende de uma correlação MAC/cliente própria
-/// dele que pode falhar mesmo com a ONU online (confirmado: buscar por CPF não
-/// encontrou um cliente cuja ONU, buscada por SN, respondia normalmente). Cai
-/// para busca por CPF só se não houver comodato de ONU ativo identificado.
-export async function buscarOscilacaoRede(idCliente: number): Promise<OscilacaoRede | null> {
-  let termoBusca = await buscarSerialOnuAtual(idCliente);
+/// Resolve o SN da ONU atual (ver buscarEquipamentoAtual) e busca por SN direto —
+/// a busca por CPF do OTDR depende de uma correlação MAC/cliente própria dele que
+/// pode falhar mesmo com a ONU online (confirmado: buscar por CPF não encontrou
+/// um cliente cuja ONU, buscada por SN, respondia normalmente). Cai para busca
+/// por CPF só se não houver comodato de ONU ativo identificado.
+export async function buscarOscilacaoRede(idCliente: number, equipamentoAtual: { descricao: string; numeroSerie: string }[]): Promise<OscilacaoRede | null> {
+  let termoBusca = equipamentoAtual.find((e) => /onu/i.test(e.descricao))?.numeroSerie || null;
 
   if (!termoBusca) {
     const [rows] = await mysqlPool.query<any[]>(

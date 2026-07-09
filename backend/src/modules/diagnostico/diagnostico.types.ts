@@ -88,8 +88,14 @@ export interface OscilacaoRede {
   gravidade: string;
 }
 
+export interface EquipamentoAtual {
+  descricao:   string;
+  numeroSerie: string;
+}
+
 export interface ContextoClienteDiagnostico {
   idCliente:       number;
+  equipamentoAtual: EquipamentoAtual[];
   historicoSinal:  HistoricoSinalEntry[];
   oscilacaoRede:   OscilacaoRede | null;
   ordensServico:   OsEntry[];

@@ -58,6 +58,12 @@ const REGRAS: { chave: string; valor: string; descricao: string; categoria: stri
     descricao: 'Classificação de sinal já pré-calculada pelo OTDR (historico_sinal.nivel_sinal e historico_smartolt.nivel_sinal; valores reais confirmados em produção). Cliente sem sinal degradado simplesmente não aparece nessas tabelas. A IA deve usar essa categoria pronta, não recalcular limiar de atenuação por conta própria.',
     categoria: 'REDE',
   },
+  {
+    chave: 'PADRAO_EQUIPAMENTO_WIFI',
+    valor: 'TP-Link: maior reincidência de problemas de sinal Wi-Fi observada em campo',
+    descricao: 'Segundo experiência da equipe técnica, equipamentos TP-Link (roteador/ONU) têm histórico de maior reincidência de problemas de sinal Wi-Fi comparado a outras marcas usadas pela empresa (ex: ZTE). Ao avaliar um cliente com queixa de sinal/lentidão cujo equipamento foi trocado recentemente para TP-Link, considerar isso um fator contribuinte plausível a mencionar — não é prova definitiva, é um padrão observado, não recalcular ou generalizar além do que os dados da consulta mostrarem.',
+    categoria: 'REDE',
+  },
 ];
 
 async function run() {
