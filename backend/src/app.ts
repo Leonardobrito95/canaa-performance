@@ -21,7 +21,10 @@ const allowedHosts = new Set(
   [process.env.BASE_URL, 'http://localhost:5173']
     .filter((u): u is string => !!u)
     .map((u) => { try { return new URL(u).hostname; } catch { return u; } })
-    .concat(['localhost', '127.0.0.1']),
+    .concat(['localhost', '127.0.0.1'])
+    // Acesso por IP da própria VM em ambiente de desenvolvimento (teste manual
+    // de tela via navegador em outra máquina da rede) — nunca em produção.
+    .concat(process.env.NODE_ENV !== 'production' ? ['172.31.29.10'] : []),
 );
 
 app.use(cors({

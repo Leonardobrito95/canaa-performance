@@ -18,14 +18,14 @@ export interface OsEntry {
   mensagem:      string;
   mensagemResposta: string | null;
   status:        string;
-  dataAbertura:  Date;
+  dataAbertura:  Date | null;
   dataFechamento: Date | null;
   tecnicoId:     number | null;
   endereco:      string | null;
 }
 
 export interface OsMensagemEntry {
-  data:      Date;
+  data:      Date | null;
   status:    string;
   historico: string;
   mensagem:  string;
@@ -33,7 +33,7 @@ export interface OsMensagemEntry {
 }
 
 export interface OsArquivoEntry {
-  dataEnvio:      Date;
+  dataEnvio:      Date | null;
   nomeArquivo:    string;
   descricao:      string;
   classificacao:  string;

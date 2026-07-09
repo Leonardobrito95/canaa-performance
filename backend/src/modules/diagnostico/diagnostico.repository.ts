@@ -8,6 +8,16 @@ import {
   ContextoComercial,
 } from './diagnostico.types';
 
+/// MySQL/MariaDB permite datas "zero" (0000-00-00), que o driver mysql2 entrega
+/// como um objeto Date inválido (não null). Isso passa despercebido em checagens
+/// truthy e quebra tanto formatação (.toISOString) quanto a serialização JSON do
+/// Prisma. Sanitiza na borda, na leitura, para nunca vazar um Date inválido daqui.
+function dataValidaOuNula(valor: unknown): Date | null {
+  if (!valor) return null;
+  const d = valor instanceof Date ? valor : new Date(valor as string);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 // ── Rede (Postgres, schema otdr — mesma sistema_db do Prisma, leitura via $queryRaw) ──
 
 export async function buscarHistoricoSinal(idCliente: number, limite = 30): Promise<HistoricoSinalEntry[]> {
@@ -54,8 +64,8 @@ export async function buscarOrdensServico(idCliente: number, limite = 10): Promi
     mensagem:        r.mensagem ?? '',
     mensagemResposta: r.mensagem_resposta,
     status:          r.status,
-    dataAbertura:    r.data_abertura,
-    dataFechamento:  r.data_fechamento,
+    dataAbertura:    dataValidaOuNula(r.data_abertura),
+    dataFechamento:  dataValidaOuNula(r.data_fechamento),
     tecnicoId:       r.id_tecnico || null,
     endereco:        r.endereco,
   }));
@@ -79,7 +89,7 @@ export async function buscarMensagensOs(idsOssChamado: number[]): Promise<Record
     const key = r.id_chamado;
     if (!result[key]) result[key] = [];
     result[key].push({
-      data:        r.data,
+      data:        dataValidaOuNula(r.data),
       status:      r.status,
       historico:   r.historico ?? '',
       mensagem:    r.mensagem ?? '',
@@ -105,7 +115,7 @@ export async function buscarArquivosOs(idsOssChamado: number[]): Promise<Record<
     const key = r.id_oss_chamado;
     if (!result[key]) result[key] = [];
     result[key].push({
-      dataEnvio:     r.data_envio,
+      dataEnvio:     dataValidaOuNula(r.data_envio),
       nomeArquivo:   r.nome_arquivo,
       descricao:     r.descricao ?? '',
       classificacao: r.classificacao_arquivo,

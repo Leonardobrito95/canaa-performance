@@ -22,6 +22,14 @@ Regras:
 - Seja direto e técnico, sem saudação nem introdução.
 - Cada seção deve ter no máximo 3 frases.`;
 
+/// Formata uma data com segurança. Datas "zero" do MySQL (0000-00-00) chegam
+/// como Date inválido (truthy, mas NaN internamente) — nunca usar só `data ?`.
+function fmtData(data: unknown, fallback = '?'): string {
+  if (!data) return fallback;
+  const d = data instanceof Date ? data : new Date(data as string);
+  return isNaN(d.getTime()) ? fallback : d.toISOString().slice(0, 10);
+}
+
 function formatarRegrasNegocio(regras: Record<string, string>): string {
   const linhas = Object.entries(regras).map(([chave, valor]) => `- ${chave}: ${valor}`);
   return linhas.length ? linhas.join('\n') : '(nenhuma regra cadastrada)';
@@ -30,7 +38,7 @@ function formatarRegrasNegocio(regras: Record<string, string>): string {
 function formatarHistoricoSinal(ctx: ContextoClienteDiagnostico): string {
   if (!ctx.historicoSinal.length) return 'Sem registros de degradação de sinal.';
   return ctx.historicoSinal.slice(0, 10).map((h) => {
-    const data = h.snapshotData.toISOString().slice(0, 10);
+    const data = fmtData(h.snapshotData);
     return `- ${data} | ${h.pop} / ${h.ponDescricao} | RX ${h.sinalRx}dBm TX ${h.sinalTx}dBm | ${h.nivelSinal} | ${h.diasDegradado} dias degradado | urgência ${h.scoreUrgencia}`;
   }).join('\n');
 }
@@ -38,12 +46,12 @@ function formatarHistoricoSinal(ctx: ContextoClienteDiagnostico): string {
 function formatarOrdensServico(ctx: ContextoClienteDiagnostico): string {
   if (!ctx.ordensServico.length) return 'Sem ordens de serviço registradas.';
   return ctx.ordensServico.slice(0, 5).map((os) => {
-    const abertura = os.dataAbertura ? new Date(os.dataAbertura).toISOString().slice(0, 10) : '?';
-    const fechamento = os.dataFechamento ? new Date(os.dataFechamento).toISOString().slice(0, 10) : 'em aberto';
+    const abertura = fmtData(os.dataAbertura);
+    const fechamento = fmtData(os.dataFechamento, 'em aberto');
     const mensagens = ctx.osMensagens[os.idOssChamado] ?? [];
     const arquivos = ctx.osArquivos[os.idOssChamado] ?? [];
     const historicoResumo = mensagens.slice(0, 3).map((m) =>
-      `    · ${m.data ? new Date(m.data).toISOString().slice(0, 10) : '?'} [${m.status}] ${m.colaborador ?? 'sem colaborador'}: ${m.mensagem.slice(0, 200)}`
+      `    · ${fmtData(m.data)} [${m.status}] ${m.colaborador ?? 'sem colaborador'}: ${m.mensagem.slice(0, 200)}`
     ).join('\n');
     const arquivosResumo = arquivos.length
       ? `    Anexos: ${arquivos.map((a) => a.descricao || a.nomeArquivo).join(', ')}`
@@ -69,7 +77,7 @@ function formatarComercial(ctx: ContextoClienteDiagnostico): string {
   if (comissoesBdr.length) {
     linhas.push('Alterações contratuais (BDR):');
     for (const c of comissoesBdr.slice(0, 5)) {
-      const data = new Date(c.dataRegistro).toISOString().slice(0, 10);
+      const data = fmtData(c.dataRegistro);
       linhas.push(`- ${data} | ${c.tipoNegociacao} | R$${c.valorComissao.toFixed(2)}`);
     }
   }
