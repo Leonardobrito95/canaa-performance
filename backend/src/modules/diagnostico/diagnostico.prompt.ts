@@ -64,11 +64,28 @@ function formatarRegrasNegocio(regras: Record<string, string>): string {
 }
 
 function formatarHistoricoSinal(ctx: ContextoClienteDiagnostico): string {
-  if (!ctx.historicoSinal.length) return 'Sem registros de degradação de sinal.';
-  return ctx.historicoSinal.slice(0, 10).map((h) => {
-    const data = fmtData(h.snapshotData);
-    return `- ${data} | ${h.pop} / ${h.ponDescricao} | RX ${h.sinalRx}dBm TX ${h.sinalTx}dBm | ${h.nivelSinal} | ${h.diasDegradado} dias degradado | urgência ${h.scoreUrgencia}`;
-  }).join('\n');
+  const linhas: string[] = [];
+
+  if (ctx.historicoSinal.length) {
+    for (const h of ctx.historicoSinal.slice(0, 10)) {
+      const data = fmtData(h.snapshotData);
+      linhas.push(`- ${data} | ${h.pop} / ${h.ponDescricao} | RX ${h.sinalRx}dBm TX ${h.sinalTx}dBm | ${h.nivelSinal} | ${h.diasDegradado} dias degradado | urgência ${h.scoreUrgencia}`);
+    }
+  }
+
+  const osc = ctx.oscilacaoRede;
+  if (osc) {
+    linhas.push(`Sinal agora: RX ${osc.rxHoje ?? '?'}dBm | nível ${osc.nivelHoje} | status ${osc.statusHoje}`);
+    if (osc.recorrente) {
+      linhas.push(`Degradação recorrente (30 dias): ${osc.recorrente.diasDegradado} dia(s) degradado(s), pior RX ${osc.recorrente.piorRx}dBm, média ${osc.recorrente.mediaRx}dBm, entre ${osc.recorrente.primeiraData} e ${osc.recorrente.ultimaData}.`);
+    }
+    if (osc.piora) {
+      linhas.push(`Maior queda registrada: de ${osc.piora.rxAnterior}dBm (${osc.piora.dataAnterior}) para ${osc.piora.rxNaQueda}dBm (${osc.piora.dataQueda}).`);
+    }
+    linhas.push(`Veredito do OTDR: ${osc.veredito} (gravidade: ${osc.gravidade})`);
+  }
+
+  return linhas.length ? linhas.join('\n') : 'Sem registros de degradação de sinal.';
 }
 
 function formatarOrdensServico(ctx: ContextoClienteDiagnostico): string {

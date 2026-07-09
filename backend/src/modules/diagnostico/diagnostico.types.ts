@@ -63,9 +63,35 @@ export interface ContextoComercial {
   }[];
 }
 
+/// Degradação recorrente do sinal (últimos 30 dias), resolvida e calculada
+/// pelo próprio OTDR via /api/consulta_cliente (mesma correlação SN <-> cliente
+/// que a tela de Consulta de Cliente do OTDR já usa) — não recalculado aqui.
+export interface OscilacaoRede {
+  sn:            string;
+  rxHoje:        number | null;
+  nivelHoje:     string;
+  statusHoje:    string;
+  recorrente: {
+    diasDegradado: number;
+    piorRx:        number | null;
+    mediaRx:       number | null;
+    primeiraData:  string | null;
+    ultimaData:    string | null;
+  } | null;
+  piora: {
+    dataQueda:    string;
+    rxNaQueda:    number;
+    dataAnterior: string;
+    rxAnterior:   number;
+  } | null;
+  veredito:  string;
+  gravidade: string;
+}
+
 export interface ContextoClienteDiagnostico {
   idCliente:       number;
   historicoSinal:  HistoricoSinalEntry[];
+  oscilacaoRede:   OscilacaoRede | null;
   ordensServico:   OsEntry[];
   osMensagens:     Record<number, OsMensagemEntry[]>; // por idOssChamado
   osArquivos:      Record<number, OsArquivoEntry[]>;  // por idOssChamado

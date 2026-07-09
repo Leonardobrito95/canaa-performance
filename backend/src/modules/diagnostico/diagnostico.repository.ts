@@ -1,3 +1,4 @@
+import axios from 'axios';
 import mysqlPool from '../../config/mysql';
 import prisma from '../../config/prisma';
 import logger from '../../config/logger';
@@ -9,7 +10,10 @@ import {
   OsArquivoEntry,
   ContextoComercial,
   ImagemAnexo,
+  OscilacaoRede,
 } from './diagnostico.types';
+
+const OTDR_BASE = process.env.OTDR_API_URL ?? 'http://127.0.0.1:5008';
 
 /// MySQL/MariaDB permite datas "zero" (0000-00-00), que o driver mysql2 entrega
 /// como um objeto Date inválido (não null). Isso passa despercebido em checagens
@@ -49,6 +53,53 @@ export async function buscarIdsContratoPorCliente(idCliente: number): Promise<st
     [idCliente],
   );
   return rows.map((r) => String(r.id));
+}
+
+/// Busca a oscilação/degradação de sinal via o próprio OTDR (/api/consulta_cliente),
+/// que já resolve cliente -> ONU/SN (mesma correlação usada na tela de Consulta de
+/// Cliente do OTDR) e calcula recorrência dos últimos 30 dias. Não recalculamos essa
+/// correlação aqui — reaproveitamos o que o OTDR já resolve.
+export async function buscarOscilacaoRede(idCliente: number): Promise<OscilacaoRede | null> {
+  const [rows] = await mysqlPool.query<any[]>(
+    `SELECT cnpj_cpf FROM cliente WHERE id = ?`,
+    [idCliente],
+  );
+  const documento = rows[0]?.cnpj_cpf ? String(rows[0].cnpj_cpf).replace(/\D/g, '') : '';
+  if (!documento) return null;
+
+  try {
+    const { data } = await axios.get(`${OTDR_BASE}/api/consulta_cliente`, {
+      params: { nome: documento },
+      timeout: 15_000,
+    });
+    const resultado = data?.resultados?.[0];
+    if (!resultado) return null;
+
+    return {
+      sn:         resultado.sn,
+      rxHoje:     resultado.rx_hoje,
+      nivelHoje:  resultado.nivel_hoje,
+      statusHoje: resultado.status_hoje,
+      recorrente: resultado.recorrente ? {
+        diasDegradado: resultado.recorrente.dias_degradado,
+        piorRx:        resultado.recorrente.pior_rx,
+        mediaRx:       resultado.recorrente.media_rx,
+        primeiraData:  resultado.recorrente.primeira_data,
+        ultimaData:    resultado.recorrente.ultima_data,
+      } : null,
+      piora: resultado.piora ? {
+        dataQueda:    resultado.piora.data_queda,
+        rxNaQueda:    resultado.piora.rx_na_queda,
+        dataAnterior: resultado.piora.data_anterior,
+        rxAnterior:   resultado.piora.rx_anterior,
+      } : null,
+      veredito:  resultado.veredito,
+      gravidade: resultado.gravidade,
+    };
+  } catch (e: any) {
+    logger.warn('[DIAGNOSTICO] Falha ao consultar oscilação de rede no OTDR', { error: e.message });
+    return null;
+  }
 }
 
 // ── O.S. / instalação (MariaDB IXC, somente leitura) ──────────────────────────
