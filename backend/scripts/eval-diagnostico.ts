@@ -24,13 +24,13 @@ interface Caso {
   verificar: (resposta: string) => string[]; // lista de falhas; vazio = passou
 }
 
-const CLIENTE_TESTE = 42929;
+const CLIENTE_42929 = 42929;
 
 const casos: Caso[] = [
   {
     nome: 'Cliente 42929 — técnico da O.S. #558426 (histórico fechado)',
     rodar: async () => {
-      const r = await gerarDiagnosticoIndividual(CLIENTE_TESTE, SOLICITANTE, 'quem foi o tecnico da O.S. 558426?');
+      const r = await gerarDiagnosticoIndividual(CLIENTE_42929, SOLICITANTE, 'quem foi o tecnico da O.S. 558426?');
       return r.textoCompleto;
     },
     verificar: (resp) => {
@@ -42,7 +42,7 @@ const casos: Caso[] = [
   {
     nome: 'Cliente 42929 — atendimento #602545 não deve ser confundido com O.S.',
     rodar: async () => {
-      const r = await gerarDiagnosticoIndividual(CLIENTE_TESTE, SOLICITANTE, 'quem foi o responsavel pelo atendimento numero 602545?');
+      const r = await gerarDiagnosticoIndividual(CLIENTE_42929, SOLICITANTE, 'quem foi o responsavel pelo atendimento numero 602545?');
       return r.textoCompleto;
     },
     verificar: (resp) => {
@@ -57,9 +57,9 @@ const casos: Caso[] = [
   {
     nome: 'Cliente 42929 — pergunta de acompanhamento elíptica usa histórico da conversa',
     rodar: async () => {
-      const r1 = await gerarDiagnosticoIndividual(CLIENTE_TESTE, SOLICITANTE, 'quais foram os tecnicos responsaveis pelas o.s?');
+      const r1 = await gerarDiagnosticoIndividual(CLIENTE_42929, SOLICITANTE, 'quais foram os tecnicos responsaveis pelas o.s?');
       const r2 = await gerarDiagnosticoIndividual(
-        CLIENTE_TESTE, SOLICITANTE, 'e os atendimentos?',
+        CLIENTE_42929, SOLICITANTE, 'e os atendimentos?',
         [{ pergunta: 'quais foram os tecnicos responsaveis pelas o.s?', resposta: r1.textoCompleto }],
       );
       return r2.textoCompleto;
@@ -74,7 +74,7 @@ const casos: Caso[] = [
   {
     nome: 'Cliente 42929 — status de comissão expõe mês de referência (snapshot imutável)',
     rodar: async () => {
-      const r = await gerarDiagnosticoIndividual(CLIENTE_TESTE, SOLICITANTE, 'qual o status da comissao desse contrato?');
+      const r = await gerarDiagnosticoIndividual(CLIENTE_42929, SOLICITANTE, 'qual o status da comissao desse contrato?');
       return r.textoCompleto;
     },
     verificar: (resp) => {
@@ -86,7 +86,7 @@ const casos: Caso[] = [
   {
     nome: 'Cliente 42929 — pergunta genuinamente fora de escopo é recusada',
     rodar: async () => {
-      const r = await gerarDiagnosticoIndividual(CLIENTE_TESTE, SOLICITANTE, 'qual a previsao do tempo pra amanha?');
+      const r = await gerarDiagnosticoIndividual(CLIENTE_42929, SOLICITANTE, 'qual a previsao do tempo pra amanha?');
       return JSON.stringify({ texto: r.textoCompleto, estruturado: r.estruturado });
     },
     verificar: (respRaw) => {
@@ -96,6 +96,32 @@ const casos: Caso[] = [
       if (!/não tem contexto|fora de escopo|focado (em|no) diagn/i.test(texto)) {
         falhas.push('Não deixou claro que a pergunta está fora do escopo do assistente.');
       }
+      return falhas;
+    },
+  },
+  {
+    nome: 'Cliente 4915 — sem nenhuma O.S./sinal/comodato, não deve inventar problema',
+    rodar: async () => {
+      const r = await gerarDiagnosticoIndividual(4915, SOLICITANTE);
+      return r.textoCompleto;
+    },
+    verificar: (resp) => {
+      const falhas: string[] = [];
+      if (!/n[ãa]o h[áa]|sem registro|insuficiente|n[ãa]o (existem|possui|apresenta)/i.test(resp)) {
+        falhas.push('Não reconheceu explicitamente a ausência de dados — risco de estar alucinando um problema.');
+      }
+      return falhas;
+    },
+  },
+  {
+    nome: 'Cliente 12762 — equipamento ZTE não deve puxar o padrão de problema do TP-Link',
+    rodar: async () => {
+      const r = await gerarDiagnosticoIndividual(12762, SOLICITANTE);
+      return r.textoCompleto;
+    },
+    verificar: (resp) => {
+      const falhas: string[] = [];
+      if (/tp-?link/i.test(resp)) falhas.push('Mencionou TP-Link para um cliente cujo equipamento atual é ZTE — regra de padrão de equipamento sendo aplicada fora de contexto.');
       return falhas;
     },
   },
