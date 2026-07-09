@@ -55,21 +55,46 @@ export async function buscarIdsContratoPorCliente(idCliente: number): Promise<st
   return rows.map((r) => String(r.id));
 }
 
-/// Busca a oscilação/degradação de sinal via o próprio OTDR (/api/consulta_cliente),
-/// que já resolve cliente -> ONU/SN (mesma correlação usada na tela de Consulta de
-/// Cliente do OTDR) e calcula recorrência dos últimos 30 dias. Não recalculamos essa
-/// correlação aqui — reaproveitamos o que o OTDR já resolve.
-export async function buscarOscilacaoRede(idCliente: number): Promise<OscilacaoRede | null> {
+/// Resolve o número de série do equipamento (ONU) atualmente em comodato ativo
+/// com o cliente. Equipamentos são trocados ao longo do tempo (upgrade, defeito
+/// etc.) — usar o histórico de comodato (status_comodato = 'E', "Emprestado")
+/// é a forma confiável de achar o equipamento em uso agora, em vez de confiar
+/// em campos que podem ficar desatualizados (ex: radusuarios.onu_mac) ou em
+/// fotos antigas que podem mostrar um equipamento já devolvido.
+export async function buscarSerialOnuAtual(idCliente: number): Promise<string | null> {
   const [rows] = await mysqlPool.query<any[]>(
-    `SELECT cnpj_cpf FROM cliente WHERE id = ?`,
+    `SELECT mp.numero_serie
+     FROM movimento_comodatos mc
+     JOIN movimento_produtos mp ON mp.id = mc.id_movimento_produtos
+     WHERE mc.id_cliente = ? AND mp.status_comodato = 'E' AND mp.descricao LIKE '%ONU%'
+     ORDER BY mp.data DESC
+     LIMIT 1`,
     [idCliente],
   );
-  const documento = rows[0]?.cnpj_cpf ? String(rows[0].cnpj_cpf).replace(/\D/g, '') : '';
-  if (!documento) return null;
+  return rows[0]?.numero_serie || null;
+}
+
+/// Busca a oscilação/degradação de sinal via o próprio OTDR (/api/consulta_cliente).
+/// Resolve o SN da ONU atual aqui mesmo (ver buscarSerialOnuAtual) e busca por SN
+/// direto — a busca por CPF do OTDR depende de uma correlação MAC/cliente própria
+/// dele que pode falhar mesmo com a ONU online (confirmado: buscar por CPF não
+/// encontrou um cliente cuja ONU, buscada por SN, respondia normalmente). Cai
+/// para busca por CPF só se não houver comodato de ONU ativo identificado.
+export async function buscarOscilacaoRede(idCliente: number): Promise<OscilacaoRede | null> {
+  let termoBusca = await buscarSerialOnuAtual(idCliente);
+
+  if (!termoBusca) {
+    const [rows] = await mysqlPool.query<any[]>(
+      `SELECT cnpj_cpf FROM cliente WHERE id = ?`,
+      [idCliente],
+    );
+    termoBusca = rows[0]?.cnpj_cpf ? String(rows[0].cnpj_cpf).replace(/\D/g, '') : null;
+  }
+  if (!termoBusca) return null;
 
   try {
     const { data } = await axios.get(`${OTDR_BASE}/api/consulta_cliente`, {
-      params: { nome: documento },
+      params: { nome: termoBusca },
       timeout: 15_000,
     });
     const resultado = data?.resultados?.[0];
