@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/authenticate';
 import { requirePerfil } from '../../middlewares/requirePerfil';
+import { requireHubAdmin } from '../../middlewares/requireHubAdmin';
 import { validate } from '../../middlewares/validate';
 import {
   consultaBodySchema,
@@ -62,13 +63,14 @@ router.post(
   criarConsultaGestao,
 );
 
-// Regras de negócio (referência lida pelo prompt da IA) — somente gestor
-router.get('/regras', authenticate, requirePerfil('gestor'), listarRegras);
-router.post('/regras', authenticate, requirePerfil('gestor'), validate('body', regraNegocioBodySchema), criarRegra);
+// Regras de negócio (referência lida pelo prompt da IA) — só admin do hub
+// (mesmo acesso do módulo Administração), não qualquer gestor.
+router.get('/regras', authenticate, requireHubAdmin, listarRegras);
+router.post('/regras', authenticate, requireHubAdmin, validate('body', regraNegocioBodySchema), criarRegra);
 router.put(
   '/regras/:chave',
   authenticate,
-  requirePerfil('gestor'),
+  requireHubAdmin,
   validate('params', regraNegocioParamsSchema),
   validate('body', regraNegocioUpdateBodySchema),
   editarRegra,
@@ -76,7 +78,7 @@ router.put(
 router.delete(
   '/regras/:chave',
   authenticate,
-  requirePerfil('gestor'),
+  requireHubAdmin,
   validate('params', regraNegocioParamsSchema),
   excluirRegra,
 );

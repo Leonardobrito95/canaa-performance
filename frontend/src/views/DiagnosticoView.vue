@@ -7,10 +7,19 @@
         <h1 class="diag-title">Diagnóstico IA</h1>
         <p class="diag-sub">Cruza rede, instalação e comercial de um cliente em uma única análise</p>
       </div>
-      <div v-if="isGestor" class="diag-modes">
-        <button :class="['diag-mode-btn', { active: modo === 'consulta' }]" @click="modo = 'consulta'">Consulta</button>
-        <button :class="['diag-mode-btn', { active: modo === 'gestao' }]" @click="modo = 'gestao'">Painel de Gestão</button>
-        <button :class="['diag-mode-btn', { active: modo === 'regras' }]" @click="modo = 'regras'">Regras de Negócio</button>
+      <div v-if="isGestor || isHubAdmin" class="diag-modes">
+        <button :class="['diag-mode-btn', { active: modo === 'consulta' }]" @click="modo = 'consulta'">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 3.5h12a1 1 0 011 1v6a1 1 0 01-1 1H6l-3 2.5v-2.5H2a1 1 0 01-1-1v-6a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          Consulta
+        </button>
+        <button v-if="isGestor" :class="['diag-mode-btn', { active: modo === 'gestao' }]" @click="modo = 'gestao'">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="8.5" width="3" height="6" rx=".5" stroke="currentColor" stroke-width="1.3"/><rect x="6.5" y="4.5" width="3" height="10" rx=".5" stroke="currentColor" stroke-width="1.3"/><rect x="11.5" y="1.5" width="3" height="13" rx=".5" stroke="currentColor" stroke-width="1.3"/></svg>
+          Painel de Gestão
+        </button>
+        <button v-if="isHubAdmin" :class="['diag-mode-btn', { active: modo === 'regras' }]" @click="modo = 'regras'">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l5.5 2v4c0 3.5-2.3 5.9-5.5 7-3.2-1.1-5.5-3.5-5.5-7v-4l5.5-2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          Regras de Negócio
+        </button>
       </div>
     </div>
 
@@ -265,7 +274,7 @@ import {
   type TipoFeedback,
 } from '../services/diagnosticoApi';
 
-const { user, isGestor } = useAuth();
+const { user, isGestor, isHubAdmin } = useAuth();
 
 type Modo = 'consulta' | 'gestao' | 'regras';
 const modo = ref<Modo>('consulta');
@@ -592,6 +601,10 @@ function formatarDataHora(iso: string) {
 }
 
 watch(modo, (m) => {
+  // Regras de negócio é restrita ao admin do hub — se por algum motivo o
+  // estado chegar aqui sem permissão (ex: race de carregamento do usuário),
+  // volta pra Consulta em vez de deixar a tela de regras acessível.
+  if (m === 'regras' && !isHubAdmin.value) { modo.value = 'consulta'; return; }
   if (m === 'gestao' && agregados.value.length === 0) carregarAgregados();
   if (m === 'regras' && regras.value.length === 0) carregarRegras();
   if (m === 'gestao') rolarGestaoParaFinal();
@@ -612,10 +625,13 @@ onMounted(() => rolarParaFinal());
 
 .diag-modes { display: flex; gap: .25rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; }
 .diag-mode-btn {
+  display: flex; align-items: center; gap: .4rem;
   font-family: var(--font-body); font-size: .8rem; font-weight: 600; color: var(--text-2);
   background: transparent; border: none; padding: .45rem .9rem; border-radius: var(--radius-sm);
   cursor: pointer; transition: var(--transition);
 }
+.diag-mode-btn svg { flex-shrink: 0; opacity: .75; }
+.diag-mode-btn.active svg { opacity: 1; color: var(--accent); }
 .diag-mode-btn.active { background: var(--surface-3); color: var(--text); }
 .diag-mode-btn:hover:not(.active) { color: var(--text); }
 
