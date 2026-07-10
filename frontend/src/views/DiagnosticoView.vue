@@ -101,132 +101,136 @@
       </div>
     </template>
 
-    <!-- ═══════════ MODO GESTÃO (painel + chat) ═══════════ -->
+    <!-- ═══════════ MODO GESTÃO (painel + chat lado a lado) ═══════════ -->
     <template v-else-if="modo === 'gestao'">
       <div class="gestao-scroll">
+        <div class="gestao-layout">
 
-        <div v-if="loadingResumo" class="state-msg">
-          <span class="loading-dots"><span/><span/><span/></span> Carregando painel…
-        </div>
-
-        <template v-else-if="resumoGestaoData">
-          <div class="stat-cards">
-            <div v-if="melhorVendedor" class="stat-card">
-              <div class="stat-icon stat-icon-vendedor">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.2" r="2.6" stroke="currentColor" stroke-width="1.3"/><path d="M2.3 14c0-3.1 2.6-4.8 5.7-4.8s5.7 1.7 5.7 4.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-              </div>
-              <div class="stat-label">Melhor vendedor · {{ formatarMesRef(mesMaisRecenteVendas) }}</div>
-              <div class="stat-valor">{{ melhorVendedor.nomeVendedor }}</div>
-              <div class="stat-sub">R$ {{ melhorVendedor.valorLiberado.toFixed(2) }} liberado · {{ melhorVendedor.qtdContratos }} contratos</div>
+          <div class="gestao-painel-col">
+            <div v-if="loadingResumo" class="state-msg">
+              <span class="loading-dots"><span/><span/><span/></span> Carregando painel…
             </div>
 
-            <div v-if="resumoVendasMesAtual" class="stat-card">
-              <div class="stat-icon stat-icon-vendas">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.5 12.5l4-4.5 3 2.5 5.5-6.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.3 3.3h3.7V7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </div>
-              <div class="stat-label">Vendas liberadas · {{ formatarMesRef(mesMaisRecenteVendas) }}</div>
-              <div class="stat-valor">R$ {{ resumoVendasMesAtual.totalLiberado.toFixed(2) }}</div>
-              <div
-                v-if="variacaoLiberado !== null"
-                class="stat-sub"
-                :class="variacaoLiberado >= 0 ? 'stat-alta' : 'stat-baixa'"
-              >{{ variacaoLiberado >= 0 ? '▲' : '▼' }} {{ Math.abs(variacaoLiberado).toFixed(1) }}% vs {{ formatarMesRef(mesAnteriorVendas) }}</div>
-            </div>
+            <template v-else-if="resumoGestaoData">
+              <div class="stat-cards">
+                <div v-if="melhorVendedor" class="stat-card">
+                  <div class="stat-icon stat-icon-vendedor">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.2" r="2.6" stroke="currentColor" stroke-width="1.3"/><path d="M2.3 14c0-3.1 2.6-4.8 5.7-4.8s5.7 1.7 5.7 4.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                  </div>
+                  <div class="stat-label">Melhor vendedor · {{ formatarMesRef(mesMaisRecenteVendas) }}</div>
+                  <div class="stat-valor">{{ melhorVendedor.nomeVendedor }}</div>
+                  <div class="stat-sub">R$ {{ melhorVendedor.valorLiberado.toFixed(2) }} liberado · {{ melhorVendedor.qtdContratos }} contratos</div>
+                </div>
 
-            <div v-if="redeResumo" class="stat-card">
-              <div class="stat-icon stat-icon-rede">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 6.2c3.5-3 8.5-3 12 0M4 8.6c2.2-2 5.8-2 8 0M6.3 11c1-.9 2.4-.9 3.4 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="13.3" r=".9" fill="currentColor"/></svg>
+                <div v-if="resumoVendasMesAtual" class="stat-card">
+                  <div class="stat-icon stat-icon-vendas">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.5 12.5l4-4.5 3 2.5 5.5-6.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.3 3.3h3.7V7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </div>
+                  <div class="stat-label">Vendas liberadas · {{ formatarMesRef(mesMaisRecenteVendas) }}</div>
+                  <div class="stat-valor">R$ {{ resumoVendasMesAtual.totalLiberado.toFixed(2) }}</div>
+                  <div
+                    v-if="variacaoLiberado !== null"
+                    class="stat-sub"
+                    :class="variacaoLiberado >= 0 ? 'stat-alta' : 'stat-baixa'"
+                  >{{ variacaoLiberado >= 0 ? '▲' : '▼' }} {{ Math.abs(variacaoLiberado).toFixed(1) }}% vs {{ formatarMesRef(mesAnteriorVendas) }}</div>
+                </div>
+
+                <div v-if="redeResumo" class="stat-card">
+                  <div class="stat-icon stat-icon-rede">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 6.2c3.5-3 8.5-3 12 0M4 8.6c2.2-2 5.8-2 8 0M6.3 11c1-.9 2.4-.9 3.4 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="13.3" r=".9" fill="currentColor"/></svg>
+                  </div>
+                  <div class="stat-label">Rede agora · {{ resumoGestaoData.pops.length }} POPs</div>
+                  <div class="stat-valor">{{ redeResumo.totalAlerta }} ONUs em alerta</div>
+                  <div class="stat-sub">de {{ redeResumo.totalOnus }} monitoradas<span v-if="redeResumo.piorSinal !== null"> · pior sinal {{ redeResumo.piorSinal.toFixed(1) }}dBm</span></div>
+                </div>
               </div>
-              <div class="stat-label">Rede agora · {{ resumoGestaoData.pops.length }} POPs</div>
-              <div class="stat-valor">{{ redeResumo.totalAlerta }} ONUs em alerta</div>
-              <div class="stat-sub">de {{ redeResumo.totalOnus }} monitoradas<span v-if="redeResumo.piorSinal !== null"> · pior sinal {{ redeResumo.piorSinal.toFixed(1) }}dBm</span></div>
+
+              <p class="secao-titulo">Status de rede por POP</p>
+              <div class="pops-grid">
+                <div v-for="p in resumoGestaoData.pops" :key="p.pop" class="pop-card">
+                  <div class="pop-cabecalho">
+                    <span class="pop-nome">{{ p.pop }}</span>
+                    <span class="pop-total">{{ p.totalOnus }} ONUs</span>
+                  </div>
+                  <div class="pop-barra">
+                    <span class="seg seg-normal" :style="{ flexGrow: p.normal }" :title="`${p.normal} normal`"></span>
+                    <span class="seg seg-atencao" :style="{ flexGrow: p.atencao }" :title="`${p.atencao} atenção`"></span>
+                    <span class="seg seg-critico" :style="{ flexGrow: p.critico }" :title="`${p.critico} crítico`"></span>
+                    <span class="seg seg-fora" :style="{ flexGrow: p.foraDeOperacao }" :title="`${p.foraDeOperacao} fora de operação`"></span>
+                    <span class="seg seg-semleitura" :style="{ flexGrow: p.semLeitura }" :title="`${p.semLeitura} sem leitura`"></span>
+                  </div>
+                  <div class="pop-legenda">
+                    <span>{{ p.critico + p.foraDeOperacao }} em alerta</span>
+                    <span v-if="p.piorSinalRx !== null">pior sinal {{ p.piorSinalRx.toFixed(1) }}dBm</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <div class="gestao-divisor"></div>
+
+            <div v-if="loadingAgregados" class="state-msg">
+              <span class="loading-dots"><span/><span/><span/></span> Carregando padrões…
+            </div>
+            <div v-else-if="agregados.length === 0" class="empty-agregado">
+              <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
+                <circle cx="20" cy="20" r="17" stroke="currentColor" stroke-width="1.3" opacity=".35"/>
+                <path d="M13 24l5-7 4 4 6-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <p class="empty-title">Nenhum padrão calculado ainda</p>
+              <p class="empty-sub">
+                Correlações validadas em SQL (ex: técnico com reincidência acima da média) aparecem
+                aqui assim que a rotina de agregação rodar pela primeira vez.
+              </p>
+            </div>
+            <div v-else class="agregado-grid">
+              <div v-for="a in agregados" :key="a.chave" class="agregado-card">
+                <div class="agregado-dim">{{ a.dimensao }}</div>
+                <div class="agregado-chave">{{ a.chave }}</div>
+                <p v-if="a.narrativa" class="agregado-narrativa">{{ a.narrativa }}</p>
+              </div>
             </div>
           </div>
 
-          <p class="secao-titulo">Status de rede por POP</p>
-          <div class="pops-grid">
-            <div v-for="p in resumoGestaoData.pops" :key="p.pop" class="pop-card">
-              <div class="pop-cabecalho">
-                <span class="pop-nome">{{ p.pop }}</span>
-                <span class="pop-total">{{ p.totalOnus }} ONUs</span>
-              </div>
-              <div class="pop-barra">
-                <span class="seg seg-normal" :style="{ flexGrow: p.normal }" :title="`${p.normal} normal`"></span>
-                <span class="seg seg-atencao" :style="{ flexGrow: p.atencao }" :title="`${p.atencao} atenção`"></span>
-                <span class="seg seg-critico" :style="{ flexGrow: p.critico }" :title="`${p.critico} crítico`"></span>
-                <span class="seg seg-fora" :style="{ flexGrow: p.foraDeOperacao }" :title="`${p.foraDeOperacao} fora de operação`"></span>
-                <span class="seg seg-semleitura" :style="{ flexGrow: p.semLeitura }" :title="`${p.semLeitura} sem leitura`"></span>
-              </div>
-              <div class="pop-legenda">
-                <span>{{ p.critico + p.foraDeOperacao }} em alerta</span>
-                <span v-if="p.piorSinalRx !== null">pior sinal {{ p.piorSinalRx.toFixed(1) }}dBm</span>
-              </div>
-            </div>
-          </div>
-        </template>
+          <div class="gestao-chat-col">
+            <p class="secao-titulo">Pergunte mais</p>
+            <div class="gestao-chat-shell">
+              <div class="chat-scroll chat-scroll-compacto" ref="scrollGestaoRef">
+                <div v-for="(turno, i) in turnosGestao" :key="i" class="turno">
+                  <div class="turno-label">{{ turno.tipo === 'assistente' ? 'IA' : (user?.nome?.split(' ')[0] || 'Você') }}</div>
+                  <p class="turno-texto">{{ turno.texto }}</p>
 
-        <div class="gestao-divisor"></div>
-
-        <p class="secao-titulo">Pergunte mais</p>
-        <div class="gestao-chat-shell">
-          <div class="chat-scroll chat-scroll-compacto" ref="scrollGestaoRef">
-            <div v-for="(turno, i) in turnosGestao" :key="i" class="turno">
-              <div class="turno-label">{{ turno.tipo === 'assistente' ? 'IA' : (user?.nome?.split(' ')[0] || 'Você') }}</div>
-              <p class="turno-texto">{{ turno.texto }}</p>
-
-              <div v-if="turno.consultaId" class="feedback-row">
-                <span v-if="turno.feedback" class="feedback-obrigado">
-                  {{ turno.feedback === 'POSITIVO' ? 'Obrigado! Marcado como correto.' : 'Obrigado! Marcado como incorreto.' }}
-                </span>
-                <template v-else>
-                  <span class="feedback-pergunta">Essa resposta estava correta?</span>
-                  <button class="link-btn" @click="darFeedback(turno, turno.consultaId, 'POSITIVO')">Sim</button>
-                  <button class="link-btn link-btn-perigo" @click="darFeedback(turno, turno.consultaId, 'NEGATIVO')">Não</button>
-                </template>
+                  <div v-if="turno.consultaId" class="feedback-row">
+                    <span v-if="turno.feedback" class="feedback-obrigado">
+                      {{ turno.feedback === 'POSITIVO' ? 'Obrigado! Marcado como correto.' : 'Obrigado! Marcado como incorreto.' }}
+                    </span>
+                    <template v-else>
+                      <span class="feedback-pergunta">Essa resposta estava correta?</span>
+                      <button class="link-btn" @click="darFeedback(turno, turno.consultaId, 'POSITIVO')">Sim</button>
+                      <button class="link-btn link-btn-perigo" @click="darFeedback(turno, turno.consultaId, 'NEGATIVO')">Não</button>
+                    </template>
+                  </div>
+                </div>
+                <div v-if="loadingGestao" class="turno">
+                  <div class="turno-label">IA</div>
+                  <span class="loading-dots"><span/><span/><span/></span>
+                </div>
+              </div>
+              <div class="chat-input-row">
+                <input
+                  v-model="inputGestao"
+                  placeholder="Ex: quais são os melhores vendedores?"
+                  :disabled="loadingGestao"
+                  @keydown.enter="enviarGestao"
+                />
+                <button class="btn-enviar" :disabled="loadingGestao || !inputGestao.trim()" @click="enviarGestao">
+                  <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M1.5 7.5 13 2 8.5 13 6.5 8.5 1.5 7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>
+                </button>
               </div>
             </div>
-            <div v-if="loadingGestao" class="turno">
-              <div class="turno-label">IA</div>
-              <span class="loading-dots"><span/><span/><span/></span>
-            </div>
           </div>
-          <div class="chat-input-row">
-            <input
-              v-model="inputGestao"
-              placeholder="Ex: quais são os melhores vendedores?"
-              :disabled="loadingGestao"
-              @keydown.enter="enviarGestao"
-            />
-            <button class="btn-enviar" :disabled="loadingGestao || !inputGestao.trim()" @click="enviarGestao">
-              <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M1.5 7.5 13 2 8.5 13 6.5 8.5 1.5 7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>
-            </button>
-          </div>
-        </div>
 
-        <div class="gestao-divisor"></div>
-
-        <div v-if="loadingAgregados" class="state-msg">
-          <span class="loading-dots"><span/><span/><span/></span> Carregando padrões…
         </div>
-        <div v-else-if="agregados.length === 0" class="empty-agregado">
-          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-            <circle cx="20" cy="20" r="17" stroke="currentColor" stroke-width="1.3" opacity=".35"/>
-            <path d="M13 24l5-7 4 4 6-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <p class="empty-title">Nenhum padrão calculado ainda</p>
-          <p class="empty-sub">
-            Correlações validadas em SQL (ex: técnico com reincidência acima da média) aparecem
-            aqui assim que a rotina de agregação rodar pela primeira vez.
-          </p>
-        </div>
-        <div v-else class="agregado-grid">
-          <div v-for="a in agregados" :key="a.chave" class="agregado-card">
-            <div class="agregado-dim">{{ a.dimensao }}</div>
-            <div class="agregado-chave">{{ a.chave }}</div>
-            <p v-if="a.narrativa" class="agregado-narrativa">{{ a.narrativa }}</p>
-          </div>
-        </div>
-
       </div>
     </template>
 
@@ -850,9 +854,22 @@ onMounted(() => rolarParaFinal());
 
 /* ── Painel de gestão ── */
 .gestao-scroll { flex: 1; overflow-y: auto; min-height: 0; padding: .1rem .25rem 1rem 0; }
-.gestao-chat-shell { display: flex; flex-direction: column; gap: .7rem; max-width: 720px; }
-.chat-scroll-compacto { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; padding-right: .25rem; }
+
+/* Painel (cards + POPs + agregados) à esquerda, chat fixo à direita —
+   evita ter que rolar a página toda pra alcançar o chat. */
+.gestao-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 1.75rem; align-items: start; }
+.gestao-painel-col { display: flex; flex-direction: column; min-width: 0; }
+.gestao-chat-col { position: sticky; top: 0; display: flex; flex-direction: column; gap: 0; }
+
+.gestao-chat-shell { display: flex; flex-direction: column; gap: .7rem; }
+.chat-scroll-compacto { max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; padding-right: .25rem; }
 .gestao-divisor { border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+@media (max-width: 880px) {
+  .gestao-layout { grid-template-columns: 1fr; }
+  .gestao-chat-col { position: static; margin-top: 1.5rem; }
+  .chat-scroll-compacto { max-height: 320px; }
+}
 
 .secao-titulo {
   font-family: var(--font-mono); font-size: .7rem; font-weight: 700; text-transform: uppercase;
@@ -900,8 +917,8 @@ onMounted(() => rolarParaFinal());
 .pop-legenda { display: flex; justify-content: space-between; gap: .5rem; font-size: .72rem; color: var(--text-3); }
 
 .empty-agregado {
-  display: flex; flex-direction: column; align-items: center; text-align: center; gap: .6rem;
-  padding: 3.5rem 1rem; color: var(--text-2);
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: .5rem;
+  padding: 1.75rem 1rem; color: var(--text-2);
 }
 .empty-agregado svg { color: var(--text-3); }
 .empty-title { font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--text); }
