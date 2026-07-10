@@ -101,65 +101,132 @@
       </div>
     </template>
 
-    <!-- ═══════════ MODO GESTÃO (agregado) ═══════════ -->
+    <!-- ═══════════ MODO GESTÃO (painel + chat) ═══════════ -->
     <template v-else-if="modo === 'gestao'">
-      <div class="gestao-chat-shell">
-        <div class="chat-scroll chat-scroll-compacto" ref="scrollGestaoRef">
-          <div v-for="(turno, i) in turnosGestao" :key="i" class="turno">
-            <div class="turno-label">{{ turno.tipo === 'assistente' ? 'IA' : (user?.nome?.split(' ')[0] || 'Você') }}</div>
-            <p class="turno-texto">{{ turno.texto }}</p>
+      <div class="gestao-scroll">
 
-            <div v-if="turno.consultaId" class="feedback-row">
-              <span v-if="turno.feedback" class="feedback-obrigado">
-                {{ turno.feedback === 'POSITIVO' ? 'Obrigado! Marcado como correto.' : 'Obrigado! Marcado como incorreto.' }}
-              </span>
-              <template v-else>
-                <span class="feedback-pergunta">Essa resposta estava correta?</span>
-                <button class="link-btn" @click="darFeedback(turno, turno.consultaId, 'POSITIVO')">Sim</button>
-                <button class="link-btn link-btn-perigo" @click="darFeedback(turno, turno.consultaId, 'NEGATIVO')">Não</button>
-              </template>
+        <div v-if="loadingResumo" class="state-msg">
+          <span class="loading-dots"><span/><span/><span/></span> Carregando painel…
+        </div>
+
+        <template v-else-if="resumoGestaoData">
+          <div class="stat-cards">
+            <div v-if="melhorVendedor" class="stat-card">
+              <div class="stat-icon stat-icon-vendedor">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.2" r="2.6" stroke="currentColor" stroke-width="1.3"/><path d="M2.3 14c0-3.1 2.6-4.8 5.7-4.8s5.7 1.7 5.7 4.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+              </div>
+              <div class="stat-label">Melhor vendedor · {{ formatarMesRef(mesMaisRecenteVendas) }}</div>
+              <div class="stat-valor">{{ melhorVendedor.nomeVendedor }}</div>
+              <div class="stat-sub">R$ {{ melhorVendedor.valorLiberado.toFixed(2) }} liberado · {{ melhorVendedor.qtdContratos }} contratos</div>
+            </div>
+
+            <div v-if="resumoVendasMesAtual" class="stat-card">
+              <div class="stat-icon stat-icon-vendas">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.5 12.5l4-4.5 3 2.5 5.5-6.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.3 3.3h3.7V7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+              <div class="stat-label">Vendas liberadas · {{ formatarMesRef(mesMaisRecenteVendas) }}</div>
+              <div class="stat-valor">R$ {{ resumoVendasMesAtual.totalLiberado.toFixed(2) }}</div>
+              <div
+                v-if="variacaoLiberado !== null"
+                class="stat-sub"
+                :class="variacaoLiberado >= 0 ? 'stat-alta' : 'stat-baixa'"
+              >{{ variacaoLiberado >= 0 ? '▲' : '▼' }} {{ Math.abs(variacaoLiberado).toFixed(1) }}% vs {{ formatarMesRef(mesAnteriorVendas) }}</div>
+            </div>
+
+            <div v-if="redeResumo" class="stat-card">
+              <div class="stat-icon stat-icon-rede">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 6.2c3.5-3 8.5-3 12 0M4 8.6c2.2-2 5.8-2 8 0M6.3 11c1-.9 2.4-.9 3.4 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="13.3" r=".9" fill="currentColor"/></svg>
+              </div>
+              <div class="stat-label">Rede agora · {{ resumoGestaoData.pops.length }} POPs</div>
+              <div class="stat-valor">{{ redeResumo.totalAlerta }} ONUs em alerta</div>
+              <div class="stat-sub">de {{ redeResumo.totalOnus }} monitoradas<span v-if="redeResumo.piorSinal !== null"> · pior sinal {{ redeResumo.piorSinal.toFixed(1) }}dBm</span></div>
             </div>
           </div>
-          <div v-if="loadingGestao" class="turno">
-            <div class="turno-label">IA</div>
-            <span class="loading-dots"><span/><span/><span/></span>
+
+          <p class="secao-titulo">Status de rede por POP</p>
+          <div class="pops-grid">
+            <div v-for="p in resumoGestaoData.pops" :key="p.pop" class="pop-card">
+              <div class="pop-cabecalho">
+                <span class="pop-nome">{{ p.pop }}</span>
+                <span class="pop-total">{{ p.totalOnus }} ONUs</span>
+              </div>
+              <div class="pop-barra">
+                <span class="seg seg-normal" :style="{ flexGrow: p.normal }" :title="`${p.normal} normal`"></span>
+                <span class="seg seg-atencao" :style="{ flexGrow: p.atencao }" :title="`${p.atencao} atenção`"></span>
+                <span class="seg seg-critico" :style="{ flexGrow: p.critico }" :title="`${p.critico} crítico`"></span>
+                <span class="seg seg-fora" :style="{ flexGrow: p.foraDeOperacao }" :title="`${p.foraDeOperacao} fora de operação`"></span>
+                <span class="seg seg-semleitura" :style="{ flexGrow: p.semLeitura }" :title="`${p.semLeitura} sem leitura`"></span>
+              </div>
+              <div class="pop-legenda">
+                <span>{{ p.critico + p.foraDeOperacao }} em alerta</span>
+                <span v-if="p.piorSinalRx !== null">pior sinal {{ p.piorSinalRx.toFixed(1) }}dBm</span>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div class="gestao-divisor"></div>
+
+        <p class="secao-titulo">Pergunte mais</p>
+        <div class="gestao-chat-shell">
+          <div class="chat-scroll chat-scroll-compacto" ref="scrollGestaoRef">
+            <div v-for="(turno, i) in turnosGestao" :key="i" class="turno">
+              <div class="turno-label">{{ turno.tipo === 'assistente' ? 'IA' : (user?.nome?.split(' ')[0] || 'Você') }}</div>
+              <p class="turno-texto">{{ turno.texto }}</p>
+
+              <div v-if="turno.consultaId" class="feedback-row">
+                <span v-if="turno.feedback" class="feedback-obrigado">
+                  {{ turno.feedback === 'POSITIVO' ? 'Obrigado! Marcado como correto.' : 'Obrigado! Marcado como incorreto.' }}
+                </span>
+                <template v-else>
+                  <span class="feedback-pergunta">Essa resposta estava correta?</span>
+                  <button class="link-btn" @click="darFeedback(turno, turno.consultaId, 'POSITIVO')">Sim</button>
+                  <button class="link-btn link-btn-perigo" @click="darFeedback(turno, turno.consultaId, 'NEGATIVO')">Não</button>
+                </template>
+              </div>
+            </div>
+            <div v-if="loadingGestao" class="turno">
+              <div class="turno-label">IA</div>
+              <span class="loading-dots"><span/><span/><span/></span>
+            </div>
+          </div>
+          <div class="chat-input-row">
+            <input
+              v-model="inputGestao"
+              placeholder="Ex: quais são os melhores vendedores?"
+              :disabled="loadingGestao"
+              @keydown.enter="enviarGestao"
+            />
+            <button class="btn-enviar" :disabled="loadingGestao || !inputGestao.trim()" @click="enviarGestao">
+              <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M1.5 7.5 13 2 8.5 13 6.5 8.5 1.5 7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            </button>
           </div>
         </div>
-        <div class="chat-input-row">
-          <input
-            v-model="inputGestao"
-            placeholder="Ex: quais são os melhores vendedores?"
-            :disabled="loadingGestao"
-            @keydown.enter="enviarGestao"
-          />
-          <button class="btn-enviar" :disabled="loadingGestao || !inputGestao.trim()" @click="enviarGestao">
-            <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M1.5 7.5 13 2 8.5 13 6.5 8.5 1.5 7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>
-          </button>
-        </div>
-      </div>
 
-      <div class="gestao-divisor"></div>
+        <div class="gestao-divisor"></div>
 
-      <div v-if="loadingAgregados" class="state-msg">
-        <span class="loading-dots"><span/><span/><span/></span> Carregando padrões…
-      </div>
-      <div v-else-if="agregados.length === 0" class="empty-agregado">
-        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-          <circle cx="20" cy="20" r="17" stroke="currentColor" stroke-width="1.3" opacity=".35"/>
-          <path d="M13 24l5-7 4 4 6-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <p class="empty-title">Nenhum padrão calculado ainda</p>
-        <p class="empty-sub">
-          Correlações validadas em SQL (ex: técnico com reincidência acima da média) aparecem
-          aqui assim que a rotina de agregação rodar pela primeira vez.
-        </p>
-      </div>
-      <div v-else class="agregado-grid">
-        <div v-for="a in agregados" :key="a.chave" class="agregado-card">
-          <div class="agregado-dim">{{ a.dimensao }}</div>
-          <div class="agregado-chave">{{ a.chave }}</div>
-          <p v-if="a.narrativa" class="agregado-narrativa">{{ a.narrativa }}</p>
+        <div v-if="loadingAgregados" class="state-msg">
+          <span class="loading-dots"><span/><span/><span/></span> Carregando padrões…
         </div>
+        <div v-else-if="agregados.length === 0" class="empty-agregado">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <circle cx="20" cy="20" r="17" stroke="currentColor" stroke-width="1.3" opacity=".35"/>
+            <path d="M13 24l5-7 4 4 6-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <p class="empty-title">Nenhum padrão calculado ainda</p>
+          <p class="empty-sub">
+            Correlações validadas em SQL (ex: técnico com reincidência acima da média) aparecem
+            aqui assim que a rotina de agregação rodar pela primeira vez.
+          </p>
+        </div>
+        <div v-else class="agregado-grid">
+          <div v-for="a in agregados" :key="a.chave" class="agregado-card">
+            <div class="agregado-dim">{{ a.dimensao }}</div>
+            <div class="agregado-chave">{{ a.chave }}</div>
+            <p v-if="a.narrativa" class="agregado-narrativa">{{ a.narrativa }}</p>
+          </div>
+        </div>
+
       </div>
     </template>
 
@@ -259,6 +326,7 @@ import {
   buscarCliente,
   consultarDiagnostico,
   buscarAgregados,
+  buscarResumoGestao,
   consultarGestao,
   enviarFeedback,
   listarRegras,
@@ -272,6 +340,7 @@ import {
   type CategoriaRegra,
   type HistoricoTurnoConversa,
   type TipoFeedback,
+  type ResumoGestao,
 } from '../services/diagnosticoApi';
 
 const { user, isGestor, isHubAdmin } = useAuth();
@@ -448,6 +517,68 @@ async function carregarAgregados() {
   }
 }
 
+// ── Painel de gestão (cards com dado direto, sem passar pelo Gemini) ──────
+const resumoGestaoData = ref<ResumoGestao | null>(null);
+const loadingResumo = ref(false);
+
+async function carregarResumoGestao() {
+  loadingResumo.value = true;
+  try {
+    resumoGestaoData.value = await buscarResumoGestao();
+  } finally {
+    loadingResumo.value = false;
+  }
+}
+
+const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+function formatarMesRef(mesRef: string | null): string {
+  if (!mesRef) return '';
+  const [ano, mes] = mesRef.split('-');
+  return `${NOMES_MES[Number(mes) - 1]}/${ano}`;
+}
+
+const mesesVendasOrdenados = computed(() => {
+  if (!resumoGestaoData.value) return [];
+  return [...new Set(resumoGestaoData.value.evolucao.map((e) => e.mesReferencia))].sort().reverse();
+});
+const mesMaisRecenteVendas = computed(() => mesesVendasOrdenados.value[0] ?? null);
+const mesAnteriorVendas = computed(() => mesesVendasOrdenados.value[1] ?? null);
+
+const melhorVendedor = computed(() => {
+  if (!resumoGestaoData.value || !mesMaisRecenteVendas.value) return null;
+  // ranking já vem ordenado por valorAtivos DESC dentro de cada mês (query do backend)
+  return resumoGestaoData.value.ranking.find((r) => r.mesReferencia === mesMaisRecenteVendas.value) ?? null;
+});
+
+function somaEvolucaoDoMes(mes: string | null) {
+  if (!resumoGestaoData.value || !mes) return null;
+  const doMes = resumoGestaoData.value.evolucao.filter((e) => e.mesReferencia === mes);
+  if (!doMes.length) return null;
+  return {
+    totalAtivos: doMes.reduce((s, e) => s + e.valorAtivos, 0),
+    totalLiberado: doMes.reduce((s, e) => s + e.valorLiberado, 0),
+  };
+}
+const resumoVendasMesAtual = computed(() => somaEvolucaoDoMes(mesMaisRecenteVendas.value));
+
+const variacaoLiberado = computed(() => {
+  const atual = somaEvolucaoDoMes(mesMaisRecenteVendas.value);
+  const anterior = somaEvolucaoDoMes(mesAnteriorVendas.value);
+  if (!atual || !anterior || !anterior.totalLiberado) return null;
+  return ((atual.totalLiberado - anterior.totalLiberado) / anterior.totalLiberado) * 100;
+});
+
+const redeResumo = computed(() => {
+  const pops = resumoGestaoData.value?.pops;
+  if (!pops?.length) return null;
+  const comSinal = pops.filter((p) => p.piorSinalRx !== null).map((p) => p.piorSinalRx as number);
+  return {
+    totalOnus: pops.reduce((s, p) => s + p.totalOnus, 0),
+    totalAlerta: pops.reduce((s, p) => s + p.critico + p.foraDeOperacao, 0),
+    piorSinal: comSinal.length ? Math.min(...comSinal) : null,
+  };
+});
+
 interface TurnoGestao { tipo: 'usuario' | 'assistente'; texto: string; consultaId?: string; feedback?: TipoFeedback }
 
 const SAUDACAO_GESTAO: TurnoGestao = { tipo: 'assistente', texto: 'Pergunte sobre ranking de vendedores ou evolução de vendas por período/segmento.' };
@@ -606,6 +737,7 @@ watch(modo, (m) => {
   // volta pra Consulta em vez de deixar a tela de regras acessível.
   if (m === 'regras' && !isHubAdmin.value) { modo.value = 'consulta'; return; }
   if (m === 'gestao' && agregados.value.length === 0) carregarAgregados();
+  if (m === 'gestao' && !resumoGestaoData.value) carregarResumoGestao();
   if (m === 'regras' && regras.value.length === 0) carregarRegras();
   if (m === 'gestao') rolarGestaoParaFinal();
 });
@@ -717,9 +849,55 @@ onMounted(() => rolarParaFinal());
 .btn-enviar:disabled { opacity: .35; cursor: not-allowed; }
 
 /* ── Painel de gestão ── */
+.gestao-scroll { flex: 1; overflow-y: auto; min-height: 0; padding: .1rem .25rem 1rem 0; }
 .gestao-chat-shell { display: flex; flex-direction: column; gap: .7rem; max-width: 720px; }
 .chat-scroll-compacto { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; padding-right: .25rem; }
 .gestao-divisor { border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+.secao-titulo {
+  font-family: var(--font-mono); font-size: .7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-3); margin: 0 0 .8rem;
+}
+
+/* Cards de estatística */
+.stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .8rem; margin-bottom: 1.75rem; }
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .35rem;
+}
+.stat-icon {
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; margin-bottom: .2rem;
+}
+.stat-icon-vendedor { color: var(--accent); background: var(--accent-dim); }
+.stat-icon-vendas { color: var(--success); background: var(--success-bg); }
+.stat-icon-rede { color: var(--accent-2); background: rgba(199, 255, 0, 0.1); }
+.stat-label {
+  font-family: var(--font-mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-3); font-weight: 700;
+}
+.stat-valor { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: var(--text); line-height: 1.25; }
+.stat-sub { font-size: .78rem; color: var(--text-2); }
+.stat-alta { color: var(--success); }
+.stat-baixa { color: var(--error); }
+
+/* Grid de POPs */
+.pops-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .7rem; margin-bottom: 0; }
+.pop-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: .8rem .9rem; display: flex; flex-direction: column; gap: .5rem;
+}
+.pop-cabecalho { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
+.pop-nome { font-size: .82rem; font-weight: 700; color: var(--text); }
+.pop-total { font-family: var(--font-mono); font-size: .68rem; color: var(--text-3); }
+.pop-barra { display: flex; height: 7px; border-radius: 4px; overflow: hidden; background: var(--surface-3); }
+.seg { display: block; height: 100%; }
+.seg-normal    { background: var(--success); }
+.seg-atencao   { background: #f59e0b; }
+.seg-critico   { background: var(--error); }
+.seg-fora      { background: #64748b; }
+.seg-semleitura{ background: var(--border-2); }
+.pop-legenda { display: flex; justify-content: space-between; gap: .5rem; font-size: .72rem; color: var(--text-3); }
 
 .empty-agregado {
   display: flex; flex-direction: column; align-items: center; text-align: center; gap: .6rem;

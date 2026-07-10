@@ -2,7 +2,12 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthPayload } from '../auth/auth.service';
 import prisma from '../../config/prisma';
 import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual } from './diagnostico.service';
-import { buscarClientePorNome } from './diagnostico.repository';
+import {
+  buscarClientePorNome,
+  buscarRankingVendedores,
+  buscarEvolucaoVendas,
+  buscarStatusPops,
+} from './diagnostico.repository';
 import { obterMetricasIxc } from '../../config/ixcSession';
 import { obterMetricasAgregadasGemini } from './diagnostico.ia';
 
@@ -97,6 +102,21 @@ export async function statusIxc(req: Request, res: Response, next: NextFunction)
 export async function statusGemini(req: Request, res: Response, next: NextFunction) {
   try {
     res.json(obterMetricasAgregadasGemini());
+  } catch (err) { next(err); }
+}
+
+/// Resumo direto do Painel de Gestão (ranking + evolução + POPs), sem passar
+/// pelo Gemini — dado bruto, rápido e sem custo de API, pra alimentar os
+/// cards visuais do painel. O chat de gestão continua existindo à parte,
+/// pra perguntas que exigem síntese/interpretação.
+export async function resumoGestao(req: Request, res: Response, next: NextFunction) {
+  try {
+    const [ranking, evolucao, pops] = await Promise.all([
+      buscarRankingVendedores(),
+      buscarEvolucaoVendas(),
+      buscarStatusPops().catch(() => []),
+    ]);
+    res.json({ ranking, evolucao, pops });
   } catch (err) { next(err); }
 }
 

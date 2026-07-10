@@ -77,6 +77,39 @@ export interface RegraNegocioInput {
   categoria: CategoriaRegra;
 }
 
+export interface RankingVendedorEntry {
+  nomeVendedor: string;
+  mesReferencia: string;
+  qtdContratos: number;
+  valorAtivos: number;
+  valorLiberado: number;
+}
+
+export interface EvolucaoMensalEntry {
+  mesReferencia: string;
+  segmento: string;
+  qtdContratos: number;
+  valorAtivos: number;
+  valorLiberado: number;
+}
+
+export interface PopStatusEntry {
+  pop: string;
+  totalOnus: number;
+  normal: number;
+  atencao: number;
+  critico: number;
+  foraDeOperacao: number;
+  semLeitura: number;
+  piorSinalRx: number | null;
+}
+
+export interface ResumoGestao {
+  ranking: RankingVendedorEntry[];
+  evolucao: EvolucaoMensalEntry[];
+  pops: PopStatusEntry[];
+}
+
 // ── Chamadas ─────────────────────────────────────────────────────
 
 export const buscarCliente = (termo: string) =>
@@ -99,6 +132,9 @@ export const buscarHistoricoConsultas = (id_cliente: number) =>
 
 export const buscarAgregados = (dimensao?: string) =>
   api.get<DiagnosticoAgregadoItem[]>('/agregado', { params: dimensao ? { dimensao } : {} }).then((r) => r.data);
+
+export const buscarResumoGestao = () =>
+  api.get<ResumoGestao>('/gestao/resumo').then((r) => r.data);
 
 export const consultarGestao = (pergunta: string, historico?: HistoricoTurnoConversa[]) =>
   api.post<{ resposta: string; consultaId: string }>('/gestao/consulta', { pergunta, historico }).then((r) => r.data);

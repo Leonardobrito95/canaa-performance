@@ -27,6 +27,7 @@ import {
   statusIxc,
   statusGemini,
   registrarFeedback,
+  resumoGestao,
 } from './diagnostico.controller';
 
 const router = Router();
@@ -50,6 +51,8 @@ router.post(
 
 // Painel agregado — somente gestor
 router.get('/agregado', authenticate, requirePerfil('gestor'), listarAgregados);
+// Resumo direto (ranking/evolução/POPs) pros cards do Painel de Gestão — sem Gemini
+router.get('/gestao/resumo', authenticate, requirePerfil('gestor'), resumoGestao);
 
 // Saúde da dependência de sessão do IXC (fotos de O.S.) — somente gestor
 router.get('/_health/ixc', authenticate, requirePerfil('gestor'), statusIxc);
