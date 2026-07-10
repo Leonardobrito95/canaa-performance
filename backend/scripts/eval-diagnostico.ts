@@ -93,8 +93,14 @@ const casos: Caso[] = [
       const { texto, estruturado } = JSON.parse(respRaw);
       const falhas: string[] = [];
       if (estruturado) falhas.push('Forçou o formato de diagnóstico para uma pergunta sem relação com o cliente.');
-      if (!/não tem contexto|fora d[eo] escopo|focado (em|no) diagn/i.test(texto)) {
-        falhas.push('Não deixou claro que a pergunta está fora do escopo do assistente.');
+      // Frouxo de propósito: o modelo parafraseia a recusa de formas diferentes
+      // ("focado no diagnóstico", "focado na análise técnica"...) — checar a
+      // ausência de conteúdo real de previsão do tempo é mais robusto que
+      // exigir uma frase exata.
+      const pareceRecusa = /foco|focad[oa]|escopo|não (tenho|possuo|tem)|não é (poss[ií]vel|do meu)/i.test(texto);
+      const respondeuTempoDeVerdade = /\d+\s*°|graus|chuva|\bsol\b|nublado|previs[aã]o.{0,20}(ser[aá]|indica|aponta)/i.test(texto);
+      if (!pareceRecusa || respondeuTempoDeVerdade) {
+        falhas.push('Não deixou claro que a pergunta está fora do escopo do assistente (ou pode ter respondido de verdade sobre o tempo).');
       }
       return falhas;
     },
