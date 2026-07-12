@@ -342,3 +342,257 @@ model DiagnosticoRegraNegocio {
   @@map("regras_negocio")
   @@schema("diagnostico")
 }
+
+/// Auditoria de retenção: para cada O.S. de retenção (id_assunto=348) no IXC,
+/// classifica se há evidência REAL de negociação no texto das mensagens (O.S. +
+/// atendimento relacionado) — a classificação do IXC (id_su_diagnostico numa
+/// lista fixa RETIDO/NAO_RETIDO) é genérica demais: conta "cliente aceitou
+/// transferência de titularidade" e "cliente desistiu sem negociar" como
+/// retido do mesmo jeito que "foi oferecido desconto e o cliente aceitou".
+/// Só reporta a divergência — não altera o cálculo de comissão hoje.
+model RetencaoAuditoria {
+  id_chamado           String   @id // su_oss_chamado.id (IXC)
+  nome_operador        String
+  /// 'RETIDO' | 'NAO_RETIDO' | 'PENDENTE' — classificação original do IXC
+  resultado_ixc        String
+  /// 'NEGOCIACAO_REAL' | 'SEM_NEGOCIACAO' | 'INDEFINIDO' (evidência insuficiente no texto)
+  classificacao        String
+  justificativa        String
+  negociacao_detectada String?
+  /// Divergência entre a nota da O.S. (escrita pelo operador) e a conversa
+  /// real do OpaSuite, quando encontrada — null = bateu, ou não havia
+  /// conversa do OpaSuite pra comparar.
+  divergencia_nota_os  String?
+  data_abertura_os     DateTime
+  classificado_em      DateTime @default(now())
+  modelo_usado         String?
+
+  @@index([nome_operador])
+  @@index([classificacao])
+  @@map("retencao_auditoria")
+  @@schema("diagnostico")
+}
+
+/// Monitoria de qualidade do atendimento (SAC / Suporte N1 / Suporte N2) —
+/// amostragem contínua via cron (não é 100% do volume, tem orçamento de
+/// custo), avaliando a conversa real do OpaSuite contra uma régua fixa de
+/// qualidade. 'canal' e 'classificacao' distinguem quando a única evidência
+/// era uma ligação (canal pabx) sem transcrição — nesse caso não há como
+/// avaliar de verdade, então classificacao='SEM_EVIDENCIA' e as notas ficam
+/// null, em vez de a IA especular uma nota sem base.
+
+/// Snapshot mensal pré-calculado dos KPIs de atendimento (1 linha por
+/// setor x mês FECHADO). Existe porque calcular TMA/TME/TMR ao vivo no Mongo
+/// do OpaSuite pra uma janela de vários meses é caro (medido: ~48s pra 3
+/// meses x 3 setores em paralelo, inviável rodar a cada pergunta do chat de
+/// gestão) — populado 1x/mês por rollup (ver atendimento.rollup.ts). O mês
+/// corrente continua sendo calculado ao vivo (getResumoKpisAtendimento),
+/// esse snapshot só cobre meses já fechados, pra dar tendência histórica.
+model AtendimentoKpiMensal {
+  id                     String   @id @default(uuid())
+  /// 'SAC' | 'N1' | 'N2'
+  setor                  String
+  /// 'YYYY-MM'
+  mes_referencia         String
+  volume                 Int
+  tma_ms                 Int?
+  tme_ms                 Int?
+  tmr_ms                 Int?
+  escalonamentos         Int
+  pct_escalonamento      Float?
+  nota_media_satisfacao  Float?
+  qtd_avaliados          Int
+  calculado_em           DateTime @default(now())
+
+  @@unique([setor, mes_referencia])
+  @@index([mes_referencia])
+  @@map("atendimento_kpi_mensal")
+  @@schema("diagnostico")
+}
+
+/// Monitoria de qualidade do atendimento feita por QA HUMANO — incorporada do
+/// sistema legado (Flask + SQLite, "Monitoria_Server.py") que rodava numa VM
+/// separada. É a fonte de verdade de qualidade (não a monitoria por IA, que
+/// foi aposentada) — o C.A.I.O. atua como copiloto sugerindo preenchimento,
+/// nunca decidindo sozinho. `criterios` guarda os 22 campos Conforme/Não
+/// Conforme/Não se aplica como JSON (em vez de 22 colunas) — ver
+/// `atendimento.qa.types.ts` pras chaves e o algoritmo de pontuação.
+model AtendimentoMonitoriaQa {
+  id                  String    @id @default(uuid())
+  /// `protocolo` NÃO é unique: confirmado empiricamente que o sistema legado
+  /// tem 2 colisões reais em 7.861 linhas (protocolos diferentes só por
+  /// espaço em branco, ou duplicata genuína) — duas avaliações DIFERENTES
+  /// podem ter o mesmo número de protocolo. A chave de idempotência da
+  /// migração é `id_legado` (o id da linha no SQLite original), não o
+  /// protocolo. Registros criados daqui pra frente (origem=
+  /// 'canaa_performance') não têm id_legado — a checagem de "protocolo já
+  /// monitorado" pra esses é feita em código (não é constraint de banco),
+  /// pra não herdar essa mesma armadilha pro futuro.
+  id_legado           Int?      @unique
+  protocolo           String
+  data_atendimento    DateTime?
+  data_monitoria      DateTime?
+  nome_agente         String
+  equipe              String
+  motivo_atendimento  String?
+  /// Categoriza qual tipo de zero ocorreu (Ofensa Verbal, Erro de
+  /// Procedimento...) quando houver — dropdown próprio, não confundir com
+  /// `erro_critico` (calculado a partir do critério "Omissão de atendimento").
+  monitoria_zero      String?
+  /// Nota geral do atendente (escala 0-5), separada da `pontuacao` (0-10).
+  avaliacao_atd       Float?
+  erro_critico        Boolean   @default(false)
+  itens_aplicaveis    Int?
+  pontuacao           Float?
+  observacoes         String?
+  /// Critério antigo, descontinuado antes da migração — preservado só por
+  /// completude histórica, NÃO entra no cálculo de pontuação atual.
+  ofensa_verbal_legado String?
+  /// Os 22 critérios Conforme/Não Conforme/Não se aplica (ver YES_NO_FIELDS
+  /// em atendimento.qa.types.ts) como JSON: { "Cordialidade": "Conforme", ... }
+  ///
+  /// ATENÇÃO: `pontuacao`/`itens_aplicaveis`/`erro_critico` em registros
+  /// migrados (origem='legado') são os valores ORIGINAIS já calculados pelo
+  /// sistema antigo no momento da avaliação — NÃO recalcular a partir de
+  /// `criterios` com os pesos atuais de PENALIZACOES_QA. Confirmado
+  /// empiricamente (2026-07-11): os pesos de penalização mudaram ao longo do
+  /// tempo no sistema legado, então recalcular pontuação antiga com pesos
+  /// de hoje reescreveria retroativamente uma decisão de qualidade já
+  /// tomada (ex: 191/500 dos registros mais antigos "divergem" dos pesos
+  /// atuais — isso é esperado, não é erro de migração; os 500 mais recentes
+  /// batem 100% porque usam os mesmos pesos vigentes hoje).
+  criterios           Json
+  /// 'legado' (migrado do sistema antigo) | 'canaa_performance' (criado aqui)
+  origem              String    @default("legado")
+  /// ixc_user_id de quem fez a avaliação — null nos registros migrados do
+  /// legado (não temos essa informação lá, só usuário do sistema antigo).
+  avaliado_por        String?
+  /// "Ciência" do agente avaliado — ele vê a própria nota e confirma/comenta.
+  /// null enquanto não foi comunicado. Não é aprovação, é só registro de
+  /// que o agente tomou ciência (ele pode discordar no comentário).
+  comunicado_em       DateTime?
+  comunicado_nota     String?
+  criado_em           DateTime  @default(now())
+  atualizado_em       DateTime  @updatedAt
+
+  @@index([protocolo])
+  @@index([equipe])
+  @@index([nome_agente])
+  @@index([data_atendimento])
+  @@map("atendimento_monitoria_qa")
+  @@schema("diagnostico")
+}
+
+/// Roster de agentes curado manualmente pelo QA (migrado do sistema legado) —
+/// alimenta o dropdown de agente do formulário de monitoria. Independente do
+/// OpaSuite de propósito: permite cadastrar/desativar agente sem depender de
+/// atividade real lá (ex: agente novo ainda não logou no OpaSuite).
+model AtendimentoAgenteQa {
+  id           String   @id @default(uuid())
+  nome         String   @unique
+  equipe       String
+  /// 'Ativo' | 'Inativo'
+  status       String
+  /// Link real com o usuário do IXC (pra "Minhas Avaliações"/ciência) —
+  /// preferido sobre bater por nome, que já mostrou ser frágil (diferença de
+  /// grafia entre o roster e o cadastro do IXC, confirmado empiricamente
+  /// 2026-07-12: 4 de 13 agentes ativos não bateram por nome). Populado por
+  /// script pontual de reconciliação, não automaticamente.
+  ixc_user_id  String?  @unique
+  criado_em    DateTime @default(now())
+
+  @@map("atendimento_agente_qa")
+  @@schema("diagnostico")
+}
+
+/// Camada analítica de IA em massa (Motivo/Adesão ao Script/Sentimento) —
+/// processa quase todo o volume de atendimentos de TEXTO (não amostra), pra
+/// preencher a lacuna de tipificação (só 42% dos atendimentos têm "motivos"
+/// preenchido no OpaSuite) e priorizar a fila de QA pelos piores casos.
+///
+/// ATENÇÃO: isso NÃO é uma "nota oficial" de QA e nunca deve ser confundido
+/// com `AtendimentoMonitoriaQa` — é sinal de triagem gerado por IA que
+/// NINGUÉM revisou ainda. A avaliação oficial (22 critérios, pontuação
+/// 0-10) continua 100% controlada por humano naquela tabela separada. Essa
+/// separação é deliberada, mesmo raciocínio que levou a aposentar a
+/// monitoria por IA de 3 critérios nesta mesma sessão.
+model AtendimentoAnaliseIa {
+  id                      String    @id @default(uuid())
+  /// Chave de idempotência = _id do Mongo do OpaSuite (atendimento), NUNCA
+  /// protocolo — 2 colisões reais já confirmadas na migração de QA (ver
+  /// AtendimentoMonitoriaQa.id_legado), mesma lição aplicada aqui desde o
+  /// início em vez de repetir o erro.
+  opasuite_atendimento_id String    @unique
+  protocolo               String
+  setor                   String
+  canal                   String
+  data_atendimento        DateTime
+  /// Sempre de uma lista FECHADA (distinct de motivo_atendimentos do
+  /// OpaSuite) + "Outro" — nunca texto livre, senão fragmenta o ranking
+  /// (ex: "Sinal instável" vs "Problema de sinal" virariam 2 linhas
+  /// diferentes em vez de uma).
+  motivo_classificado     String?
+  /// Espelha o heurístico já usado no copiloto de QA (DEFINICAO_CRITERIO
+  /// ['Script'] = "seguiu abertura/fechamento?") — não existe nem é preciso
+  /// existir um documento de script literal pra IA comparar palavra a
+  /// palavra.
+  adesao_script           Float?
+  indice_sentimento       Float?
+  /// 'muito_negativo' | 'negativo' | 'neutro' | 'positivo' | 'muito_positivo'
+  sentimento_categoria    String?
+  justificativa           String?
+  /// true quando a conversa é curta/ambígua demais pra IA avaliar com
+  /// confiança (mesmo espírito do "canal pabx / <2 mensagens" já tratado no
+  /// copiloto de QA) — quando true, adesao_script/indice_sentimento ficam
+  /// null e NÃO viram sinal de nota ruim por falta de dado.
+  confianca_insuficiente  Boolean   @default(false)
+  /// Calculado no momento do processamento a partir de um corte por
+  /// PERCENTIL sobre a distribuição real (calibrado na fase piloto), não um
+  /// valor fixo cravado no código.
+  flag_triagem            Boolean   @default(false)
+  modelo_usado            String?
+  processado_em           DateTime  @default(now())
+
+  @@index([setor])
+  @@index([flag_triagem])
+  @@map("atendimento_analise_ia")
+  @@schema("diagnostico")
+}
+
+/// Alertas operacionais em tempo real (conversa parada, SLA de fila
+/// estourado, agente ausente demais, fila acumulada) — granularidade por
+/// conversa/agente individual, diferente dos alertas agregados de
+/// volume/escalonamento já existentes (alertas.service.ts, que continuam
+/// indo por e-mail). Isso aqui é um feed dentro do próprio Canaã Performance
+/// (não manda e-mail/WhatsApp — ver feedback do usuário sobre não lotar os
+/// canais existentes), consultado sob demanda pelo gestor/QA.
+model AtendimentoAlertaOperacional {
+  id                      String    @id @default(uuid())
+  /// 'CONVERSA_PARADA' | 'SLA_FILA' | 'AGENTE_AUSENTE' | 'FILA_ACUMULADA'
+  tipo                    String
+  /// 'AVISO' | 'CRITICO'
+  severidade              String
+  titulo                  String
+  descricao               String
+  setor                   String
+  /// _id do Mongo do OpaSuite — só preenchido pra alertas de 1 conversa
+  /// específica (CONVERSA_PARADA, SLA_FILA). String vazia (não null) quando
+  /// não se aplica — Postgres trata NULL como distinto de NULL em constraint
+  /// unique, o que quebraria o dedup de FILA_ACUMULADA (2+ alertas do mesmo
+  /// setor com os 2 campos NULL não seriam pegos como duplicata).
+  opasuite_atendimento_id String    @default("")
+  /// Só preenchido pra alertas de 1 agente específico (AGENTE_AUSENTE).
+  /// String vazia (não null) pelo mesmo motivo acima.
+  agente_nome             String    @default("")
+  /// 'ABERTO' | 'RESOLVIDO'
+  status                  String    @default("ABERTO")
+  criado_em               DateTime  @default(now())
+  resolvido_em            DateTime?
+
+  /// Dedup — nunca duplica o mesmo alerta aberto pro mesmo alvo (conversa,
+  /// agente, ou setor no caso de FILA_ACUMULADA).
+  @@unique([tipo, setor, opasuite_atendimento_id, agente_nome])
+  @@index([status])
+  @@map("atendimento_alerta_operacional")
+  @@schema("diagnostico")
+}

@@ -64,11 +64,20 @@ export async function fetchContracts(filters: ContractFilters): Promise<Contract
         MIN(cc.id_carteira_cobranca)                AS id_carteira_cobranca,
         MIN(cc.id_tipo_contrato)                    AS id_tipo_contrato,
         MIN(ct.tipo_contrato)                       AS tipo_contrato_str,
-        MIN(cc.assinatura_digital)                  AS assinatura_digital_ixc
+        MIN(adh.status)                             AS status_assinatura_ixc
      FROM view_valor_produtos_contrato_composicao v
      LEFT JOIN cliente_contrato cc         ON cc.id = v.cliente_contrato_id
      LEFT JOIN vendedor vend               ON vend.id = cc.id_vendedor
      LEFT JOIN cliente_contrato_tipo ct    ON ct.id = cc.id_tipo_contrato
+     LEFT JOIN (
+       SELECT h.id_contrato, h.status
+       FROM assinatura_digital_historico h
+       INNER JOIN (
+         SELECT id_contrato, MAX(id) AS max_id
+         FROM assinatura_digital_historico
+         GROUP BY id_contrato
+       ) ultimo ON ultimo.id_contrato = h.id_contrato AND ultimo.max_id = h.id
+     ) adh ON adh.id_contrato = v.cliente_contrato_id
      ${where}
      GROUP BY v.cliente_contrato_id
      ORDER BY MIN(v.cliente_contrato_data_ativacao) DESC
@@ -163,9 +172,15 @@ function enrichContract(
   const temFinanceiro  = financeiroSet.has(idContrato);
   const statusContrato = String(row.status_contrato ?? '');
 
-  // IXC Assina (substituiu o ZapSign a partir de 01/07/2026): campo nativo do
-  // IXC em cliente_contrato.assinatura_digital, enum('S','N','P').
-  const isIxcAssinaSigned = String(row.assinatura_digital_ixc ?? '').toUpperCase() === 'S';
+  // IXC Assina (substituiu o ZapSign a partir de 01/07/2026): o status real do
+  // envio de assinatura fica em assinatura_digital_historico.status (enum
+  // 'P','A','S','C'), pegando o registro mais recente por id_contrato — SÓ 'A'
+  // (Assinado) conta como concluído. cliente_contrato.assinatura_digital ('S'/
+  // 'N'/'P') NÃO é confiável pra isso: é uma flag de configuração do contrato
+  // (usa ou não assinatura digital), não o status da assinatura em si — 'S' lá
+  // aparece mesmo com o envio ainda pendente ('P' no histórico), o que fazia
+  // liberar comissão de contrato ainda não assinado de verdade.
+  const isIxcAssinaSigned = String(row.status_assinatura_ixc ?? '').toUpperCase() === 'A';
 
   // Considera assinado se: ZapSign signed  OU  IXC Assina  OU  GOV  OU  Físico
   const assinaturaOk = zapStatus === 'signed' || isIxcAssinaSigned || isGovSigned || isFisicoSigned;

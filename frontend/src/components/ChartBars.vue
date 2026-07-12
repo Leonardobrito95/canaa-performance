@@ -32,13 +32,15 @@
             class="bar-val"
             :fill="bar.color"
           >{{ bar.value }}</text>
-          <!-- X label -->
+          <!-- X label — rotacionado pra não encavalar com muitas categorias (ex:
+               8 setores de atendimento); tooltip nativo cobre o nome completo. -->
           <text
             :x="barX(i) + BAR_W / 2"
-            :y="H - PAD_B + 14"
-            text-anchor="middle"
+            :y="H - PAD_B + 9"
+            text-anchor="end"
+            :transform="`rotate(-40, ${barX(i) + BAR_W / 2}, ${H - PAD_B + 9})`"
             class="bar-lbl"
-          >{{ bar.label }}</text>
+          >{{ bar.label }}<title>{{ bar.label }}: {{ bar.value }}</title></text>
         </g>
       </svg>
     </div>
@@ -53,7 +55,9 @@ interface Bar { label: string; value: number; color: string; }
 const props = defineProps<{ title: string; bars: Bar[] }>();
 
 const W = 260; const H = 160;
-const PAD_L = 30; const PAD_R = 10; const PAD_T = 20; const PAD_B = 28;
+// PAD_B maior que o padrão pra caber o rótulo do eixo X rotacionado (-40°)
+// sem cortar nem encavalar, mesmo com várias categorias (ex: 8 setores).
+const PAD_L = 30; const PAD_R = 10; const PAD_T = 20; const PAD_B = 40;
 const INNER_H = H - PAD_T - PAD_B;
 
 const BAR_W = computed(() => {
@@ -105,7 +109,7 @@ const gridTicks = computed(() => {
   animation: barRise .5s cubic-bezier(.4,0,.2,1) both;
 }
 @keyframes barRise {
-  from { y: calc(160px - 28px); height: 0; opacity: 0; }
+  from { y: calc(160px - 40px); height: 0; opacity: 0; }
   to   { y: var(--bar-y); height: var(--bar-h); opacity: 1; }
 }
 

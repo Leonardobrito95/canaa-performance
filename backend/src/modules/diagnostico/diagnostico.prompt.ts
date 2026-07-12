@@ -1,4 +1,8 @@
-import { ContextoClienteDiagnostico, RankingVendedorEntry, EvolucaoMensalEntry, PopStatusEntry } from './diagnostico.types';
+import { ContextoClienteDiagnostico } from './diagnostico.types';
+import {
+  FONTES_GESTAO, DadosGestao,
+  REGRA_SINAL_DUAS_FONTES, REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA, REGRA_ATENDIMENTO_SEIS_FONTES,
+} from './diagnostico.gestao-fontes';
 
 const CRITERIOS_INSTALACAO = `Critérios de boa instalação verificáveis visualmente numa foto (use como
 referência ao analisar fotos, não recalcule ou invente outros critérios):
@@ -72,6 +76,13 @@ Regras:
   diga apenas que não há foto disponível para essa análise, se for relevante.
 - Use as regras de negócio fornecidas (metas, faixas, categorias de sinal) como referência
   de interpretação — não recalcule limiares por conta própria.
+- Se o "Status SmartOLT da ONU" estiver presente no histórico de sinal, use-o para refinar a
+  causa raiz: "Power fail" indica queda de energia NO LOCAL DO CLIENTE (não é problema de
+  fibra/sinal da rede) — aponte isso como causa provável em vez de especular sobre degradação
+  óptica. "LOS" indica perda de sinal óptico de verdade (rompimento/desconexão de fibra).
+  "Offline" é inconclusivo entre os dois. Esse dado só existe para parte dos clientes (nem
+  todo equipamento aparece nessa fonte) — se ele não vier no contexto, não mencione a ausência
+  dele nem tente adivinhar o status.
 - O status de comissão vem de um snapshot mensal imutável (veja o mês de referência e a data
   do snapshot em cada contrato). Se o mês de referência for anterior ao mês atual, não
   descreva o bloqueio como algo "em aberto" ou "aguardando" — deixe claro que é o retrato
@@ -79,7 +90,9 @@ Regras:
   não é recalculado.
 - Não use travessão em nenhuma frase.
 - Seja direto e técnico, sem saudação nem introdução.
-- Cada seção deve ter no máximo 3 frases.`;
+- Cada seção deve ter no máximo 3 frases.
+- Se precisar enumerar mais de dois itens (ex: técnicos de várias O.S., vários atendimentos),
+  use lista markdown ("- " por item) com **negrito** no dado-chave, em vez de um parágrafo corrido.`;
 
 /// Formata uma data com segurança. Datas "zero" do MySQL (0000-00-00) chegam
 /// como Date inválido (truthy, mas NaN internamente) — nunca usar só `data ?`.
@@ -119,6 +132,17 @@ function formatarHistoricoSinal(ctx: ContextoClienteDiagnostico): string {
       linhas.push(`Maior queda registrada: de ${osc.piora.rxAnterior}dBm (${osc.piora.dataAnterior}) para ${osc.piora.rxNaQueda}dBm (${osc.piora.dataQueda}).`);
     }
     linhas.push(`Veredito do OTDR: ${osc.veredito} (gravidade: ${osc.gravidade})`);
+  }
+
+  const smartolt = ctx.statusSmartOlt;
+  if (smartolt) {
+    const dataStatus = fmtData(smartolt.ultimaMudancaStatus, fmtData(smartolt.snapshotData));
+    linhas.push(
+      `Status SmartOLT da ONU (${smartolt.sn}): ${smartolt.statusOnu}` +
+      (smartolt.nivelSinal ? ` | nível ${smartolt.nivelSinal}` : '') +
+      (smartolt.diasDegradado !== null ? ` | ${smartolt.diasDegradado} dias degradado` : '') +
+      ` | desde ${dataStatus}`
+    );
   }
 
   return linhas.length ? linhas.join('\n') : 'Sem registros de degradação de sinal.';
@@ -213,10 +237,13 @@ export function montarContextoTextual(ctx: ContextoClienteDiagnostico): string {
 // PAINEL DE GESTÃO — perguntas agregadas, sem cliente específico
 // ============================================================
 
-export const GESTAO_SYSTEM_PROMPT = `Você é um analista sênior do Canaã Performance, o hub interno da
+const GESTAO_INTRO_E_REGRAS_GERAIS = `Você é um analista sênior do Canaã Performance, o hub interno da
 Canaã Telecom. Aqui você responde perguntas de GESTÃO sobre o negócio como um todo (ranking de
-vendedores, evolução de vendas por período/segmento, status de rede por POP agora) — não é sobre
-um cliente específico.
+vendedores, evolução de vendas por período/segmento, status de rede por POP agora, o cliente com o
+pior sinal da rede neste momento, clientes que pioraram hoje, o desempenho de retenção do mês em
+andamento, a auditoria de negociação real nas retenções, e os KPIs/monitoria de qualidade do
+atendimento — SAC, Suporte N1, Suporte N2, Cobrança, Vendas, Retenção, Pós-Vendas, Backoffice) —
+não é uma consulta de diagnóstico completo de um cliente específico (isso é o modo Consulta).
 
 Regras:
 - Responda em texto livre, direto e objetivo, sem seções fixas — não force um formato de
@@ -230,58 +257,36 @@ Regras:
   essa explicação já tenha aparecido antes na conversa) — não basta dizer "não há dados", diga
   também quando o snapshot desse mês fica disponível (dia 19 do mês seguinte).
 - "Valor de ativos" é o total de contratos ativados no mês (liberado ou não); "valor liberado"
-  é a fração com o primeiro boleto pago — a comissão só é paga sobre o valor liberado.
-- Cada mês tem seu próprio líder de vendedores — isso NÃO é uma competição contínua entre
-  pessoas. Nunca diga que o líder de um mês "superou", "ultrapassou" ou "supera" o líder de OUTRO
-  mês — os números de meses diferentes não são comparáveis dessa forma (ex: não diga "Fulano
-  liderou maio superando Beltrano que liderou abril com R$X", isso mistura números de períodos
-  diferentes e pode soar como uma comparação que nem sempre é verdadeira). Se for comparar
-  desempenho de vendedores entre meses, compare o MESMO vendedor no tempo (ex: "Fulano caiu de
-  R$X em abril para R$Y em maio") ou compare vendedores dentro do MESMO mês.
-- O status de POP é AO VIVO (consultado no momento da pergunta, não é histórico) — cada POP
-  agrupa várias OLTs. Se perguntarem por um POP específico, procure pelo nome mesmo que não bata
-  exatamente (ex: "aguas claras" deve encontrar "AGUAS CLARAS").
-- Se a pergunta pedir algo fora do que os dados cobrem (ex: um cliente específico, alertas
-  históricos de sinal, um POP que não existe na lista), diga que esse assistente de gestão cobre
-  vendedores, evolução de vendas e status de POP por enquanto, e não tem dado para o que foi
-  pedido.
-- Não use travessão em nenhuma frase. Seja direto, sem saudação nem introdução.`;
+  é a fração com o primeiro boleto pago — a comissão só é paga sobre o valor liberado.`;
 
-function formatarRankingVendedores(ranking: RankingVendedorEntry[]): string {
-  if (!ranking.length) return 'Sem dados de vendedores nos snapshots disponíveis.';
-  return ranking.map((r) =>
-    `- ${r.mesReferencia} | ${r.nomeVendedor} | ${r.qtdContratos} contratos | ativos R$${r.valorAtivos.toFixed(2)} | liberado R$${r.valorLiberado.toFixed(2)}`
-  ).join('\n');
-}
+const GESTAO_REGRAS_FINAIS = `- Se a pergunta pedir algo fora do que os dados cobrem (ex: histórico de alertas de um cliente
+  específico, um diagnóstico completo de um cliente, um POP que não existe na lista), diga que
+  esse assistente de gestão cobre vendedores, evolução de vendas, status de POP e sinal de
+  clientes, retenção e atendimento (SAC, Suporte N1/N2, Cobrança, Vendas, Retenção, Pós-Vendas,
+  Backoffice) por enquanto, e não tem dado para o que foi pedido.
+- Não use travessão em nenhuma frase. Seja direto, sem saudação nem introdução.
+- Quando a resposta enumerar mais de dois itens (vendedores, POPs, meses), use uma lista markdown
+  (uma linha por item começando com "- ") com **negrito** no nome/valor-chave de cada item, em vez
+  de um parágrafo corrido — isso é renderizado como lista de verdade no frontend, não é só texto.`;
 
-function formatarEvolucaoVendas(evolucao: EvolucaoMensalEntry[]): string {
-  if (!evolucao.length) return 'Sem dados de evolução de vendas nos snapshots disponíveis.';
-  return evolucao.map((e) =>
-    `- ${e.mesReferencia} | ${e.segmento} | ${e.qtdContratos} contratos | ativos R$${e.valorAtivos.toFixed(2)} | liberado R$${e.valorLiberado.toFixed(2)}`
-  ).join('\n');
-}
+/// Composição, não template monolítico: cada fonte de FONTES_GESTAO contribui
+/// sua própria regra (se tiver), regras COMPARATIVAS entre fontes ficam à
+/// parte (ver diagnostico.gestao-fontes.ts) pra não perder a moldura "não
+/// confunda X com Y" que corrigiu bugs reais de confusão do modelo nesta sessão.
+export const GESTAO_SYSTEM_PROMPT = [
+  GESTAO_INTRO_E_REGRAS_GERAIS,
+  ...FONTES_GESTAO.flatMap((f) => (f.regraPrompt ? [f.regraPrompt] : [])),
+  REGRA_SINAL_DUAS_FONTES,
+  REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA,
+  REGRA_ATENDIMENTO_SEIS_FONTES,
+  GESTAO_REGRAS_FINAIS,
+].join('\n\n');
 
-function formatarStatusPops(pops: PopStatusEntry[]): string {
-  if (!pops.length) return 'Sem dados de POPs disponíveis agora.';
-  return pops.map((p) =>
-    `- ${p.pop} | ${p.totalOnus} ONUs | Normal: ${p.normal} | Atenção: ${p.atencao} | Crítico: ${p.critico} | Fora de operação: ${p.foraDeOperacao} | Sem leitura: ${p.semLeitura}` +
-    (p.piorSinalRx !== null ? ` | Pior sinal: ${p.piorSinalRx.toFixed(2)}dBm` : '')
-  ).join('\n');
-}
-
-export function montarContextoGestaoTextual(
-  ranking: RankingVendedorEntry[],
-  evolucao: EvolucaoMensalEntry[],
-  pops: PopStatusEntry[] = [],
-): string {
-  return [
-    `=== RANKING DE VENDEDORES POR MES (snapshots mensais) ===`,
-    formatarRankingVendedores(ranking),
-    '',
-    `=== EVOLUCAO DE VENDAS POR MES E SEGMENTO ===`,
-    formatarEvolucaoVendas(evolucao),
-    '',
-    `=== STATUS DE POPS AGORA (ao vivo) ===`,
-    formatarStatusPops(pops),
-  ].join('\n');
+/// Itera FONTES_GESTAO (diagnostico.gestao-fontes.ts) em vez de 11 parâmetros
+/// posicionais — adicionar uma fonte nova não muda essa assinatura.
+export function montarContextoGestaoTextual(dados: Partial<DadosGestao> = {}): string {
+  return FONTES_GESTAO.flatMap((fonte) => {
+    const valor = (dados as any)[fonte.chave] ?? fonte.valorVazio;
+    return fonte.blocos.flatMap((b) => [`=== ${b.titulo} ===`, b.formatar(valor), '']);
+  }).join('\n').trimEnd();
 }

@@ -1,0 +1,123 @@
+import axios from 'axios';
+
+const TOKEN_KEY = 'bdr_token';
+
+const api = axios.create({
+  baseURL: '/bdr/api/v1/atendimento',
+  headers: { 'Content-Type': 'application/json' },
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) config.headers['Authorization'] = `Bearer ${token}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err.response?.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.reload(); }
+    return Promise.reject(err);
+  },
+);
+
+// ── Types ─────────────────────────────────────────────────────
+
+/// Espelha SETORES_ATENDIMENTO do backend (atendimento.types.ts) — setor
+/// novo precisa ser adicionado nos dois lados (frontend/backend não
+/// compartilham pacote de tipos neste monorepo), mas só aqui no frontend,
+/// não espalhado pelas views.
+export type SetorAtendimento = 'SAC' | 'N1' | 'N2' | 'COBRANCA' | 'VENDAS' | 'RETENCAO' | 'POS_VENDAS' | 'BACKOFFICE';
+
+export const SETORES_ATENDIMENTO_ORDEM: SetorAtendimento[] = ['SAC', 'N1', 'N2', 'COBRANCA', 'VENDAS', 'RETENCAO', 'POS_VENDAS', 'BACKOFFICE'];
+
+/// Vendas e Pós-Vendas são departamentos do Comercial, não do Centro de
+/// Solução — cada grupo de navegação vê só os seus setores nessa página de
+/// atendimento (ver AtendimentoResumoPanel.vue). O chat de gestão do C.A.I.O.
+/// continua vendo os 8 juntos (não usa essas constantes).
+export const SETORES_CENTRO_SOLUCAO: SetorAtendimento[] = ['SAC', 'N1', 'N2', 'COBRANCA', 'RETENCAO', 'BACKOFFICE'];
+export const SETORES_COMERCIAL: SetorAtendimento[]      = ['VENDAS', 'POS_VENDAS'];
+
+export const NOMES_SETOR: Record<SetorAtendimento, string> = {
+  SAC:        'SAC',
+  N1:         'Suporte N1',
+  N2:         'Suporte N2',
+  COBRANCA:   'Cobrança',
+  VENDAS:     'Vendas',
+  RETENCAO:   'Retenção',
+  POS_VENDAS: 'Pós-Vendas',
+  BACKOFFICE: 'Backoffice',
+};
+
+/// Mesma paleta usada em ChartRanking.vue — reaproveitada aqui pra manter
+/// cor consistente do mesmo setor em gráficos diferentes.
+export const CORES_SETOR: Record<SetorAtendimento, string> = {
+  SAC:        '#00f0ff',
+  N1:         '#c7ff00',
+  N2:         '#a855f7',
+  COBRANCA:   '#f59e0b',
+  VENDAS:     '#f472b6',
+  RETENCAO:   '#34d399',
+  POS_VENDAS: '#60a5fa',
+  BACKOFFICE: '#fb923c',
+};
+
+export interface KpisAtendimento {
+  setor:               SetorAtendimento;
+  volume:              number;
+  tmaMs:               number | null;
+  tmeMs:               number | null;
+  tmrMs:               number | null;
+  escalonamentos:      number;
+  pctEscalonamento:    number | null;
+  notaMediaSatisfacao: number | null;
+  qtdAvaliados:        number;
+}
+
+export interface RankingAtendenteEntry {
+  nome: string;
+  qtd:  number;
+}
+
+export interface MotivoAtendimentoEntry {
+  motivo: string;
+  qtd:    number;
+}
+
+export interface RankingsAtendimento {
+  atendentes: RankingAtendenteEntry[];
+  motivos:    MotivoAtendimentoEntry[];
+}
+
+/// Alerta operacional em tempo real (conversa parada, SLA de fila, agente
+/// ausente, fila acumulada) — feed interno, não confundir com os alertas
+/// agregados de volume/escalonamento que vão por e-mail.
+export interface AlertaOperacional {
+  id:                       string;
+  tipo:                     'CONVERSA_PARADA' | 'SLA_FILA' | 'AGENTE_AUSENTE' | 'FILA_ACUMULADA';
+  severidade:               'AVISO' | 'CRITICO';
+  titulo:                   string;
+  descricao:                string;
+  setor:                    string;
+  opasuite_atendimento_id:  string;
+  agente_nome:              string;
+  status:                   'ABERTO' | 'RESOLVIDO';
+  criado_em:                string;
+  resolvido_em:             string | null;
+}
+
+// ── Chamadas ─────────────────────────────────────────────────────
+
+export const atendimentoApiClient = {
+  getResumo: (params: { dateFrom?: string; dateTo?: string; setores?: SetorAtendimento[] }): Promise<{ kpis: KpisAtendimento[]; rankings: RankingsAtendimento }> =>
+    api.get('/resumo', { params: { ...params, setores: params.setores?.join(',') } }).then((r) => r.data),
+
+  auditarPontual: (protocolo: string, pergunta?: string): Promise<{ texto: string; consultaId: string }> =>
+    api.post(`/auditoria/${protocolo}`, { pergunta }).then((r) => r.data),
+
+  getAlertasOperacionais: (): Promise<{ itens: AlertaOperacional[] }> =>
+    api.get('/alertas-operacionais').then((r) => r.data),
+
+  resolverAlertaOperacional: (id: string): Promise<AlertaOperacional> =>
+    api.post(`/alertas-operacionais/${id}/resolver`).then((r) => r.data),
+};

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { montarContextoTextual, montarContextoGestaoTextual } from './diagnostico.prompt';
+import { montarContextoTextual, montarContextoGestaoTextual, DIAGNOSTICO_SYSTEM_PROMPT } from './diagnostico.prompt';
 import type { ContextoClienteDiagnostico, RankingVendedorEntry, EvolucaoMensalEntry } from './diagnostico.types';
 
 // ── Fixture base — um cliente "completo", editado por teste conforme necessário ──
@@ -9,6 +9,7 @@ function makeContexto(overrides: Partial<ContextoClienteDiagnostico> = {}): Cont
     equipamentoAtual: [{ descricao: 'ONU TP-LINK', numeroSerie: 'ABC123' }],
     historicoSinal: [],
     oscilacaoRede: null,
+    statusSmartOlt: null,
     ordensServico: [],
     osMensagens: {},
     osArquivos: {},
@@ -125,6 +126,30 @@ describe('montarContextoTextual — Situação comercial (snapshot)', () => {
   });
 });
 
+describe('montarContextoTextual — Status SmartOLT (Power fail vs LOS)', () => {
+  it('inclui o status SmartOLT quando presente, distinguindo Power fail de LOS', () => {
+    const ctx = makeContexto({
+      statusSmartOlt: {
+        sn: 'MONU005EC969', statusOnu: 'Power fail', signalClass: null,
+        nivelSinal: '1 - Atencao', diasDegradado: 3,
+        sinalRx: null, ultimaMudancaStatus: new Date('2026-07-08'), snapshotData: new Date('2026-07-08'),
+      },
+    });
+    const texto = montarContextoTextual(ctx);
+    expect(texto).toContain('Status SmartOLT da ONU (MONU005EC969): Power fail');
+    expect(texto).toContain('2026-07-08');
+    // A regra que ensina a IA a não confundir queda de energia com problema de
+    // fibra tem que continuar no prompt (guarda contra regressão de instrução).
+    expect(DIAGNOSTICO_SYSTEM_PROMPT).toContain('queda de energia');
+    expect(DIAGNOSTICO_SYSTEM_PROMPT).toContain('LOS');
+  });
+
+  it('não menciona status SmartOLT quando a fonte não tem dado pra esse cliente (não é erro)', () => {
+    const texto = montarContextoTextual(makeContexto({ statusSmartOlt: null }));
+    expect(texto).not.toContain('Status SmartOLT');
+  });
+});
+
 describe('montarContextoTextual — Regras de negócio e equipamento', () => {
   it('inclui as regras de negócio fornecidas', () => {
     const ctx = makeContexto({ regrasNegocio: { META_B2C: '10000' } });
@@ -146,20 +171,88 @@ describe('montarContextoGestaoTextual — ranking e evolução', () => {
   ];
 
   it('formata o ranking de vendedores com mês, contratos e valores', () => {
-    const texto = montarContextoGestaoTextual(ranking, evolucao);
+    const texto = montarContextoGestaoTextual({ ranking, evolucao });
     expect(texto).toContain('2026-05 | NATHALIA | 74 contratos');
     expect(texto).toContain('ativos R$9152.80');
     expect(texto).toContain('liberado R$6734.70');
   });
 
   it('formata a evolução de vendas por mês e segmento', () => {
-    const texto = montarContextoGestaoTextual(ranking, evolucao);
+    const texto = montarContextoGestaoTextual({ ranking, evolucao });
     expect(texto).toContain('2026-05 | B2C | 294 contratos');
   });
 
   it('usa mensagens de fallback quando não há dados', () => {
-    const texto = montarContextoGestaoTextual([], []);
+    const texto = montarContextoGestaoTextual({});
     expect(texto).toContain('Sem dados de vendedores nos snapshots disponíveis.');
     expect(texto).toContain('Sem dados de evolução de vendas nos snapshots disponíveis.');
+  });
+});
+
+describe('montarContextoGestaoTextual — Atendimento (KPIs vs QA humano)', () => {
+  it('formata os critérios de QA mais reprovados, incluindo Transferencia Indevida', () => {
+    const texto = montarContextoGestaoTextual({
+      monitoriaAtendimento: {
+        criterios: [
+          { criterio: 'Transferencia Indevida', naoConforme: 18, total: 940, pct: 1.9 },
+          { criterio: 'Omissão de atendimento', naoConforme: 3, total: 940, pct: 0.3 },
+        ],
+        ranking: [],
+      },
+    });
+    expect(texto).toContain('Transferencia Indevida: 18/940 (1.9%) reprovados');
+  });
+
+  it('ranking de qualidade por agente traz nota real e classificação, não é o mesmo texto do ranking por volume (guarda contra o modelo confundir as duas fontes)', () => {
+    const texto = montarContextoGestaoTextual({
+      monitoriaAtendimento: {
+        criterios: [],
+        ranking: [
+          { nomeAgente: 'Priscilla Rodrigues', equipe: 'SAC', qtd: 515, pontuacaoMedia: 9.66, classificacao: 'Ótimo' },
+        ],
+      },
+    });
+    expect(texto).toContain('Priscilla Rodrigues (SAC) — nota média 9.66/10, classificação "Ótimo", 515 avaliações');
+  });
+
+  it('inclui os KPIs brutos de atendimento (TMR/TME/TMA) com escalonamento só pra N1', () => {
+    const kpis = [
+      // TMR em segundos de propósito — guarda contra a formatação arredondar
+      // TMR pra "0min" e esconder o dado quando a resposta humana é rápida.
+      { setor: 'N1' as const, volume: 100, tmrMs: 45000, tmeMs: 900000, tmaMs: 600000, escalonamentos: 5, pctEscalonamento: 5, notaMediaSatisfacao: 4.1, qtdAvaliados: 20 },
+      { setor: 'SAC' as const, volume: 50, tmrMs: 20000, tmeMs: 120000, tmaMs: 300000, escalonamentos: 0, pctEscalonamento: null, notaMediaSatisfacao: null, qtdAvaliados: 0 },
+    ];
+    const texto = montarContextoGestaoTextual({ kpisAtendimento: kpis });
+    expect(texto).toContain('TMR (tempo que o atendente HUMANO demora pra responder uma mensagem do cliente, nunca conta URA/IZA): 45s');
+    expect(texto).toContain('TME (espera em fila/URA/IZA até um humano assumir): 15min');
+    expect(texto).toContain('TMA (tempo com o atendente humano): 10min');
+    expect(texto).toContain('Escalonado pra N2: 5 (5%)');
+    const linhaSac = texto.split('\n').find((l) => l.startsWith('- SAC'));
+    expect(linhaSac).not.toContain('Escalonado');
+  });
+});
+
+describe('montarContextoGestaoTextual — Atendimento (análise de IA em massa)', () => {
+  it('formata sentimento e adesão por setor, distinto da nota de QA humano', () => {
+    const texto = montarContextoGestaoTextual({
+      analiseIaAtendimento: {
+        porSetor: [
+          { setor: 'VENDAS', qtd: 120, sentimentoMedio: -0.3, adesaoMedia: 7.2 },
+        ],
+        motivos: [],
+      },
+    });
+    expect(texto).toContain('VENDAS: sentimento médio do cliente -0.3 (escala -1 a 1), adesão média ao script do atendente 7.2/10, 120 atendimento(s) analisados');
+  });
+
+  it('ranking de motivos classificados por IA aparece separado do ranking de motivos do OpaSuite', () => {
+    const texto = montarContextoGestaoTextual({
+      analiseIaAtendimento: {
+        porSetor: [],
+        motivos: [{ motivo: 'Sem Conexão', qtd: 42 }],
+      },
+    });
+    expect(texto).toContain('ATENDIMENTO — ANÁLISE DE IA EM MASSA: MOTIVOS CLASSIFICADOS');
+    expect(texto).toContain('1. Sem Conexão — 42 ocorrências');
   });
 });

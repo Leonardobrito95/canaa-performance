@@ -112,6 +112,23 @@ export interface EquipamentoAtual {
   numeroSerie: string;
 }
 
+/// Status granular da ONU vindo do SmartOLT (otdr.historico_smartolt) — cobre
+/// só ~60% do fleet (o que já teve algum problema), por isso é sempre opcional.
+/// Diferencia "Power fail" (queda de energia no local do cliente, não é
+/// problema de fibra/rede) de "LOS" (perda de sinal óptico, rompimento de
+/// fibra) — o nível_sinal do OTDR (historicoSinal) trata os dois como "Fora
+/// de Operação" igual, sem essa distinção de causa.
+export interface StatusSmartOlt {
+  sn:                  string;
+  statusOnu:           string;
+  signalClass:         string | null;
+  nivelSinal:          string | null;
+  diasDegradado:       number | null;
+  sinalRx:             number | null;
+  ultimaMudancaStatus: Date | null;
+  snapshotData:        Date | null;
+}
+
 // ============================================================
 // PAINEL DE GESTÃO — agregados sem cliente específico
 // ============================================================
@@ -145,11 +162,28 @@ export interface PopStatusEntry {
   piorSinalRx:    number | null;
 }
 
+/// O ONU com pior sinal AGORA em toda a rede (leitura ao vivo de /api/onus,
+/// não confundir com "piora hoje" — que é evento de degradação dia-a-dia e
+/// vem de uma fonte diferente, com possível defasagem de ingestão).
+export interface PiorSinalAgora {
+  clienteId: number;
+  nome:      string;
+  pop:       string;
+  olt:       string;
+  sinalRx:   number;
+}
+
+export interface StatusRedeAgora {
+  pops:      PopStatusEntry[];
+  piorGeral: PiorSinalAgora | null;
+}
+
 export interface ContextoClienteDiagnostico {
   idCliente:       number;
   equipamentoAtual: EquipamentoAtual[];
   historicoSinal:  HistoricoSinalEntry[];
   oscilacaoRede:   OscilacaoRede | null;
+  statusSmartOlt:  StatusSmartOlt | null;
   ordensServico:   OsEntry[];
   osMensagens:     Record<number, OsMensagemEntry[]>; // por idOssChamado
   osArquivos:      Record<number, OsArquivoEntry[]>;  // por idOssChamado

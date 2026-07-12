@@ -7,6 +7,11 @@ import {
   RetencaoFilters,
   NegociacaoInput,
   getComissaoRetencao,
+  contarChamadosRetencaoTotal,
+  resumoAuditoriaPorOperador,
+  ResumoAuditoriaOperador,
+  buscarDivergenciasRecentes,
+  DivergenciaRecente,
 } from './retencao.repository';
 
 export interface RetencaoKpis {
@@ -65,11 +70,26 @@ export async function getRetencaoDetalhe(
 ) {
   const operadorFilter = perfil === 'consultor' ? userName : (filters.operador || undefined);
 
-  return fetchRetencaoDetalhe({
+  const detalhes = await fetchRetencaoDetalhe({
     dateFrom:     filters.dateFrom,
     dateTo:       filters.dateTo,
     operadorNome: operadorFilter,
   });
+
+  // A auditoria completa (justificativa, divergência com o OpaSuite) é
+  // informação de gestão sobre qualidade do atendimento — mostrar pra
+  // colaboradora o que foi flagado como suspeito ensinaria a burlar a
+  // auditoria em vez de melhorar o atendimento. Ela só vê o lado positivo
+  // (negociação confirmada), como reforço construtivo, nunca o negativo.
+  if (perfil !== 'gestor') {
+    return detalhes.map((d) => ({
+      ...d,
+      auditoria: d.auditoria?.classificacao === 'NEGOCIACAO_REAL'
+        ? { classificacao: 'NEGOCIACAO_REAL' as const, justificativa: '', negociacao_detectada: null, divergencia_nota_os: null }
+        : null,
+    }));
+  }
+  return detalhes;
 }
 
 export async function saveNegociacao(input: NegociacaoInput) {
@@ -78,4 +98,33 @@ export async function saveNegociacao(input: NegociacaoInput) {
 
 export async function removeNegociacao(idChamado: string) {
   return deleteNegociacao(idChamado);
+}
+
+export interface ResumoAuditoriaRetencao {
+  porOperador:            ResumoAuditoriaOperador[];
+  totalGeralClassificado: number;
+  totalGeralOsRetencao:   number;
+  totalGeralPendente:     number;
+  divergenciasRecentes:   DivergenciaRecente[];
+}
+
+/// Auditoria de negociação real (cruza O.S. + atendimento) — não muda o
+/// cálculo de comissão, só reporta a divergência entre a classificação
+/// genérica do IXC e o que de fato aconteceu na conversa com o cliente.
+export async function getResumoAuditoriaRetencao(): Promise<ResumoAuditoriaRetencao> {
+  const [porOperador, totalGeralOsRetencao, divergenciasRecentes] = await Promise.all([
+    resumoAuditoriaPorOperador(),
+    contarChamadosRetencaoTotal(),
+    buscarDivergenciasRecentes(10),
+  ]);
+
+  const totalGeralClassificado = porOperador.reduce((s, o) => s + o.totalClassificado, 0);
+
+  return {
+    porOperador,
+    totalGeralClassificado,
+    totalGeralOsRetencao,
+    totalGeralPendente: Math.max(0, totalGeralOsRetencao - totalGeralClassificado),
+    divergenciasRecentes,
+  };
 }

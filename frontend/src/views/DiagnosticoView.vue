@@ -1,112 +1,49 @@
 <template>
   <div class="view-diagnostico">
+    <div class="diag-shell">
 
-    <!-- Header -->
-    <div class="diag-header">
-      <div>
-        <h1 class="diag-title">Diagnóstico IA</h1>
-        <p class="diag-sub">Cruza rede, instalação e comercial de um cliente em uma única análise</p>
-      </div>
-      <div v-if="isGestor || isHubAdmin" class="diag-modes">
-        <button :class="['diag-mode-btn', { active: modo === 'consulta' }]" @click="modo = 'consulta'">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 3.5h12a1 1 0 011 1v6a1 1 0 01-1 1H6l-3 2.5v-2.5H2a1 1 0 01-1-1v-6a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
-          Consulta
-        </button>
-        <button v-if="isGestor" :class="['diag-mode-btn', { active: modo === 'gestao' }]" @click="modo = 'gestao'">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="8.5" width="3" height="6" rx=".5" stroke="currentColor" stroke-width="1.3"/><rect x="6.5" y="4.5" width="3" height="10" rx=".5" stroke="currentColor" stroke-width="1.3"/><rect x="11.5" y="1.5" width="3" height="13" rx=".5" stroke="currentColor" stroke-width="1.3"/></svg>
-          Painel de Gestão
-        </button>
-        <button v-if="isHubAdmin" :class="['diag-mode-btn', { active: modo === 'regras' }]" @click="modo = 'regras'">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l5.5 2v4c0 3.5-2.3 5.9-5.5 7-3.2-1.1-5.5-3.5-5.5-7v-4l5.5-2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
-          Regras de Negócio
-        </button>
-      </div>
-    </div>
-
-    <!-- ═══════════ MODO CONSULTA (chat) ═══════════ -->
-    <template v-if="modo === 'consulta'">
-      <div class="chat-shell">
-        <div class="chat-scroll" ref="scrollRef">
-          <div v-for="(turno, i) in turnos" :key="i" class="turno">
-            <div class="turno-label">{{ turno.tipo === 'assistente' ? 'IA' : (user?.nome?.split(' ')[0] || 'Você') }}</div>
-
-            <p v-if="turno.texto" class="turno-texto">{{ turno.texto }}</p>
-
-            <!-- candidatos pra escolher -->
-            <div v-if="turno.candidatos" class="candidatos-lista">
-              <button
-                v-for="c in turno.candidatos"
-                :key="c.id"
-                class="candidato-btn"
-                @click="escolherCandidato(c)"
-              >
-                <span class="candidato-nome">{{ c.nome }}</span>
-                <span class="candidato-doc">{{ c.cpfCnpj }}<span v-if="c.endereco"> · {{ c.endereco }}</span></span>
-              </button>
-            </div>
-
-            <!-- resultado: estruturado (3 seções) ou texto livre (fora de escopo) -->
-            <div v-if="turno.resultado?.estruturado" class="result-secoes">
-              <div class="result-secao">
-                <span class="result-label label-diagnostico">Diagnóstico</span>
-                <p>{{ turno.resultado.diagnostico }}</p>
-              </div>
-              <div class="result-secao">
-                <span class="result-label label-erro">Causa identificada</span>
-                <p>{{ turno.resultado.erro }}</p>
-              </div>
-              <div class="result-secao">
-                <span class="result-label label-sugestao">Sugestão <em>(para avaliação humana)</em></span>
-                <p>{{ turno.resultado.sugestao }}</p>
-              </div>
-            </div>
-            <p v-else-if="turno.resultado" class="turno-texto">{{ turno.resultado.textoCompleto }}</p>
-
-            <div v-if="turno.resultado" class="feedback-row">
-              <span v-if="turno.feedback" class="feedback-obrigado">
-                {{ turno.feedback === 'POSITIVO' ? 'Obrigado! Marcado como correto.' : 'Obrigado! Marcado como incorreto.' }}
-              </span>
-              <template v-else>
-                <span class="feedback-pergunta">Esse diagnóstico estava correto?</span>
-                <button class="link-btn" @click="darFeedback(turno, turno.resultado.consultaId, 'POSITIVO')">Sim</button>
-                <button class="link-btn link-btn-perigo" @click="darFeedback(turno, turno.resultado.consultaId, 'NEGATIVO')">Não</button>
-              </template>
-            </div>
-          </div>
-
-          <div v-if="loading" class="turno">
-            <div class="turno-label">IA</div>
-            <span class="loading-dots"><span/><span/><span/></span>
-            <span class="loading-label">{{ loadingLabel }}</span>
-          </div>
+      <!-- Sidebar: marca, navegação entre modos e (em Gestão) o painel de métricas —
+           aproveita o espaço que antes ficava vazio nas laterais do chat centralizado. -->
+      <aside class="diag-sidebar">
+        <div class="diag-brand">
+          <span class="diag-brand-icon">
+            <svg width="22" height="22" viewBox="0 0 15 15" fill="none">
+              <circle cx="7.5" cy="1.1" r="0.75" fill="currentColor"/>
+              <path d="M7.5 1.85v1.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              <rect x="2.5" y="3.15" width="10" height="7.3" rx="2.6" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M2.5 5.8h-1.2M13.5 5.8h1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              <path d="M4.9 6.3c.5-.75 1.2-.75 1.7 0" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M8.4 6.3c.5-.75 1.2-.75 1.7 0" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M5.6 8.6h3.8" stroke="currentColor" stroke-width="1.15" stroke-linecap="round"/>
+              <path d="M4.2 10.45v1.15M10.8 10.45v1.15" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="diag-brand-title">C.A.I.O.</span>
         </div>
 
-        <div class="chat-input-shell">
-          <div v-if="clienteAtivo" class="chat-cliente-ativo">
-            <span>Analisando: <strong>{{ clienteAtivo.nome }}</strong></span>
-            <button class="btn-trocar" @click="trocarCliente">Trocar cliente</button>
-          </div>
-          <div class="chat-input-row">
-            <input
-              v-model="inputAtual"
-              :placeholder="placeholderInput"
-              :disabled="loading"
-              @keydown.enter="enviar"
-            />
-            <button class="btn-enviar" :disabled="loading || !inputAtual.trim()" @click="enviar">
-              <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M1.5 7.5 13 2 8.5 13 6.5 8.5 1.5 7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>
-            </button>
-          </div>
-        </div>
-      </div>
-    </template>
+        <nav v-if="isGestor || isHubAdmin" class="diag-nav">
+          <button :class="['diag-nav-item', { active: modo === 'consulta' }]" @click="modo = 'consulta'">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 3.5h12a1 1 0 011 1v6a1 1 0 01-1 1H6l-3 2.5v-2.5H2a1 1 0 01-1-1v-6a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+            <span>Consulta</span>
+          </button>
+          <button v-if="isGestor" :class="['diag-nav-item', { active: modo === 'gestao' }]" @click="modo = 'gestao'">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="8.5" width="3" height="6" rx=".5" stroke="currentColor" stroke-width="1.3"/><rect x="6.5" y="4.5" width="3" height="10" rx=".5" stroke="currentColor" stroke-width="1.3"/><rect x="11.5" y="1.5" width="3" height="13" rx=".5" stroke="currentColor" stroke-width="1.3"/></svg>
+            <span>Painel de Gestão</span>
+          </button>
+          <button v-if="isHubAdmin" :class="['diag-nav-item', { active: modo === 'regras' }]" @click="modo = 'regras'">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l5.5 2v4c0 3.5-2.3 5.9-5.5 7-3.2-1.1-5.5-3.5-5.5-7v-4l5.5-2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+            <span>Regras de Negócio</span>
+          </button>
+        </nav>
 
-    <!-- ═══════════ MODO GESTÃO (painel + chat lado a lado) ═══════════ -->
-    <template v-else-if="modo === 'gestao'">
-      <div class="gestao-scroll">
-        <div class="gestao-layout">
-
-          <div class="gestao-painel-col">
+        <!-- Painel de métricas (só em modo Gestão) — mesma lógica: usa a lateral em
+             vez de disputar espaço com o chat, que fica maximizado no conteúdo principal.
+             Fica num scroll PRÓPRIO, separado da navegação acima: rolar os dados nunca
+             esconde os links de Consulta/Gestão/Regras, que ficam fixos no topo. -->
+        <template v-if="modo === 'gestao'">
+          <div class="diag-sidebar-divisor"></div>
+          <div class="diag-sidebar-scroll">
+          <div class="diag-sidebar-painel">
             <div v-if="loadingResumo" class="state-msg">
               <span class="loading-dots"><span/><span/><span/></span> Carregando painel…
             </div>
@@ -119,7 +56,7 @@
                   </div>
                   <div class="stat-label">Melhor vendedor · {{ formatarMesRef(mesMaisRecenteVendas) }}</div>
                   <div class="stat-valor">{{ melhorVendedor.nomeVendedor }}</div>
-                  <div class="stat-sub">R$ {{ melhorVendedor.valorLiberado.toFixed(2) }} liberado · {{ melhorVendedor.qtdContratos }} contratos</div>
+                  <div class="stat-sub">{{ formatarMoeda(melhorVendedor.valorLiberado) }} liberado · {{ melhorVendedor.qtdContratos }} contratos</div>
                 </div>
 
                 <div v-if="resumoVendasMesAtual" class="stat-card">
@@ -127,7 +64,7 @@
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.5 12.5l4-4.5 3 2.5 5.5-6.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.3 3.3h3.7V7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </div>
                   <div class="stat-label">Vendas liberadas · {{ formatarMesRef(mesMaisRecenteVendas) }}</div>
-                  <div class="stat-valor">R$ {{ resumoVendasMesAtual.totalLiberado.toFixed(2) }}</div>
+                  <div class="stat-valor">{{ formatarMoeda(resumoVendasMesAtual.totalLiberado) }}</div>
                   <div
                     v-if="variacaoLiberado !== null"
                     class="stat-sub"
@@ -141,16 +78,52 @@
                   </div>
                   <div class="stat-label">Rede agora · {{ resumoGestaoData.pops.length }} POPs</div>
                   <div class="stat-valor">{{ redeResumo.totalAlerta }} ONUs em alerta</div>
-                  <div class="stat-sub">de {{ redeResumo.totalOnus }} monitoradas<span v-if="redeResumo.piorSinal !== null"> · pior sinal {{ redeResumo.piorSinal.toFixed(1) }}dBm</span></div>
+                  <div class="stat-sub">de {{ redeResumo.totalOnus }} monitoradas</div>
+                  <div v-if="resumoGestaoData.piorGeral" class="stat-sub stat-sub-destaque">
+                    Pior sinal: <strong>{{ resumoGestaoData.piorGeral.nome }}</strong> ({{ resumoGestaoData.piorGeral.pop }}, {{ resumoGestaoData.piorGeral.sinalRx.toFixed(1) }}dBm)
+                  </div>
+                </div>
+
+                <div v-if="resumoGestaoData.retencaoMes && resumoGestaoData.retencaoMes.totalTratadas > 0" class="stat-card">
+                  <div class="stat-icon stat-icon-retencao">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z" stroke="currentColor" stroke-width="1.3"/><path d="M5.3 8.3l1.8 1.8 3.6-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </div>
+                  <div class="stat-label">Retenção · mês em andamento</div>
+                  <div class="stat-valor">{{ resumoGestaoData.retencaoMes.totalRetidas }}/{{ resumoGestaoData.retencaoMes.totalTratadas }} retidas</div>
+                  <div class="stat-sub">{{ resumoGestaoData.retencaoMes.pctReversaoGeral.toFixed(1) }}% de reversão · {{ formatarMoeda(resumoGestaoData.retencaoMes.totalComissoes) }} em comissão</div>
                 </div>
               </div>
 
+              <template v-if="resumoGestaoData.piores.length">
+                <p class="secao-titulo">Piores sinais hoje</p>
+                <div class="piores-lista">
+                  <div v-for="c in resumoGestaoData.piores" :key="c.idCliente" class="pior-item">
+                    <span class="pior-nome">{{ c.nome }}</span>
+                    <span class="pior-detalhe">OLT {{ c.olt }} · RX {{ c.rxHoje.toFixed(1) }}dBm (era {{ c.rxAnterior.toFixed(1) }}dBm)</span>
+                  </div>
+                </div>
+              </template>
+
               <p class="secao-titulo">Status de rede por POP</p>
+              <div class="pop-legenda-global">
+                <span class="legenda-item"><span class="legenda-dot seg-normal"></span>Normal</span>
+                <span class="legenda-item"><span class="legenda-dot seg-atencao"></span>Atenção</span>
+                <span class="legenda-item"><span class="legenda-dot seg-critico"></span>Crítico</span>
+                <span class="legenda-item"><span class="legenda-dot seg-fora"></span>Fora de operação</span>
+                <span class="legenda-item"><span class="legenda-dot seg-semleitura"></span>Sem leitura</span>
+              </div>
               <div class="pops-grid">
-                <div v-for="p in resumoGestaoData.pops" :key="p.pop" class="pop-card">
+                <div
+                  v-for="(p, idx) in popsOrdenados"
+                  :key="p.pop"
+                  :class="['pop-card', `pop-card-${p.nivel}`, { 'pop-card-destaque': idx === 0 && p.nivel === 'critico' }]"
+                >
                   <div class="pop-cabecalho">
                     <span class="pop-nome">{{ p.pop }}</span>
-                    <span class="pop-total">{{ p.totalOnus }} ONUs</span>
+                    <div class="pop-cabecalho-direita">
+                      <span class="pop-total">{{ p.totalOnus }} ONUs</span>
+                      <span :class="['pop-badge', `pop-badge-${p.nivel}`]">{{ p.nivel === 'critico' ? 'Crítico' : p.nivel === 'atencao' ? 'Atenção' : 'Normal' }}</span>
+                    </div>
                   </div>
                   <div class="pop-barra">
                     <span class="seg seg-normal" :style="{ flexGrow: p.normal }" :title="`${p.normal} normal`"></span>
@@ -160,11 +133,31 @@
                     <span class="seg seg-semleitura" :style="{ flexGrow: p.semLeitura }" :title="`${p.semLeitura} sem leitura`"></span>
                   </div>
                   <div class="pop-legenda">
-                    <span>{{ p.critico + p.foraDeOperacao }} em alerta</span>
+                    <span>{{ p.critico + p.foraDeOperacao }} em alerta ({{ (p.pctAlerta * 100).toFixed(0) }}%)</span>
                     <span v-if="p.piorSinalRx !== null">pior sinal {{ p.piorSinalRx.toFixed(1) }}dBm</span>
                   </div>
                 </div>
               </div>
+
+              <template v-if="resumoGestaoData.auditoriaRetencao">
+                <p class="secao-titulo">Auditoria de retenção (negociação real)</p>
+                <p class="auditoria-aviso">
+                  {{ resumoGestaoData.auditoriaRetencao.totalGeralClassificado }} de
+                  {{ resumoGestaoData.auditoriaRetencao.totalGeralOsRetencao }} O.S. auditadas
+                  ({{ resumoGestaoData.auditoriaRetencao.totalGeralPendente }} pendentes). É relatório, não altera comissão paga.
+                </p>
+                <div v-if="resumoGestaoData.auditoriaRetencao.porOperador.length" class="auditoria-lista">
+                  <div v-for="o in resumoGestaoData.auditoriaRetencao.porOperador" :key="o.nomeOperador" class="auditoria-item">
+                    <span class="auditoria-nome">{{ o.nomeOperador }}</span>
+                    <span class="auditoria-detalhe">
+                      {{ o.totalClassificado }} auditadas ·
+                      <strong class="auditoria-ok">{{ o.negociacaoReal }} negociação real</strong> ·
+                      <strong class="auditoria-erro">{{ o.semNegociacao }} sem negociação</strong>
+                      <span v-if="o.indefinido"> · {{ o.indefinido }} indefinido</span>
+                    </span>
+                  </div>
+                </div>
+              </template>
             </template>
 
             <div class="gestao-divisor"></div>
@@ -191,45 +184,194 @@
               </div>
             </div>
           </div>
+          </div>
+        </template>
+      </aside>
 
-          <div class="gestao-chat-col">
-            <p class="secao-titulo">Pergunte mais</p>
-            <div class="gestao-chat-shell">
-              <div class="chat-scroll chat-scroll-compacto" ref="scrollGestaoRef">
-                <div v-for="(turno, i) in turnosGestao" :key="i" class="turno">
-                  <div class="turno-label">{{ turno.tipo === 'assistente' ? 'IA' : (user?.nome?.split(' ')[0] || 'Você') }}</div>
-                  <p class="turno-texto">{{ turno.texto }}</p>
+      <!-- Conteúdo principal: chat maximizado (Consulta/Gestão) ou lista de regras -->
+      <main class="diag-main">
 
-                  <div v-if="turno.consultaId" class="feedback-row">
-                    <span v-if="turno.feedback" class="feedback-obrigado">
-                      {{ turno.feedback === 'POSITIVO' ? 'Obrigado! Marcado como correto.' : 'Obrigado! Marcado como incorreto.' }}
-                    </span>
-                    <template v-else>
-                      <span class="feedback-pergunta">Essa resposta estava correta?</span>
-                      <button class="link-btn" @click="darFeedback(turno, turno.consultaId, 'POSITIVO')">Sim</button>
-                      <button class="link-btn link-btn-perigo" @click="darFeedback(turno, turno.consultaId, 'NEGATIVO')">Não</button>
-                    </template>
-                  </div>
+    <!-- ═══════════ MODO CONSULTA (chat) ═══════════ -->
+    <template v-if="modo === 'consulta'">
+      <div :class="['chat-shell', { 'chat-shell-vazio': chatVazio }]">
+        <div v-if="chatVazio" class="chat-hero">
+          <h2 class="chat-hero-title">{{ saudacaoHero }}</h2>
+        </div>
+        <div v-else class="chat-scroll" ref="scrollRef">
+          <div v-for="(turno, i) in turnos" :key="i" :class="['turno', turno.tipo === 'assistente' ? 'turno-ia' : 'turno-usuario']">
+            <div class="turno-cabecalho">
+              <span class="turno-label">{{ turno.tipo === 'assistente' ? 'C.A.I.O.' : (user?.nome?.split(' ')[0] || 'Você') }}</span>
+              <span v-if="turno.criadoEm" class="turno-hora">{{ formatarHoraCurta(turno.criadoEm) }}</span>
+            </div>
+
+            <p v-if="turno.texto && turno.tipo === 'usuario'" class="turno-texto">{{ turno.texto }}</p>
+            <div v-else-if="turno.texto" class="turno-texto" v-html="renderizarMarkdown(turno.texto)"></div>
+
+            <!-- candidatos pra escolher -->
+            <div v-if="turno.candidatos" class="candidatos-lista">
+              <button
+                v-for="c in turno.candidatos"
+                :key="c.id"
+                class="candidato-btn"
+                @click="escolherCandidato(c)"
+              >
+                <span class="candidato-nome">{{ c.nome }}</span>
+                <span class="candidato-doc">{{ c.cpfCnpj }}<span v-if="c.endereco"> · {{ c.endereco }}</span></span>
+              </button>
+            </div>
+
+            <!-- resultado: estruturado (3 seções) ou texto livre (fora de escopo) -->
+            <div v-if="turno.resultado?.estruturado" class="result-secoes">
+              <div class="result-secao">
+                <div class="result-secao-cabecalho">
+                  <span class="result-label label-diagnostico">Diagnóstico</span>
+                  <button class="btn-copiar" @click="copiarSecao(`diag-${i}`, turno.resultado.diagnostico)">
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="4.5" y="4.5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 9.5v-7a1 1 0 011-1h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    {{ secaoCopiada === `diag-${i}` ? 'Copiado!' : 'Copiar' }}
+                  </button>
                 </div>
-                <div v-if="loadingGestao" class="turno">
-                  <div class="turno-label">IA</div>
-                  <span class="loading-dots"><span/><span/><span/></span>
+                <div v-html="renderizarMarkdown(turno.resultado.diagnostico)"></div>
+              </div>
+              <div class="result-secao">
+                <div class="result-secao-cabecalho">
+                  <span :class="['result-label', causaIndicaFalha(turno.resultado.erro) ? 'label-erro' : 'label-erro-ok']">Causa identificada</span>
+                  <button class="btn-copiar" @click="copiarSecao(`erro-${i}`, turno.resultado.erro)">
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="4.5" y="4.5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 9.5v-7a1 1 0 011-1h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    {{ secaoCopiada === `erro-${i}` ? 'Copiado!' : 'Copiar' }}
+                  </button>
+                </div>
+                <div v-html="renderizarMarkdown(turno.resultado.erro)"></div>
+              </div>
+              <div class="result-secao">
+                <div class="result-secao-cabecalho">
+                  <span class="result-label label-sugestao">Sugestão <em>(para avaliação humana)</em></span>
+                  <button class="btn-copiar" @click="copiarSecao(`sug-${i}`, turno.resultado.sugestao)">
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="4.5" y="4.5" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 9.5v-7a1 1 0 011-1h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    {{ secaoCopiada === `sug-${i}` ? 'Copiado!' : 'Copiar' }}
+                  </button>
+                </div>
+                <div v-html="renderizarMarkdown(turno.resultado.sugestao)"></div>
+
+                <div v-if="!turno.feedback" class="feedback-row">
+                  <button class="feedback-btn feedback-btn-up" @click="darFeedback(turno, turno.resultado.consultaId, 'POSITIVO')">
+                    <svg width="13" height="13" viewBox="0 0 15 15" fill="none"><path d="M5 6.5v6h6.3a1 1 0 001-.8l.8-4a1 1 0 00-1-1.2H9V3.5a1.5 1.5 0 00-1.5-1.5L6 6" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M2 6.5h3v6H2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                    Validar e encerrar
+                  </button>
+                  <button class="feedback-btn feedback-btn-down" @click="darFeedback(turno, turno.resultado.consultaId, 'NEGATIVO')">
+                    <svg width="13" height="13" viewBox="0 0 15 15" fill="none"><path d="M10 8.5v-6H3.7a1 1 0 00-1 .8l-.8 4a1 1 0 001 1.2H6V11a1.5 1.5 0 001.5 1.5L9 8.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M13 8.5h-3v-6h3z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                    Reportar problema
+                  </button>
+                </div>
+                <div v-else class="feedback-chip" :class="turno.feedback === 'POSITIVO' ? 'feedback-chip-ok' : 'feedback-chip-erro'">
+                  <svg v-if="turno.feedback === 'POSITIVO'" width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.3l3 3 6-6.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <svg v-else width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                  <span>{{ turno.feedback === 'POSITIVO' ? 'Validado' : 'Reportado' }}</span>
                 </div>
               </div>
-              <div class="chat-input-row">
-                <input
-                  v-model="inputGestao"
-                  placeholder="Ex: quais são os melhores vendedores?"
-                  :disabled="loadingGestao"
-                  @keydown.enter="enviarGestao"
-                />
-                <button class="btn-enviar" :disabled="loadingGestao || !inputGestao.trim()" @click="enviarGestao">
-                  <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M1.5 7.5 13 2 8.5 13 6.5 8.5 1.5 7.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            </div>
+            <div v-else-if="turno.resultado" class="turno-texto" v-html="renderizarMarkdown(turno.resultado.textoCompleto)"></div>
+
+            <div v-if="turno.resultado && !turno.resultado.estruturado" class="feedback-row">
+              <template v-if="!turno.feedback">
+                <span class="feedback-pergunta">Essa resposta estava correta?</span>
+                <button class="feedback-btn feedback-btn-up" title="Marcar como correto" @click="darFeedback(turno, turno.resultado.consultaId, 'POSITIVO')">
+                  <svg width="13" height="13" viewBox="0 0 15 15" fill="none"><path d="M5 6.5v6h6.3a1 1 0 001-.8l.8-4a1 1 0 00-1-1.2H9V3.5a1.5 1.5 0 00-1.5-1.5L6 6" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M2 6.5h3v6H2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
                 </button>
+                <button class="feedback-btn feedback-btn-down" title="Marcar como incorreto" @click="darFeedback(turno, turno.resultado.consultaId, 'NEGATIVO')">
+                  <svg width="13" height="13" viewBox="0 0 15 15" fill="none"><path d="M10 8.5v-6H3.7a1 1 0 00-1 .8l-.8 4a1 1 0 001 1.2H6V11a1.5 1.5 0 001.5 1.5L9 8.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M13 8.5h-3v-6h3z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                </button>
+              </template>
+              <div v-else class="feedback-chip" :class="turno.feedback === 'POSITIVO' ? 'feedback-chip-ok' : 'feedback-chip-erro'">
+                <svg v-if="turno.feedback === 'POSITIVO'" width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.3l3 3 6-6.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg v-else width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                <span>{{ turno.feedback === 'POSITIVO' ? 'Validado' : 'Reportado' }}</span>
               </div>
             </div>
           </div>
 
+          <div v-if="loading" class="turno turno-ia">
+            <div class="turno-cabecalho"><span class="turno-label">C.A.I.O.</span></div>
+            <span class="loading-dots"><span/><span/><span/></span>
+            <span class="loading-label">{{ loadingLabel }}</span>
+          </div>
+        </div>
+
+        <div class="chat-input-shell">
+          <div v-if="clienteAtivo" class="chat-cliente-ativo">
+            <span>Analisando: <strong>{{ clienteAtivo.nome }}</strong></span>
+            <button class="btn-trocar" @click="trocarCliente">Trocar cliente</button>
+          </div>
+          <div class="chat-input-row">
+            <input
+              v-model="inputAtual"
+              :placeholder="placeholderInput"
+              :disabled="loading"
+              @keydown.enter="enviar"
+            />
+            <button class="btn-enviar" :disabled="loading || !inputAtual.trim()" @click="enviar">
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M1.5 7.5 13 2 8.5 13 6.5 8.5 1.5 7.5z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ═══════════ MODO GESTÃO (painel na lateral, chat maximizado) ═══════════ -->
+    <template v-else-if="modo === 'gestao'">
+      <div class="chat-shell">
+        <div class="chat-scroll" ref="scrollGestaoRef">
+          <div v-for="(turno, i) in turnosGestao" :key="i" :class="['turno', turno.tipo === 'assistente' ? 'turno-ia' : 'turno-usuario']">
+            <div class="turno-cabecalho">
+              <span class="turno-label">{{ turno.tipo === 'assistente' ? 'C.A.I.O.' : (user?.nome?.split(' ')[0] || 'Você') }}</span>
+              <span v-if="turno.criadoEm" class="turno-hora">{{ formatarHoraCurta(turno.criadoEm) }}</span>
+            </div>
+            <p v-if="turno.tipo === 'usuario'" class="turno-texto">{{ turno.texto }}</p>
+            <div v-else class="turno-texto" v-html="renderizarMarkdown(turno.texto)"></div>
+
+            <div v-if="turno.consultaId" class="feedback-row">
+              <template v-if="!turno.feedback">
+                <span class="feedback-pergunta">Essa resposta estava correta?</span>
+                <button class="feedback-btn feedback-btn-up" title="Marcar como correto" @click="darFeedback(turno, turno.consultaId, 'POSITIVO')">
+                  <svg width="13" height="13" viewBox="0 0 15 15" fill="none"><path d="M5 6.5v6h6.3a1 1 0 001-.8l.8-4a1 1 0 00-1-1.2H9V3.5a1.5 1.5 0 00-1.5-1.5L6 6" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M2 6.5h3v6H2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                </button>
+                <button class="feedback-btn feedback-btn-down" title="Marcar como incorreto" @click="darFeedback(turno, turno.consultaId, 'NEGATIVO')">
+                  <svg width="13" height="13" viewBox="0 0 15 15" fill="none"><path d="M10 8.5v-6H3.7a1 1 0 00-1 .8l-.8 4a1 1 0 001 1.2H6V11a1.5 1.5 0 001.5 1.5L9 8.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M13 8.5h-3v-6h3z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                </button>
+              </template>
+              <div v-else class="feedback-chip" :class="turno.feedback === 'POSITIVO' ? 'feedback-chip-ok' : 'feedback-chip-erro'">
+                <svg v-if="turno.feedback === 'POSITIVO'" width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.3l3 3 6-6.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg v-else width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                <span>{{ turno.feedback === 'POSITIVO' ? 'Validado' : 'Reportado' }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-if="loadingGestao" class="turno turno-ia">
+            <div class="turno-cabecalho"><span class="turno-label">C.A.I.O.</span></div>
+            <span class="loading-dots"><span/><span/><span/></span>
+          </div>
+        </div>
+
+        <div class="chat-input-shell">
+          <div class="gestao-sugestoes">
+            <button
+              v-for="s in SUGESTOES_GESTAO"
+              :key="s"
+              class="chip-sugestao"
+              :disabled="loadingGestao"
+              @click="enviarSugestaoGestao(s)"
+            >{{ s }}</button>
+          </div>
+          <div class="chat-input-row">
+            <input
+              v-model="inputGestao"
+              placeholder="Pergunte algo…"
+              :disabled="loadingGestao"
+              @keydown.enter="enviarGestao()"
+            />
+            <button class="btn-enviar" :disabled="loadingGestao || !inputGestao.trim()" @click="enviarGestao()">
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M1.5 7.5 13 2 8.5 13 6.5 8.5 1.5 7.5z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </template>
@@ -240,7 +382,7 @@
         <div class="regras-toolbar">
           <p class="regras-info">
             Base de referência lida pela IA ao montar o diagnóstico (metas, faixas, padrões de campo).
-            Não altera regras de comissão/cobrança em produção — é só o que a IA enxerga.
+            Não altera regras de comissão/cobrança em produção, é só o que a IA enxerga.
           </p>
           <button class="btn-nova-regra" v-if="!formAberto" @click="abrirNovaRegra">+ Nova regra</button>
         </div>
@@ -305,12 +447,18 @@
               <div class="regra-rodape">
                 <span class="regra-meta">atualizado por {{ r.atualizado_por }} · {{ formatarDataHora(r.atualizado_em) }}</span>
                 <div class="regra-acoes">
-                  <button class="link-btn" @click="iniciarEdicao(r)">Editar</button>
+                  <button class="icon-btn" title="Editar" @click="iniciarEdicao(r)">
+                    <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M10.5 1.5l3 3-8 8-3.5 1 1-3.5 8-8z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>
+                  </button>
                   <button
-                    class="link-btn"
-                    :class="{ 'link-btn-perigo': excluindoChave === r.chave }"
+                    class="icon-btn"
+                    :class="{ 'icon-btn-perigo': excluindoChave === r.chave }"
+                    :title="excluindoChave === r.chave ? 'Confirmar exclusão' : 'Excluir'"
                     @click="confirmarExclusao(r.chave)"
-                  >{{ excluindoChave === r.chave ? 'Confirmar exclusão?' : 'Excluir' }}</button>
+                  >
+                    <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M2.5 4h10M5.5 4V2.5a1 1 0 011-1h2a1 1 0 011 1V4M3.1 4l.6 8a1 1 0 001 .9h5.6a1 1 0 001-.9l.6-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span v-if="excluindoChave === r.chave" class="icon-btn-confirm-label">Confirmar?</span>
+                  </button>
                 </div>
               </div>
             </template>
@@ -320,6 +468,8 @@
       </div>
     </template>
 
+      </main>
+    </div>
   </div>
 </template>
 
@@ -345,6 +495,7 @@ import {
   type HistoricoTurnoConversa,
   type TipoFeedback,
   type ResumoGestao,
+  type PopStatusEntry,
 } from '../services/diagnosticoApi';
 
 const { user, isGestor, isHubAdmin } = useAuth();
@@ -376,12 +527,57 @@ function salvarNoStorage(chave: string, valor: unknown) {
   }
 }
 
+// ── Markdown-lite (negrito + listas) para respostas da IA ─────────────────
+// Suficiente para o que o prompt gera (negrito e listas com "- "/"1. ") —
+// não é um parser completo, só o bastante pra sair de prosa corrida.
+function escaparHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function inlineMd(s: string): string {
+  return s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function renderizarMarkdown(texto: string): string {
+  const linhas = escaparHtml(texto).split('\n');
+  const blocos: string[] = [];
+  let listaAtual: string[] | null = null;
+  let tipoLista: 'ul' | 'ol' | null = null;
+
+  function fecharLista() {
+    if (listaAtual && tipoLista) {
+      blocos.push(`<${tipoLista}>${listaAtual.map((li) => `<li>${inlineMd(li)}</li>`).join('')}</${tipoLista}>`);
+    }
+    listaAtual = null;
+    tipoLista = null;
+  }
+
+  for (const linhaRaw of linhas) {
+    const linha = linhaRaw.trim();
+    const bullet = /^[-*•]\s+(.*)/.exec(linha);
+    const numerada = /^\d+[.)]\s+(.*)/.exec(linha);
+    if (bullet) {
+      if (tipoLista !== 'ul') { fecharLista(); tipoLista = 'ul'; listaAtual = []; }
+      listaAtual!.push(bullet[1]);
+    } else if (numerada) {
+      if (tipoLista !== 'ol') { fecharLista(); tipoLista = 'ol'; listaAtual = []; }
+      listaAtual!.push(numerada[1]);
+    } else {
+      fecharLista();
+      if (linha) blocos.push(`<p>${inlineMd(linha)}</p>`);
+    }
+  }
+  fecharLista();
+  return blocos.join('');
+}
+
 interface Turno {
   tipo: 'usuario' | 'assistente';
   texto?: string;
   candidatos?: ClienteCandidato[];
   resultado?: DiagnosticoResultado;
   feedback?: TipoFeedback;
+  criadoEm?: string;
 }
 
 async function darFeedback(turno: { feedback?: TipoFeedback }, consultaId: string, feedback: TipoFeedback) {
@@ -394,7 +590,29 @@ async function darFeedback(turno: { feedback?: TipoFeedback }, consultaId: strin
   }
 }
 
-const SAUDACAO_INICIAL: Turno = { tipo: 'assistente', texto: 'Olá! Me diga o nome ou o ID do cliente que você quer analisar.' };
+function formatarHoraCurta(iso: string): string {
+  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Heurística: o rótulo "Causa identificada" só faz sentido em vermelho quando
+// há de fato uma falha — se o texto diz explicitamente que não há falha, a
+// cor vira neutra/positiva em vez de soar como alarme falso.
+function causaIndicaFalha(erro: string): boolean {
+  return !/n[ãa]o h[áa].{0,40}falha|sem falhas?\b|nenhuma falha/i.test(erro);
+}
+
+const secaoCopiada = ref<string | null>(null);
+async function copiarSecao(id: string, texto: string) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    secaoCopiada.value = id;
+    setTimeout(() => { if (secaoCopiada.value === id) secaoCopiada.value = null; }, 1500);
+  } catch {
+    // clipboard indisponível (contexto não seguro, permissão negada) — ignora.
+  }
+}
+
+const SAUDACAO_INICIAL: Turno = { tipo: 'assistente', texto: 'Olá! Me diga o nome ou o ID do cliente que você quer analisar.', criadoEm: new Date().toISOString() };
 const estadoConsultaSalvo = carregarDoStorage(STORAGE_KEY_CONSULTA, {
   turnos: [SAUDACAO_INICIAL] as Turno[],
   clienteAtivo: null as { id: number; nome: string } | null,
@@ -415,6 +633,14 @@ const placeholderInput = computed(() =>
   clienteAtivo.value ? 'Pergunte algo sobre esse cliente…' : 'Nome ou ID do cliente…'
 );
 
+// Tela inicial (sem troca de mensagens ainda) mostra uma saudação grande e
+// centralizada, no estilo Gemini, em vez do histórico de chat vazio.
+const chatVazio = computed(() => turnos.value.length <= 1);
+const saudacaoHero = computed(() => {
+  const nome = user.value?.nome?.split(' ')[0];
+  return nome ? `Qual cliente vamos analisar, ${nome}?` : 'Qual cliente vamos analisar?';
+});
+
 watch([turnos, clienteAtivo, historicoConversa], () => {
   salvarNoStorage(STORAGE_KEY_CONSULTA, {
     turnos: turnos.value.slice(-LIMITE_TURNOS_PERSISTIDOS),
@@ -430,7 +656,7 @@ function rolarParaFinal() {
 }
 
 function adicionarTurno(t: Turno) {
-  turnos.value.push(t);
+  turnos.value.push({ ...t, criadoEm: t.criadoEm ?? new Date().toISOString() });
   rolarParaFinal();
 }
 
@@ -534,6 +760,10 @@ async function carregarResumoGestao() {
   }
 }
 
+function formatarMoeda(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 const NOMES_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 function formatarMesRef(mesRef: string | null): string {
   if (!mesRef) return '';
@@ -572,20 +802,43 @@ const variacaoLiberado = computed(() => {
   return ((atual.totalLiberado - anterior.totalLiberado) / anterior.totalLiberado) * 100;
 });
 
+type NivelPop = 'critico' | 'atencao' | 'normal';
+
+function severidadePop(p: PopStatusEntry): { nivel: NivelPop; pctAlerta: number } {
+  const totalAlerta = p.critico + p.foraDeOperacao;
+  const pctAlerta = p.totalOnus > 0 ? totalAlerta / p.totalOnus : 0;
+  if (totalAlerta > 0 && pctAlerta >= 0.2) return { nivel: 'critico', pctAlerta };
+  if (totalAlerta > 0 || p.atencao > 0) return { nivel: 'atencao', pctAlerta };
+  return { nivel: 'normal', pctAlerta };
+}
+
+// POPs ordenados por criticidade (% de ONUs em alerta) — o gestor deve ver o
+// pior POP primeiro, não na ordem arbitrária que a API devolve.
+const popsOrdenados = computed(() => {
+  const pops = resumoGestaoData.value?.pops ?? [];
+  return pops
+    .map((p) => ({ ...p, ...severidadePop(p) }))
+    .sort((a, b) => b.pctAlerta - a.pctAlerta);
+});
+
 const redeResumo = computed(() => {
   const pops = resumoGestaoData.value?.pops;
   if (!pops?.length) return null;
-  const comSinal = pops.filter((p) => p.piorSinalRx !== null).map((p) => p.piorSinalRx as number);
   return {
     totalOnus: pops.reduce((s, p) => s + p.totalOnus, 0),
     totalAlerta: pops.reduce((s, p) => s + p.critico + p.foraDeOperacao, 0),
-    piorSinal: comSinal.length ? Math.min(...comSinal) : null,
   };
 });
 
-interface TurnoGestao { tipo: 'usuario' | 'assistente'; texto: string; consultaId?: string; feedback?: TipoFeedback }
+interface TurnoGestao { tipo: 'usuario' | 'assistente'; texto: string; consultaId?: string; feedback?: TipoFeedback; criadoEm?: string }
 
-const SAUDACAO_GESTAO: TurnoGestao = { tipo: 'assistente', texto: 'Pergunte sobre ranking de vendedores ou evolução de vendas por período/segmento.' };
+const SUGESTOES_GESTAO = ['Melhores vendedores', 'POPs críticos', 'Queda de sinal'];
+
+const SAUDACAO_GESTAO: TurnoGestao = {
+  tipo: 'assistente',
+  texto: 'Pergunte sobre ranking de vendedores ou evolução de vendas por período/segmento.',
+  criadoEm: new Date().toISOString(),
+};
 const estadoGestaoSalvo = carregarDoStorage(STORAGE_KEY_GESTAO, {
   turnosGestao: [SAUDACAO_GESTAO] as TurnoGestao[],
   historicoGestao: [] as HistoricoTurnoConversa[],
@@ -610,25 +863,29 @@ function rolarGestaoParaFinal() {
   });
 }
 
-async function enviarGestao() {
-  const pergunta = inputGestao.value.trim();
+async function enviarGestao(perguntaChip?: string) {
+  const pergunta = (typeof perguntaChip === 'string' ? perguntaChip : inputGestao.value).trim();
   if (!pergunta || loadingGestao.value) return;
   inputGestao.value = '';
-  turnosGestao.value.push({ tipo: 'usuario', texto: pergunta });
+  turnosGestao.value.push({ tipo: 'usuario', texto: pergunta, criadoEm: new Date().toISOString() });
   rolarGestaoParaFinal();
   loadingGestao.value = true;
   try {
     const { resposta, consultaId } = await consultarGestao(pergunta, historicoGestao.value);
-    turnosGestao.value.push({ tipo: 'assistente', texto: resposta, consultaId });
+    turnosGestao.value.push({ tipo: 'assistente', texto: resposta, consultaId, criadoEm: new Date().toISOString() });
     historicoGestao.value.push({ pergunta, resposta });
     if (historicoGestao.value.length > 6) historicoGestao.value.shift();
   } catch (e: any) {
     const msg = e?.response?.data?.message || 'Não consegui responder agora.';
-    turnosGestao.value.push({ tipo: 'assistente', texto: msg });
+    turnosGestao.value.push({ tipo: 'assistente', texto: msg, criadoEm: new Date().toISOString() });
   } finally {
     loadingGestao.value = false;
     rolarGestaoParaFinal();
   }
+}
+
+function enviarSugestaoGestao(sugestao: string) {
+  enviarGestao(sugestao);
 }
 
 const CATEGORIAS: CategoriaRegra[] = ['VENDAS', 'RETENCAO', 'REDE', 'COMISSAO'];
@@ -752,37 +1009,103 @@ onMounted(() => rolarParaFinal());
 </script>
 
 <style scoped>
-.view-diagnostico { padding: 1.75rem 2rem 3rem; max-width: 1080px; margin: 0 auto; height: calc(100vh - var(--header-h, 62px) - 2.75rem); display: flex; flex-direction: column; }
+/* altura: 100vh - header - padding vertical do .app-main (1.5rem topo + 1.5rem base) que
+   envolve esta view — usar 2.75rem aqui sobrava ~4px e fazia o .app-main também rolar,
+   duplicando a scrollbar por cima da do próprio painel. */
+.view-diagnostico { padding: 1.5rem 2rem 2rem; height: calc(100vh - var(--header-h, 62px) - 3rem); display: flex; flex-direction: column; }
 
-/* ── Header ── */
-.diag-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; flex-shrink: 0; }
-.diag-title { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; letter-spacing: -.01em; }
-.diag-sub { font-size: .85rem; color: var(--text-2); margin-top: .3rem; }
+/* ── Shell: sidebar (marca + navegação + painel de gestão) + conteúdo principal ──
+   Antes o título/legenda ocupavam uma faixa horizontal inteira e o chat ficava
+   centralizado numa coluna estreita, sobrando espaço vazio nas laterais em
+   telas largas. Agora essa lateral vira sidebar fixa e o chat ocupa o resto. */
+.diag-shell { flex: 1; display: flex; gap: 2rem; min-height: 0; }
 
-.diag-modes { display: flex; gap: .25rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; }
-.diag-mode-btn {
-  display: flex; align-items: center; gap: .4rem;
-  font-family: var(--font-body); font-size: .8rem; font-weight: 600; color: var(--text-2);
-  background: transparent; border: none; padding: .45rem .9rem; border-radius: var(--radius-sm);
-  cursor: pointer; transition: var(--transition);
+/* A sidebar em si não rola — só a navegação (fixa) + o topo do painel. Quem
+   rola é o .diag-sidebar-scroll interno, pra nunca esconder Consulta/Gestão/
+   Regras atrás de uma lista longa de POPs. */
+.diag-sidebar { width: 250px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; }
+
+.diag-brand { display: flex; align-items: center; gap: .55rem; padding: .1rem .3rem .9rem; flex-shrink: 0; }
+.diag-brand-icon { display: flex; color: var(--accent); flex-shrink: 0; }
+.diag-brand-title { font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; letter-spacing: .02em; }
+
+.diag-nav { display: flex; flex-direction: column; gap: .15rem; flex-shrink: 0; }
+.diag-nav-item {
+  display: flex; align-items: center; gap: .65rem;
+  padding: .6rem .7rem; border-radius: var(--radius-sm); border-left: 2px solid transparent;
+  background: transparent; border-top: none; border-right: none; border-bottom: none;
+  color: var(--text-2); font-family: var(--font-body); font-size: .83rem; font-weight: 600;
+  text-align: left; cursor: pointer; transition: var(--transition); width: 100%;
 }
-.diag-mode-btn svg { flex-shrink: 0; opacity: .75; }
-.diag-mode-btn.active svg { opacity: 1; color: var(--accent); }
-.diag-mode-btn.active { background: var(--surface-3); color: var(--text); }
-.diag-mode-btn:hover:not(.active) { color: var(--text); }
+.diag-nav-item svg { opacity: .6; flex-shrink: 0; }
+.diag-nav-item:hover { color: var(--text); background: var(--surface-2); }
+.diag-nav-item:hover svg { opacity: .9; }
+.diag-nav-item.active { color: var(--accent); background: var(--accent-dim); border-left-color: var(--accent); }
+.diag-nav-item.active svg { opacity: 1; }
+
+.diag-sidebar-divisor { border-top: 1px solid var(--border); margin: 1.1rem .3rem .8rem; flex-shrink: 0; }
+.diag-sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: .25rem; }
+.diag-sidebar-painel { display: flex; flex-direction: column; padding: 0 .3rem; }
+/* Cards/grids do painel foram feitos para uma coluna larga — na sidebar estreita
+   forçamos 1 coluna em vez de deixar o auto-fit/auto-fill quebrar layout. */
+.diag-sidebar-painel .stat-cards,
+.diag-sidebar-painel .pops-grid,
+.diag-sidebar-painel .agregado-grid { grid-template-columns: 1fr; }
+
+.diag-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+
+@media (max-width: 880px) {
+  .diag-shell { flex-direction: column; }
+  .diag-sidebar { width: 100%; }
+  .diag-sidebar-scroll { overflow-y: visible; max-height: none; }
+}
 
 /* ── Chat shell ── */
 .chat-shell { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.chat-scroll { flex: 1; overflow-y: auto; padding: .5rem .25rem 1rem; display: flex; flex-direction: column; gap: 1.35rem; }
+.chat-scroll { flex: 1; overflow-y: auto; padding: .5rem .25rem 1rem; display: flex; flex-direction: column; align-items: center; gap: 1.1rem; }
 
-.turno { max-width: 720px; }
-
-.turno-label {
-  font-family: var(--font-mono); font-size: .68rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--text-3); margin-bottom: .3rem;
+/* Tela vazia (sem troca de mensagens) — saudação grande e centralizada, com
+   o input logo abaixo, no lugar do histórico em branco. */
+.chat-shell-vazio { justify-content: center; }
+.chat-hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 1rem; }
+.chat-hero-title {
+  font-family: var(--font-display); font-size: 1.85rem; font-weight: 500; letter-spacing: -.01em;
+  color: var(--text-2); max-width: 34ch; line-height: 1.3;
 }
 
-.turno-texto { font-size: .88rem; line-height: 1.6; color: var(--text); white-space: pre-line; }
+/* Estilo do turno de assistente: bloco com fundo sutil, borda e padding —
+   delimita visualmente a resposta em vez de deixá-la flutuando no fundo
+   escuro sem contorno. Mensagem do usuário vira uma bolha à direita. */
+.turno { width: 100%; max-width: 72ch; display: flex; flex-direction: column; }
+.turno-ia {
+  align-items: stretch;
+  background: rgba(255, 255, 255, .035);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: .9rem 1.05rem;
+}
+.turno-usuario { align-items: flex-end; }
+
+.turno-cabecalho { display: flex; align-items: baseline; gap: .5rem; margin-bottom: .4rem; }
+.turno-label {
+  font-family: var(--font-mono); font-size: .74rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-2);
+}
+.turno-hora { font-family: var(--font-mono); font-size: .72rem; color: var(--text-2); }
+
+.turno-texto { font-size: .88rem; line-height: 1.6; color: var(--text); }
+.turno-usuario .turno-texto {
+  background: var(--surface-3);
+  border-radius: 18px;
+  padding: .65rem 1.05rem;
+  max-width: 80%;
+}
+.turno-texto :where(p, ul, ol) { margin: 0 0 .6rem; }
+.turno-texto :where(p, ul, ol):last-child { margin-bottom: 0; }
+.turno-texto ul, .turno-texto ol { padding-left: 1.3rem; }
+.turno-texto li { margin-bottom: .25rem; }
+.turno-texto li:last-child { margin-bottom: 0; }
+.turno-texto strong { color: var(--text); font-weight: 700; }
 
 /* ── Candidatos ── */
 .candidatos-lista { display: flex; flex-direction: column; gap: .3rem; margin-top: .3rem; }
@@ -811,7 +1134,14 @@ onMounted(() => rolarParaFinal());
 /* ── Resultado: seções simples, sem cartão ── */
 .result-secoes { display: flex; flex-direction: column; gap: .85rem; margin-top: .1rem; }
 .result-secao { display: flex; flex-direction: column; gap: .25rem; }
+.result-secao-cabecalho { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .result-secao p { font-size: .87rem; line-height: 1.6; color: var(--text); }
+.result-secao :where(p, ul, ol) { margin: 0 0 .5rem; }
+.result-secao :where(p, ul, ol):last-child { margin-bottom: 0; }
+.result-secao ul, .result-secao ol { padding-left: 1.2rem; }
+.result-secao li { font-size: .87rem; line-height: 1.6; color: var(--text); margin-bottom: .2rem; }
+.result-secao li:last-child { margin-bottom: 0; }
+.result-secao strong { color: var(--text); font-weight: 700; }
 .result-label {
   font-family: var(--font-mono); font-size: .7rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: .05em;
@@ -820,109 +1150,160 @@ onMounted(() => rolarParaFinal());
 
 .label-diagnostico { color: var(--accent); }
 .label-erro { color: var(--error); }
+.label-erro-ok { color: var(--text-2); }
 .label-sugestao { color: var(--success); }
+
+.btn-copiar {
+  display: flex; align-items: center; gap: .3rem; flex-shrink: 0;
+  font-family: var(--font-body); font-size: .68rem; font-weight: 600; color: var(--text-3);
+  background: transparent; border: none; border-radius: var(--radius-sm);
+  padding: .15rem .35rem; cursor: pointer; transition: all .15s;
+}
+.btn-copiar:hover { color: var(--accent); background: var(--surface-2); }
 
 /* ── Input do chat ── */
 .chat-input-shell { flex-shrink: 0; border-top: 1px solid var(--border); padding-top: .9rem; margin-top: .25rem; }
+.chat-shell-vazio .chat-input-shell { border-top: none; max-width: 640px; width: 100%; margin: 1.75rem auto 0; padding-top: 0; }
 .chat-cliente-ativo {
   display: flex; justify-content: space-between; align-items: center; padding: 0 .25rem .7rem;
   font-size: .78rem; color: var(--text-2);
 }
 .chat-cliente-ativo strong { color: var(--text); }
 .btn-trocar {
-  font-family: var(--font-body); font-size: .72rem; font-weight: 600; color: var(--text-2);
-  background: transparent; border: 1px solid var(--border-2); border-radius: var(--radius-sm);
-  padding: .25rem .6rem; cursor: pointer; transition: var(--transition);
+  font-family: var(--font-body); font-size: .76rem; font-weight: 600; color: var(--text-2);
+  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  padding: .45rem .9rem; cursor: pointer; transition: var(--transition);
 }
-.btn-trocar:hover { color: var(--text); border-color: var(--accent); }
+.btn-trocar:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
 
-.chat-input-row { display: flex; align-items: center; gap: .6rem; padding: 0 .25rem; }
-.chat-input-row input {
-  flex: 1; font-family: var(--font-body); font-size: .88rem; background: var(--surface-2); color: var(--text);
-  border: 1px solid var(--border-2); border-radius: var(--radius-sm); padding: .65rem .9rem; outline: none;
-  transition: border-color .15s;
+.chat-input-row {
+  display: flex; align-items: center; gap: .5rem; padding: .3rem .4rem .3rem 1.1rem;
+  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 999px;
+  transition: border-color .15s, box-shadow .15s;
 }
-.chat-input-row input:focus { border-color: var(--accent); }
-.chat-input-row input::placeholder { color: var(--text-3); }
+.chat-input-row:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.chat-input-row input {
+  flex: 1; font-family: var(--font-body); font-size: .88rem; background: transparent; color: var(--text);
+  border: none; padding: .55rem 0; outline: none;
+}
+.chat-input-row input::placeholder { color: var(--text-2); }
 .btn-enviar {
   display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex-shrink: 0;
-  color: #04141a; background: var(--accent); border: none; border-radius: var(--radius-sm);
+  color: #04141a; background: var(--accent); border: none; border-radius: 50%;
   cursor: pointer; transition: var(--transition);
 }
 .btn-enviar:hover:not(:disabled) { filter: brightness(1.1); box-shadow: var(--shadow); }
-.btn-enviar:disabled { opacity: .35; cursor: not-allowed; }
+.btn-enviar:disabled { opacity: .35; cursor: not-allowed; background: var(--surface-3); color: var(--text-3); }
 
-/* ── Painel de gestão ── */
-.gestao-scroll { flex: 1; overflow-y: auto; min-height: 0; padding: .1rem .25rem 1rem 0; }
-
-/* Painel (cards + POPs + agregados) à esquerda, chat fixo à direita —
-   evita ter que rolar a página toda pra alcançar o chat. */
-.gestao-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 1.75rem; align-items: start; }
-.gestao-painel-col { display: flex; flex-direction: column; min-width: 0; }
-.gestao-chat-col { position: sticky; top: 0; display: flex; flex-direction: column; gap: 0; }
-
-.gestao-chat-shell { display: flex; flex-direction: column; gap: .7rem; }
-.chat-scroll-compacto { max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; padding-right: .25rem; }
+/* ── Painel de gestão (agora vive na sidebar — ver .diag-sidebar-painel) ── */
 .gestao-divisor { border-top: 1px solid var(--border); margin: 1.5rem 0; }
 
-@media (max-width: 880px) {
-  .gestao-layout { grid-template-columns: 1fr; }
-  .gestao-chat-col { position: static; margin-top: 1.5rem; }
-  .chat-scroll-compacto { max-height: 320px; }
+.gestao-sugestoes { display: flex; flex-wrap: wrap; gap: .4rem; padding: 0 .25rem .7rem; }
+.chip-sugestao {
+  font-family: var(--font-body); font-size: .72rem; font-weight: 600; color: var(--text-2);
+  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 999px;
+  padding: .35rem .8rem; cursor: pointer; transition: var(--transition);
 }
+.chip-sugestao:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.chip-sugestao:disabled { opacity: .5; cursor: not-allowed; }
 
 .secao-titulo {
   font-family: var(--font-mono); font-size: .7rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: .05em; color: var(--text-3); margin: 0 0 .8rem;
 }
 
-/* Cards de estatística */
-.stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .8rem; margin-bottom: 1.75rem; }
+/* Cards de estatística — compactos, pensados pra sidebar estreita (~230px) */
+.stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .55rem; margin-bottom: 1.1rem; }
 .stat-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .35rem;
+  padding: .7rem .8rem; display: flex; flex-direction: column; gap: .2rem;
 }
 .stat-icon {
-  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; margin-bottom: .2rem;
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; margin-bottom: .1rem;
 }
+.stat-icon svg { width: 12px; height: 12px; }
 .stat-icon-vendedor { color: var(--accent); background: var(--accent-dim); }
 .stat-icon-vendas { color: var(--success); background: var(--success-bg); }
 .stat-icon-rede { color: var(--accent-2); background: rgba(199, 255, 0, 0.1); }
+.stat-icon-retencao { color: var(--refid); background: rgba(168, 85, 247, 0.12); }
 .stat-label {
-  font-family: var(--font-mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
+  font-family: var(--font-mono); font-size: .66rem; text-transform: uppercase; letter-spacing: .03em;
   color: var(--text-3); font-weight: 700;
 }
-.stat-valor { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: var(--text); line-height: 1.25; }
-.stat-sub { font-size: .78rem; color: var(--text-2); }
+.stat-valor { font-family: var(--font-display); font-size: .95rem; font-weight: 700; color: var(--text); line-height: 1.25; }
+.stat-sub { font-size: .76rem; color: var(--text-2); font-weight: 500; }
+.stat-sub-destaque strong { color: var(--text); }
+
+.piores-lista { display: flex; flex-direction: column; margin-bottom: 1.75rem; }
+.pior-item {
+  display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; flex-wrap: wrap;
+  padding: .55rem .1rem; border-bottom: 1px solid var(--border);
+}
+.pior-item:last-child { border-bottom: none; }
+.pior-nome { font-size: .84rem; font-weight: 600; color: var(--text); }
+.pior-detalhe { font-family: var(--font-mono); font-size: .76rem; color: var(--text-2); white-space: nowrap; }
+
+.auditoria-aviso { font-size: .78rem; color: var(--text-2); margin-bottom: .8rem; line-height: 1.5; }
+.auditoria-lista { display: flex; flex-direction: column; margin-bottom: 1.75rem; }
+.auditoria-item {
+  display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; flex-wrap: wrap;
+  padding: .55rem .1rem; border-bottom: 1px solid var(--border);
+}
+.auditoria-item:last-child { border-bottom: none; }
+.auditoria-nome { font-size: .84rem; font-weight: 600; color: var(--text); }
+.auditoria-detalhe { font-size: .78rem; color: var(--text-2); }
+.auditoria-ok { color: var(--success); font-weight: 700; }
+.auditoria-erro { color: var(--error); font-weight: 700; }
 .stat-alta { color: var(--success); }
 .stat-baixa { color: var(--error); }
 
 /* Grid de POPs */
-.pops-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .7rem; margin-bottom: 0; }
+/* Legenda única compartilhada por todos os cards — a cor de cada segmento
+   só carrega dado se o gestor souber o que ela significa. */
+.pop-legenda-global { display: flex; flex-wrap: wrap; gap: .3rem 1rem; margin-bottom: .7rem; }
+.legenda-item { display: flex; align-items: center; gap: .35rem; font-size: .76rem; color: var(--text-2); }
+.legenda-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+.pops-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .7rem; margin-bottom: 0; }
 .pop-card {
+  position: relative;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: .8rem .9rem; display: flex; flex-direction: column; gap: .5rem;
 }
+.pop-card-critico { border-color: rgba(255, 42, 95, .3); }
+.pop-card-destaque { border-color: var(--error); box-shadow: 0 0 0 1px var(--error), 0 0 18px rgba(255, 42, 95, .25); }
 .pop-cabecalho { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
+.pop-cabecalho-direita { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
 .pop-nome { font-size: .82rem; font-weight: 700; color: var(--text); }
-.pop-total { font-family: var(--font-mono); font-size: .68rem; color: var(--text-3); }
-.pop-barra { display: flex; height: 7px; border-radius: 4px; overflow: hidden; background: var(--surface-3); }
+.pop-total { font-family: var(--font-mono); font-size: .72rem; color: var(--text-2); }
+.pop-badge {
+  font-family: var(--font-mono); font-size: .64rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; padding: .15rem .45rem; border-radius: 3px; flex-shrink: 0;
+}
+.pop-badge-critico { color: var(--error); background: var(--error-bg); }
+.pop-badge-atencao { color: #f59e0b; background: rgba(245, 158, 11, .12); }
+.pop-badge-normal { color: var(--success); background: var(--success-bg); }
+.pop-barra { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-3); gap: 1px; }
 .seg { display: block; height: 100%; }
 .seg-normal    { background: var(--success); }
 .seg-atencao   { background: #f59e0b; }
 .seg-critico   { background: var(--error); }
 .seg-fora      { background: #64748b; }
 .seg-semleitura{ background: var(--border-2); }
-.pop-legenda { display: flex; justify-content: space-between; gap: .5rem; font-size: .72rem; color: var(--text-3); }
+/* Empilhado (não lado a lado) — numa sidebar estreita, duas informações na
+   mesma linha obrigavam a fonte a ficar pequena demais pra caber. */
+.pop-legenda { display: flex; flex-direction: column; gap: .15rem; font-size: .76rem; color: var(--text-2); font-weight: 500; }
 
+/* Estado de "ainda não há dado" — deliberadamente discreto (linha, não hero
+   centralizado): é informação de estado, não conteúdo principal da tela. */
 .empty-agregado {
-  display: flex; flex-direction: column; align-items: center; text-align: center; gap: .5rem;
-  padding: 1.75rem 1rem; color: var(--text-2);
+  display: flex; align-items: flex-start; text-align: left; gap: .7rem;
+  padding: .9rem 0; color: var(--text-2);
 }
-.empty-agregado svg { color: var(--text-3); }
-.empty-title { font-family: var(--font-display); font-size: 1rem; font-weight: 700; color: var(--text); }
-.empty-sub { font-size: .82rem; max-width: 380px; line-height: 1.5; }
+.empty-agregado svg { color: var(--text-3); flex-shrink: 0; margin-top: .1rem; }
+.empty-title { font-family: var(--font-body); font-size: .85rem; font-weight: 700; color: var(--text-2); }
+.empty-sub { font-size: .78rem; max-width: 480px; line-height: 1.5; margin-top: .15rem; }
 
 .agregado-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .8rem; }
 .agregado-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem 1.2rem; }
@@ -970,7 +1351,11 @@ onMounted(() => rolarParaFinal());
 .btn-salvar:disabled { opacity: .5; cursor: not-allowed; }
 
 .regras-lista { display: flex; flex-direction: column; }
-.regra-row { padding: .9rem .2rem; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: .35rem; }
+.regra-row {
+  padding: .9rem .8rem; border-bottom: 1px solid var(--border-2);
+  display: flex; flex-direction: column; gap: .35rem;
+}
+.regra-row:nth-child(even) { background: var(--surface); }
 .regra-row:last-child { border-bottom: none; }
 .regra-main { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
 .regra-categoria {
@@ -982,17 +1367,40 @@ onMounted(() => rolarParaFinal());
 .regra-valor { font-size: .84rem; color: var(--accent); font-weight: 600; }
 .regra-descricao { font-size: .82rem; color: var(--text-2); line-height: 1.5; }
 .regra-rodape { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: .1rem; flex-wrap: wrap; }
-.regra-meta { font-size: .7rem; color: var(--text-3); }
-.regra-acoes { display: flex; gap: .9rem; flex-shrink: 0; }
-.link-btn {
-  font-family: var(--font-body); font-size: .74rem; font-weight: 600; color: var(--text-3);
-  background: transparent; border: none; padding: 0; cursor: pointer; transition: color .15s;
-}
-.link-btn:hover { color: var(--accent); }
-.link-btn-perigo, .link-btn-perigo:hover { color: var(--error); }
+.regra-meta { font-size: .7rem; color: var(--text-2); }
+.regra-acoes { display: flex; gap: .45rem; flex-shrink: 0; align-items: center; }
 
-/* ── Feedback (acertou/errou) ── */
-.feedback-row { display: flex; align-items: center; gap: .6rem; margin-top: .6rem; }
-.feedback-pergunta { font-size: .74rem; color: var(--text-3); }
-.feedback-obrigado { font-size: .74rem; color: var(--text-3); font-style: italic; }
+/* Botões de ícone (Editar/Excluir) — substituem os antigos links de texto */
+.icon-btn {
+  display: flex; align-items: center; justify-content: center; gap: .35rem;
+  width: 30px; height: 30px; padding: 0 .5rem; flex-shrink: 0;
+  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  color: var(--text-2); cursor: pointer; transition: all var(--transition);
+}
+.icon-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.icon-btn-perigo {
+  width: auto; padding: 0 .65rem; color: var(--error);
+  border-color: rgba(255, 42, 95, .35); background: var(--error-bg);
+}
+.icon-btn-perigo:hover { color: var(--error); border-color: var(--error); background: var(--error-bg); filter: brightness(1.2); }
+.icon-btn-confirm-label { font-size: .72rem; font-weight: 600; white-space: nowrap; }
+
+/* ── Feedback (acertou/errou) — mesmo padrão em Consulta e Gestão ── */
+.feedback-row { display: flex; align-items: center; gap: .5rem; margin-top: .7rem; flex-wrap: wrap; }
+.feedback-pergunta { font-size: .74rem; color: var(--text-2); }
+.feedback-btn {
+  display: flex; align-items: center; gap: .35rem;
+  font-family: var(--font-body); font-size: .74rem; font-weight: 600; color: var(--text-2);
+  background: transparent; border: none; border-radius: 999px;
+  padding: .4rem .6rem; cursor: pointer; transition: var(--transition);
+}
+.feedback-btn:hover { color: var(--text); background: var(--surface-2); }
+.feedback-btn-up:hover { color: var(--success); background: var(--success-bg); }
+.feedback-btn-down:hover { color: var(--error); background: var(--error-bg); }
+.feedback-chip {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .74rem; font-weight: 600; padding: .35rem .7rem; border-radius: var(--radius-sm);
+}
+.feedback-chip-ok { color: var(--success); background: var(--success-bg); }
+.feedback-chip-erro { color: var(--error); background: var(--error-bg); }
 </style>

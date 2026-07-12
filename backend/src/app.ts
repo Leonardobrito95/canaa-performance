@@ -10,6 +10,7 @@ import comissaoRoutes from './modules/comissao/comissao.routes';
 import agendaRoutes   from './modules/agenda/agenda.routes';
 import otdrRoutes     from './modules/otdr/otdr.routes';
 import diagnosticoRoutes from './modules/diagnostico/diagnostico.routes';
+import atendimentoRoutes from './modules/atendimento/atendimento.routes';
 import { errorHandler } from './middlewares/errorHandler';
 import logger from './config/logger';
 
@@ -55,6 +56,7 @@ app.use('/api/v1/comissao', comissaoRoutes);
 app.use('/api/v1/agenda',  agendaRoutes);
 app.use('/api/v1/otdr',    otdrRoutes);
 app.use('/api/v1/diagnostico', diagnosticoRoutes);
+app.use('/api/v1/atendimento', atendimentoRoutes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

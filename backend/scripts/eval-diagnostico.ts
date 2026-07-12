@@ -165,7 +165,7 @@ const casos: Caso[] = [
     rodar: () => gerarRespostaGestaoIndividual('como esta o pop centro hoje?', SOLICITANTE).then((r) => r.resposta),
     verificar: (resp) => {
       const falhas: string[] = [];
-      if (!/n[ãa]o (h[áa]|encontrei|possui|tem|existe)|n[ãa]o est[áa]/i.test(resp)) {
+      if (!/n[ãa]o (h[áa]|encontrei|possui|tem|existe|consta)|n[ãa]o est[áa]/i.test(resp)) {
         falhas.push('Não deixou claro que o POP "Centro" não existe na lista, em vez de inventar dado.');
       }
       return falhas;

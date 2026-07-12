@@ -3,6 +3,9 @@ import transporter from '../../config/mailer';
 import logger from '../../config/logger';
 import { fetchContracts } from '../vendas/vendas.repository';
 import { fetchRetencao } from '../retencao/retencao.repository';
+import { getComparativoVolumeHoje } from '../atendimento/atendimento.service';
+import { buscarKpisAtendimento } from '../atendimento/atendimento.repository';
+import { TODOS_SETORES } from '../atendimento/atendimento.types';
 
 // ── Destinatários ─────────────────────────────────────────────────────────────
 
@@ -354,6 +357,102 @@ export async function alertaRetencaoFimMes(): Promise<void> {
   }
 
   logger.info(`[ALERTA] Retenção fim de mês: ${novos.length} operador(es) notificado(s).`);
+}
+
+// ── 5. Atendimento: volume do dia muito acima do normal ──────────────────────
+
+const LIMITE_PCT_VOLUME_ALTO = 50; // dia 50%+ acima da média móvel dos últimos 30 dias
+const VOLUME_MINIMO_BASELINE = 3;  // evita alerta ruidoso num setor de baixíssimo volume (ex: N2, Backoffice)
+
+function diaAtual(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/// Roda pra TODOS os setores configurados (ver SETORES_ATENDIMENTO em
+/// atendimento.types.ts) — diferente da monitoria de qualidade (que tem
+/// orçamento de IA e por isso é seletiva por setor no cron), esse alerta só
+/// faz agregação Mongo (sem custo de IA), então não tem motivo pra excluir
+/// setor nenhum por padrão.
+export async function alertaAtendimentoVolumeAlto(): Promise<void> {
+  const dia = diaAtual();
+
+  for (const setor of TODOS_SETORES) {
+    const comparativo = await getComparativoVolumeHoje(setor);
+    if (
+      comparativo.mediaAnterior === null ||
+      comparativo.mediaAnterior < VOLUME_MINIMO_BASELINE ||
+      comparativo.pctAcimaDaMedia === null ||
+      comparativo.pctAcimaDaMedia < LIMITE_PCT_VOLUME_ALTO
+    ) continue;
+
+    const enviado = await jaEnviou('ATENDIMENTO_VOLUME_ALTO', setor, dia);
+    if (enviado) continue;
+
+    const html = emailTemplate(
+      `Volume Alto de Atendimento — ${setor}`,
+      '#d97706',
+      `<p>O volume de atendimentos de <strong>${setor}</strong> hoje está
+       <strong>${comparativo.pctAcimaDaMedia.toFixed(0)}% acima</strong> da média dos últimos 30 dias.</p>
+       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:12px">
+         <tr style="background:#f3f4f6">
+           <th style="padding:8px 12px;text-align:left">Setor</th>
+           <th style="padding:8px 12px;text-align:left">Hoje</th>
+           <th style="padding:8px 12px;text-align:left">Média (30d)</th>
+           <th style="padding:8px 12px;text-align:left">Variação</th>
+         </tr>
+         <tr>
+           <td style="padding:8px 12px">${setor}</td>
+           <td style="padding:8px 12px">${comparativo.volumeHoje}</td>
+           <td style="padding:8px 12px">${comparativo.mediaAnterior.toFixed(1)}</td>
+           <td style="padding:8px 12px">▲ ${comparativo.pctAcimaDaMedia.toFixed(0)}%</td>
+         </tr>
+       </table>`,
+    );
+
+    await transporter.sendMail({
+      from: FROM,
+      to: EMAILS_SAC.join(', '),
+      subject: `📈 Volume alto de atendimento — ${setor} (${comparativo.pctAcimaDaMedia.toFixed(0)}% acima da média)`,
+      html,
+    });
+
+    await registrarEnvio('ATENDIMENTO_VOLUME_ALTO', setor, dia);
+    logger.info(`[ALERTA] Volume alto de atendimento: ${setor} (${comparativo.pctAcimaDaMedia.toFixed(0)}% acima da média).`);
+  }
+}
+
+// ── 6. Atendimento: taxa de escalonamento N1→N2 acima do normal ──────────────
+
+const LIMITE_PCT_ESCALONAMENTO = 15; // % dos atendimentos N1 do dia escalados pra N2
+
+export async function alertaAtendimentoEscalonamentoAlto(): Promise<void> {
+  const dia = diaAtual();
+  const hoje = new Date();
+  const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+
+  const kpisN1 = await buscarKpisAtendimento('N1', inicioHoje, hoje);
+  if (kpisN1.volume < VOLUME_MINIMO_BASELINE || kpisN1.pctEscalonamento === null || kpisN1.pctEscalonamento < LIMITE_PCT_ESCALONAMENTO) return;
+
+  const enviado = await jaEnviou('ATENDIMENTO_ESCALONAMENTO_ALTO', 'N1', dia);
+  if (enviado) return;
+
+  const html = emailTemplate(
+    'Escalonamento N1 → N2 Acima do Normal',
+    '#dc2626',
+    `<p><strong>${kpisN1.pctEscalonamento.toFixed(1)}%</strong> dos atendimentos de Suporte N1 hoje
+     foram escalados pra N2 (${kpisN1.escalonamentos} de ${kpisN1.volume}) — pode indicar que o N1
+     não está conseguindo resolver casos que deveria, ou um problema recorrente novo.</p>`,
+  );
+
+  await transporter.sendMail({
+    from: FROM,
+    to: EMAILS_SAC.join(', '),
+    subject: `🔴 Escalonamento N1→N2 acima do normal — ${kpisN1.pctEscalonamento.toFixed(1)}% hoje`,
+    html,
+  });
+
+  await registrarEnvio('ATENDIMENTO_ESCALONAMENTO_ALTO', 'N1', dia);
+  logger.info(`[ALERTA] Escalonamento N1→N2 alto: ${kpisN1.pctEscalonamento.toFixed(1)}% (${kpisN1.escalonamentos}/${kpisN1.volume}).`);
 }
 
 // ── Template HTML ─────────────────────────────────────────────────────────────

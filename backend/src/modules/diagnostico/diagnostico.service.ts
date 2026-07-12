@@ -3,6 +3,7 @@ import logger from '../../config/logger';
 import {
   buscarHistoricoSinal,
   buscarOscilacaoRede,
+  buscarStatusSmartOlt,
   buscarEquipamentoAtual,
   buscarOrdensServico,
   buscarMensagensOs,
@@ -13,12 +14,10 @@ import {
   buscarRetencaoNegociacoes,
   buscarRegrasNegocio,
   buscarFotosRelevantes,
-  buscarRankingVendedores,
-  buscarEvolucaoVendas,
-  buscarStatusPops,
 } from './diagnostico.repository';
 import { ContextoClienteDiagnostico } from './diagnostico.types';
 import { montarContextoTextual, montarContextoGestaoTextual } from './diagnostico.prompt';
+import { FONTES_GESTAO, DadosGestao, JanelaTemporalGestao } from './diagnostico.gestao-fontes';
 import { gerarDiagnostico, gerarRespostaGestao, DiagnosticoIaResultado } from './diagnostico.ia';
 
 /// Monta o contexto completo de um cliente (rede + O.S. + comercial) para a IA.
@@ -27,9 +26,10 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
   const idsContrato = await buscarIdsContratoPorCliente(idCliente);
   const equipamentoAtual = await buscarEquipamentoAtual(idCliente);
 
-  const [historicoSinal, oscilacaoRede, ordensServico, atendimentos, comercial, regrasNegocio] = await Promise.all([
+  const [historicoSinal, oscilacaoRede, statusSmartOlt, ordensServico, atendimentos, comercial, regrasNegocio] = await Promise.all([
     buscarHistoricoSinal(idCliente),
     buscarOscilacaoRede(idCliente, equipamentoAtual),
+    buscarStatusSmartOlt(equipamentoAtual),
     buscarOrdensServico(idCliente),
     buscarAtendimentos(idCliente),
     buscarContextoComercial(idCliente, idsContrato),
@@ -48,6 +48,7 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
     equipamentoAtual,
     historicoSinal,
     oscilacaoRede,
+    statusSmartOlt,
     ordensServico,
     osMensagens,
     osArquivos,
@@ -60,6 +61,17 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
 export interface SolicitanteDiagnostico {
   ixcUserId: string;
   ixcUsername: string;
+}
+
+/// Intervalo do mês corrente (dia 1 até hoje) — usado pra trazer o desempenho
+/// de retenção do mês em andamento tanto pro chat de gestão quanto pro
+/// resumo estático dos cards (diagnostico.controller.ts), mantendo os dois
+/// consistentes com o mesmo período.
+export function intervaloMesAtual(): { dateFrom: string; dateTo: string } {
+  const hoje = new Date();
+  const ano = hoje.getFullYear();
+  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+  return { dateFrom: `${ano}-${mes}-01`, dateTo: hoje.toISOString().slice(0, 10) };
 }
 
 /// Gera um diagnóstico individual para um cliente (botão padrão ou pergunta livre no
@@ -94,22 +106,38 @@ export async function gerarDiagnosticoIndividual(
   return { ...resultado, consultaId: consulta.id };
 }
 
-/// Responde perguntas de gestão (ranking de vendedores, evolução de vendas)
-/// sem cliente específico — mesma auditoria de consultas do Diagnóstico.
+/// Responde perguntas de gestão (ranking de vendedores, evolução de vendas,
+/// atendimento, retenção...) sem cliente específico — mesma auditoria de
+/// consultas do Diagnóstico. Busca cada fonte de FONTES_GESTAO em paralelo
+/// (diagnostico.gestao-fontes.ts) — adicionar uma fonte nova não muda essa
+/// função, só o registry.
 export async function gerarRespostaGestaoIndividual(
   pergunta: string,
   solicitante: SolicitanteDiagnostico,
   historico?: { pergunta: string; resposta: string }[],
 ): Promise<{ resposta: string; consultaId: string }> {
-  const [ranking, evolucao, pops] = await Promise.all([
-    buscarRankingVendedores(),
-    buscarEvolucaoVendas(),
-    buscarStatusPops().catch((err) => {
-      logger.warn('[DIAGNOSTICO] Falha ao buscar status de POPs para o chat de gestão', { error: err.message });
-      return [];
-    }),
-  ]);
-  const contextoTextual = montarContextoGestaoTextual(ranking, evolucao, pops);
+  const hoje = new Date();
+  const janela: JanelaTemporalGestao = {
+    hoje,
+    inicioMes: new Date(hoje.getFullYear(), hoje.getMonth(), 1),
+    inicioUltimos3Meses: new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1),
+  };
+
+  const entradas = await Promise.all(FONTES_GESTAO.map(async (fonte) => {
+    // ranking/evolução não são resilientes de propósito — uma falha nelas
+    // propaga e derruba a resposta (500) em vez de degradar silenciosamente,
+    // diferente das outras fontes (ver comentário de `resiliente` no tipo).
+    if (!fonte.resiliente) return [fonte.chave, await fonte.buscar(janela)] as const;
+    try {
+      return [fonte.chave, await fonte.buscar(janela)] as const;
+    } catch (err: any) {
+      logger.warn(`[DIAGNOSTICO] ${fonte.resiliente.logErroMsg}`, { error: err.message });
+      return [fonte.chave, fonte.valorVazio] as const;
+    }
+  }));
+  const dados = Object.fromEntries(entradas) as DadosGestao;
+
+  const contextoTextual = montarContextoGestaoTextual(dados);
   const { texto: resposta, metricas } = await gerarRespostaGestao(contextoTextual, pergunta, historico);
 
   const consulta = await prisma.diagnosticoConsulta.create({
@@ -118,7 +146,7 @@ export async function gerarRespostaGestaoIndividual(
       id_alvo:        'GERAL',
       pergunta,
       resposta,
-      contexto_json:  { ranking, evolucao, pops } as any,
+      contexto_json:  dados as any,
       ixc_user_id:    solicitante.ixcUserId,
       ixc_username:   solicitante.ixcUsername,
       latencia_ms:    metricas.latenciaMs,

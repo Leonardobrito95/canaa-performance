@@ -38,78 +38,53 @@
           </div>
         </div>
 
-        <!-- Navegação central -->
-        <nav class="header-nav">
-          <!-- Grupo Performance (oculto para estoque) -->
-          <div v-if="!isEstoque" class="nav-group">
-            <span class="nav-group-label">Performance</span>
-            <div class="nav-items">
-              <button v-if="!isCS && !isCampo" :class="['nav-btn', { active: tab === 'vendas' }]" @click="tab = 'vendas'">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M3 10L6 7L9 11L13 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>Vendas</span>
+        <!-- Navegação central: cada grupo é um dropdown, alinhado à mesma taxonomia de
+             setores do Hub (hub.sectors) — config única em useNavMenu.ts, consumida aqui
+             e na drawer mobile via v-for (elimina a duplicação que existia antes). -->
+        <nav class="header-nav" ref="headerNavRef">
+          <template v-for="(group, idx) in visibleGroups" :key="group.key">
+            <div v-if="idx > 0" class="nav-divider"></div>
+            <div :class="['nav-group', { open: openNavGroup === group.key }]">
+              <button type="button" :class="['nav-group-trigger', { active: grupoAtivo === group.key }]" @click="toggleNavGroup(group.key)">
+                <i v-if="group.icon" :class="`fa-solid ${group.icon}`" :style="group.color ? `color:${group.color}` : ''"></i>
+                <span class="nav-group-label">{{ group.label }}</span>
+                <svg class="nav-caret" width="9" height="6" viewBox="0 0 9 6" fill="none"><path d="M1 1l3.5 3.5L8 1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
-              <button v-if="!isCampo" :class="['nav-btn', { active: tab === 'comissao' }]" @click="tab = 'comissao'">
-                <span class="nav-icon-text">$</span>
-                <span>Comissões</span>
-              </button>
-              <button v-if="isCampo || isGestor" :class="['nav-btn', { active: tab === 'comissao-campo' }]" @click="tab = 'comissao-campo'">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M2 11V5l5-3 5 3v6M5 15v-4h5v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>Campo</span>
-              </button>
-              <button v-if="!isCS && !isCampo" :class="['nav-btn', { active: tab === 'form' }]" @click="tab = 'form'">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M2 3h11M2 7h11M2 11h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                <span>Registro BDR</span>
-              </button>
-              <button v-if="!isCS && !isCampo" :class="['nav-btn', { active: tab === 'bdr-dash' }]" @click="tab = 'bdr-dash'">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M2 11l3-4 3 2 3-5 2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="1" y="1" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
-                <span>Dashboard BDR</span>
-              </button>
-              <button v-if="!isCampo" :class="['nav-btn', { active: tab === 'retencao' }]" @click="tab = 'retencao'">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z" stroke="currentColor" stroke-width="1.5"/><path d="M5 7.5l2 2 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>Retenção</span>
-              </button>
-              <button :class="['nav-btn', { active: tab === 'diagnostico' }]" @click="tab = 'diagnostico'">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M1 8h2.3l1.4-3.6 2.3 7.2 1.4-4.5 1 .9H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>Diagnóstico IA</span>
-              </button>
+              <div v-if="openNavGroup === group.key" class="nav-dropdown" @click="openNavGroup = null">
+                <button
+                  v-for="item in group.items.filter((i) => i.visible)"
+                  :key="item.label"
+                  :class="['nav-drop-item', { active: isItemActive(item, tab) }]"
+                  :disabled="item.disabled"
+                  @click="activateNavItem(item)"
+                >
+                  <!-- eslint-disable-next-line vue/no-v-html -- SVG 100% estático do próprio código-fonte, nunca vem de API/usuário -->
+                  <span v-if="item.icon" v-html="item.icon"></span>
+                  <span v-else-if="item.iconText" class="nav-icon-text">{{ item.iconText }}</span>
+                  <span>{{ item.dynamicLabel ? item.dynamicLabel() : item.label }}</span>
+                </button>
+              </div>
             </div>
-          </div>
-
-          <!-- Divisor (oculto para estoque) -->
-          <div v-if="!isEstoque" class="nav-divider"></div>
-
-          <!-- Grupo Hub (dashboards e administração dele) -->
-          <div class="nav-group">
-            <span class="nav-group-label">Hub</span>
-            <div class="nav-items">
-              <button :class="['nav-btn', { active: tab === 'hub' || tab === 'hub-viewer' }]" @click="tab = 'hub'">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
-                <span>Dashboards</span>
-              </button>
-              <button v-if="isHubAdmin" :class="['nav-btn', { active: tab === 'hub-admin' }]" @click="tab = 'hub-admin'">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 1a6.5 6.5 0 1 0 0 13A6.5 6.5 0 0 0 7.5 1z" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4v3.5l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                <span>Administração</span>
-              </button>
-            </div>
-          </div>
+          </template>
 
           <!-- Divisor -->
           <div class="nav-divider"></div>
 
-          <!-- Grupo Ferramentas (sistemas externos, não são dashboards do Hub) -->
-          <div v-if="isGestor || isCampo" class="nav-group">
-            <span class="nav-group-label">Ferramentas</span>
-            <div class="nav-items">
-              <button class="nav-btn" :disabled="abrindoOtdr" @click="abrirOtdr">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M1 5.5a9 9 0 0 1 13 0M3.5 8a5.5 5.5 0 0 1 8 0M6 10.5a2 2 0 0 1 3 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7.5" cy="13" r="1" fill="currentColor"/></svg>
-                <span>{{ abrindoOtdr ? 'Abrindo...' : 'OTDR (Rede)' }}</span>
-              </button>
-              <button v-if="isGestor" :class="['nav-btn', { active: tab === 'sala-reuniao' }]" @click="tab = 'sala-reuniao'">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><rect x="1" y="3" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 12v1.5M10 12v1.5M3.5 13.5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 6.5h7M4 8.5h4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".5"/></svg>
-                <span>Sala de Reunião</span>
-              </button>
-            </div>
-          </div>
+          <!-- C.A.I.O. (Canaã Artificial Intelligence Operator) — módulo próprio do agente de IA,
+               não é dropdown de setor, fica fora do loop de grupos -->
+          <button type="button" :class="['nav-standalone-btn', { active: tab === 'diagnostico' }]" @click="tab = 'diagnostico'" title="Canaã Artificial Intelligence Operator">
+            <svg width="20" height="20" viewBox="0 0 15 15" fill="none">
+              <circle cx="7.5" cy="1.1" r="0.75" fill="currentColor"/>
+              <path d="M7.5 1.85v1.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              <rect x="2.5" y="3.15" width="10" height="7.3" rx="2.6" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M2.5 5.8h-1.2M13.5 5.8h1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              <path d="M4.9 6.3c.5-.75 1.2-.75 1.7 0" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M8.4 6.3c.5-.75 1.2-.75 1.7 0" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M5.6 8.6h3.8" stroke="currentColor" stroke-width="1.15" stroke-linecap="round"/>
+              <path d="M4.2 10.45v1.15M10.8 10.45v1.15" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+            <span class="nav-group-label">C.A.I.O.</span>
+          </button>
         </nav>
 
         <!-- Direita: relógio + usuário + logout -->
@@ -120,7 +95,7 @@
           </div>
           <div class="user-info">
             <span class="user-name">{{ user?.nome.split(' ')[0] }}</span>
-            <span class="user-role">{{ user?.perfil === 'cs' ? 'CS' : user?.perfil === 'campo' ? 'Campo' : user?.perfil }}</span>
+            <span class="user-role">{{ user?.perfil === 'cs' ? 'CS' : user?.perfil === 'campo' ? 'Campo' : user?.perfil === 'agente' ? 'Agente' : user?.perfil }}</span>
           </div>
           <button class="btn-logout" @click="logout" title="Sair">
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M6 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3M10 10l3-3-3-3M13 7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -135,6 +110,9 @@
       </div>
     </header>
 
+    <!-- Backdrop sutil atrás do dropdown de navegação aberto -->
+    <div v-if="openNavGroup" class="nav-backdrop" @click="openNavGroup = null"></div>
+
     <!-- ── Mobile nav drawer ── -->
     <Transition name="backdrop">
       <div v-if="menuOpen" class="mobile-backdrop" @click="menuOpen = false">
@@ -147,55 +125,30 @@
               </button>
             </div>
 
-            <div v-if="!isEstoque" class="drawer-group">
-              <span class="drawer-group-label">Performance</span>
-              <button v-if="!isCS && !isCampo" :class="['drawer-btn', { active: tab === 'vendas' }]" @click="navTo('vendas')">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M3 10L6 7L9 11L13 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Vendas
-              </button>
-              <button v-if="!isCampo" :class="['drawer-btn', { active: tab === 'comissao' }]" @click="navTo('comissao')">
-                <span class="drawer-icon-text">$</span>
-                Comissões
-              </button>
-              <button v-if="isCampo || isGestor" :class="['drawer-btn', { active: tab === 'comissao-campo' }]" @click="navTo('comissao-campo')">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M2 11V5l5-3 5 3v6M5 15v-4h5v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Campo
-              </button>
-              <button v-if="!isCS && !isCampo" :class="['drawer-btn', { active: tab === 'form' }]" @click="navTo('form')">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M2 3h11M2 7h11M2 11h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                Registro BDR
-              </button>
-              <button v-if="!isCS && !isCampo" :class="['drawer-btn', { active: tab === 'bdr-dash' }]" @click="navTo('bdr-dash')">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M2 11l3-4 3 2 3-5 2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="1" y="1" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
-                Dashboard BDR
-              </button>
-              <button v-if="!isCampo" :class="['drawer-btn', { active: tab === 'retencao' }]" @click="navTo('retencao')">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z" stroke="currentColor" stroke-width="1.5"/><path d="M5 7.5l2 2 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Retenção
+            <div v-for="group in visibleGroups" :key="group.key" class="drawer-group">
+              <span class="drawer-group-label">
+                <i v-if="group.icon" :class="`fa-solid ${group.icon}`" :style="group.color ? `color:${group.color};margin-right:.4rem` : 'margin-right:.4rem'"></i>
+                {{ group.label }}
+              </span>
+              <button
+                v-for="item in group.items.filter((i) => i.visible)"
+                :key="item.label"
+                :class="['drawer-btn', { active: isItemActive(item, tab) }]"
+                :disabled="item.disabled"
+                @click="activateNavItem(item)"
+              >
+                <!-- eslint-disable-next-line vue/no-v-html -- SVG 100% estático do próprio código-fonte, nunca vem de API/usuário -->
+                <span v-if="item.icon" v-html="item.icon"></span>
+                <span v-else-if="item.iconText" class="drawer-icon-text">{{ item.iconText }}</span>
+                {{ item.dynamicLabel ? item.dynamicLabel() : item.label }}
               </button>
             </div>
 
             <div class="drawer-group">
-              <span class="drawer-group-label">Hub</span>
-              <button :class="['drawer-btn', { active: tab === 'hub' || tab === 'hub-viewer' }]" @click="navTo('hub')">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
-                Dashboards
-              </button>
-              <button v-if="isHubAdmin" :class="['drawer-btn', { active: tab === 'hub-admin' }]" @click="navTo('hub-admin')">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 1a6.5 6.5 0 1 0 0 13A6.5 6.5 0 0 0 7.5 1z" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4v3.5l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                Administração
-              </button>
-            </div>
-
-            <div v-if="isGestor || isCampo" class="drawer-group">
-              <span class="drawer-group-label">Ferramentas</span>
-              <button class="drawer-btn" :disabled="abrindoOtdr" @click="abrirOtdr">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M1 5.5a9 9 0 0 1 13 0M3.5 8a5.5 5.5 0 0 1 8 0M6 10.5a2 2 0 0 1 3 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7.5" cy="13" r="1" fill="currentColor"/></svg>
-                {{ abrindoOtdr ? 'Abrindo...' : 'OTDR (Rede)' }}
-              </button>
-              <button v-if="isGestor" :class="['drawer-btn', { active: tab === 'sala-reuniao' }]" @click="navTo('sala-reuniao')">
-                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><rect x="1" y="3" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 12v1.5M10 12v1.5M3.5 13.5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 6.5h7M4 8.5h4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".5"/></svg>
-                Sala de Reunião
+              <span class="drawer-group-label">C.A.I.O.</span>
+              <button :class="['drawer-btn', { active: tab === 'diagnostico' }]" @click="tab = 'diagnostico'; menuOpen = false">
+                <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M1 8h2.3l1.4-3.6 2.3 7.2 1.4-4.5 1 .9H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Canaã Artificial Intelligence Operator
               </button>
             </div>
 
@@ -238,8 +191,24 @@
             <BdrDashboardView :refresh="refreshTick" />
           </section>
 
+          <section v-else-if="tab === 'atendimento-comercial'" key="atendimento-comercial">
+            <ComercialAtendimentoView />
+          </section>
+
           <section v-else-if="tab === 'retencao'" key="retencao">
             <RetencaoView :refresh="refreshTick" />
+          </section>
+
+          <section v-else-if="tab === 'atendimento'" key="atendimento">
+            <AtendimentoView />
+          </section>
+
+          <section v-else-if="tab === 'monitoria-qa'" key="monitoria-qa">
+            <MonitoriaQaView />
+          </section>
+
+          <section v-else-if="tab === 'minhas-avaliacoes'" key="minhas-avaliacoes">
+            <MinhasAvaliacoesView />
           </section>
 
           <section v-else-if="tab === 'diagnostico'" key="diagnostico">
@@ -268,7 +237,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import BdrForm              from './components/BdrForm.vue';
 import LoginView             from './views/LoginView.vue';
 import VendasView            from './views/VendasView.vue';
@@ -276,17 +245,22 @@ import ComissaoView          from './views/ComissaoView.vue';
 import ComissaoCampoView     from './views/ComissaoCampoView.vue';
 import BdrDashboardView      from './views/BdrDashboardView.vue';
 import RetencaoView          from './views/RetencaoView.vue';
+import AtendimentoView       from './views/AtendimentoView.vue';
+import ComercialAtendimentoView from './views/ComercialAtendimentoView.vue';
+import MonitoriaQaView       from './views/MonitoriaQaView.vue';
+import MinhasAvaliacoesView  from './views/MinhasAvaliacoesView.vue';
 import DiagnosticoView       from './views/DiagnosticoView.vue';
 import HubView               from './views/hub/HubView.vue';
 import HubViewerView         from './views/hub/HubViewerView.vue';
 import HubAdminView          from './views/hub/HubAdminView.vue';
 import AgendaView            from './views/AgendaView.vue';
 import { useAuth } from './composables/useAuth';
+import { useNavMenu, type Tab, type NavItem, type NavGroupKey } from './composables/useNavMenu';
 import type { HubDashboard } from './services/hubApi';
 import { logModuleView } from './services/hubApi';
 import { getOtdrLink } from './services/otdrApi';
 
-const { user, isAuthenticated, isGestor, isCS, isEstoque, isCampo, isHubAdmin, logout } = useAuth();
+const { user, isAuthenticated, isGestor, isCS, isEstoque, isCampo, isAgente, souAgenteQa, isHubAdmin, logout } = useAuth();
 const abrindoOtdr = ref(false);
 
 async function abrirOtdr() {
@@ -303,8 +277,17 @@ async function abrirOtdr() {
   }
 }
 
-type Tab = 'form' | 'vendas' | 'comissao' | 'comissao-campo' | 'bdr-dash' | 'retencao' | 'diagnostico' | 'hub' | 'hub-viewer' | 'hub-admin' | 'sala-reuniao';
-const tab = ref<Tab>(isEstoque.value ? 'hub' : isCampo.value ? 'comissao-campo' : isCS.value ? 'retencao' : 'vendas');
+const { visibleGroups, tabParaGrupo, isItemActive } = useNavMenu({
+  isGestor, isCS, isEstoque, isCampo, isAgente, souAgenteQa, isHubAdmin, abrindoOtdr, abrirOtdr,
+});
+
+const tab = ref<Tab>(
+  isAgente.value  ? 'minhas-avaliacoes' :
+  isEstoque.value ? 'hub' :
+  isCampo.value   ? 'comissao-campo' :
+  isCS.value      ? 'retencao' :
+  'vendas',
+);
 const refreshTick = ref(0);
 const menuOpen = ref(false);
 
@@ -316,7 +299,11 @@ const TAB_LOG_ACTION: Partial<Record<Tab, string>> = {
   'comissao-campo': 'VIEW_CAMPO',
   form: 'VIEW_REGISTRO_BDR',
   'bdr-dash': 'VIEW_BDR_DASHBOARD',
+  'atendimento-comercial': 'VIEW_ATENDIMENTO_COMERCIAL',
   retencao: 'VIEW_RETENCAO',
+  atendimento: 'VIEW_ATENDIMENTO',
+  'monitoria-qa': 'VIEW_MONITORIA_QA',
+  'minhas-avaliacoes': 'VIEW_MINHAS_AVALIACOES',
   diagnostico: 'VIEW_DIAGNOSTICO',
   hub: 'VIEW_HUB',
   'hub-admin': 'VIEW_HUB_ADMIN',
@@ -328,7 +315,29 @@ watch([tab, isAuthenticated], ([novaTab, autenticado]) => {
   if (action) logModuleView(action);
 }, { immediate: true });
 
-function navTo(t: Tab) { tab.value = t; menuOpen.value = false; }
+function activateNavItem(item: NavItem) {
+  if (item.action) item.action();
+  else if (item.tab) tab.value = item.tab;
+  openNavGroup.value = null;
+  menuOpen.value = false;
+}
+
+// ── Dropdowns do header (grupos de setor + Hub/Ferramentas) ──────────────
+const openNavGroup = ref<NavGroupKey | null>(null);
+const headerNavRef = ref<HTMLElement | null>(null);
+
+function toggleNavGroup(grupo: NavGroupKey) {
+  openNavGroup.value = openNavGroup.value === grupo ? null : grupo;
+}
+
+function handleOutsideNavClick(e: MouseEvent) {
+  if (headerNavRef.value && !headerNavRef.value.contains(e.target as Node)) {
+    openNavGroup.value = null;
+  }
+}
+
+const grupoAtivo = computed(() => tabParaGrupo.value.get(tab.value) ?? null);
+
 const currentDate = ref('');
 const currentTime = ref('');
 const selectedDashboard = ref<HubDashboard | null>(null);
@@ -340,8 +349,15 @@ function updateClock() {
   currentTime.value = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-onMounted(() => { updateClock(); timer = setInterval(updateClock, 1000); });
-onUnmounted(() => clearInterval(timer));
+onMounted(() => {
+  updateClock();
+  timer = setInterval(updateClock, 1000);
+  document.addEventListener('mousedown', handleOutsideNavClick);
+});
+onUnmounted(() => {
+  clearInterval(timer);
+  document.removeEventListener('mousedown', handleOutsideNavClick);
+});
 
 function onRegistered() { refreshTick.value++; }
 
@@ -366,7 +382,7 @@ function openViewer(dashboard: HubDashboard) {
   --accent-glow:  rgba(0, 240, 255, 0.25);
   --text:         #f0f3ff;
   --text-2:       #8a99b8;
-  --text-3:       #4c5870;
+  --text-3:       #707c98;
   --success:      #c7ff00;
   --success-bg:   rgba(199, 255, 0, 0.1);
   --error:        #ff2a5f;
@@ -386,6 +402,15 @@ function openViewer(dashboard: HubDashboard) {
 
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Scrollbars finas e escuras, em qualquer área com overflow no app inteiro
+   (Firefox via scrollbar-color/-width herdado do :root, Chrome/Edge/Safari via
+   ::-webkit-scrollbar sem seletor composto = aplica a todo elemento rolável) ── */
+:root { scrollbar-color: var(--surface-3) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border: 1px solid var(--border-2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-2); }
 
 body {
   font-family: var(--font-body);
@@ -455,62 +480,119 @@ body {
 }
 
 .nav-group {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  height: 100%;
-}
-.nav-group-label {
-  font-family: var(--font-mono);
-  font-size: .52rem;
-  font-weight: 600;
-  letter-spacing: .18em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  padding-bottom: .3rem;
-}
-.nav-items {
+  position: relative;
   display: flex;
   align-items: stretch;
   height: 100%;
 }
 
-/* Botão de navegação — estilo navbar */
-.nav-btn {
+/* Botão-gatilho do dropdown de cada grupo */
+.nav-group-trigger {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: .25rem;
-  padding: 0 .9rem;
+  gap: .4rem;
   height: 100%;
+  padding: 0 1rem;
   background: none;
   border: none;
   border-bottom: 3px solid transparent;
   color: var(--text-2);
   cursor: pointer;
+  transition: all var(--transition);
+}
+.nav-group-trigger:hover { color: var(--text); background: var(--surface-2); }
+.nav-group-trigger.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-dim); }
+.nav-group.open .nav-group-trigger { color: var(--text); background: var(--surface-2); }
+
+/* C.A.I.O. — botão standalone (não é dropdown, só um destino); ícone em cima, nome embaixo, tudo centralizado */
+.nav-standalone-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .18rem;
+  height: 100%;
+  padding: 0 1rem;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.nav-standalone-btn svg { opacity: .65; transition: opacity var(--transition); flex-shrink: 0; }
+.nav-standalone-btn:hover { color: var(--text); background: var(--surface-2); }
+.nav-standalone-btn:hover svg { opacity: .95; }
+.nav-standalone-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-dim); }
+.nav-standalone-btn.active svg { opacity: 1; filter: drop-shadow(0 0 4px var(--accent)); }
+.nav-standalone-btn .nav-group-label { line-height: 1; }
+
+.nav-group-label {
+  font-family: var(--font-mono);
+  font-size: .62rem;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.nav-caret { opacity: .6; transition: transform var(--transition); flex-shrink: 0; }
+.nav-group.open .nav-caret { transform: rotate(180deg); }
+
+/* Backdrop sutil atrás do dropdown aberto — ajuda o foco sem escurecer demais */
+.nav-backdrop {
+  position: fixed;
+  top: var(--header-h, 62px);
+  left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, .35);
+  z-index: 30;
+}
+
+/* Painel do dropdown */
+.nav-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 215px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: .35rem;
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+  z-index: 40;
+}
+
+/* Item dentro do dropdown */
+.nav-drop-item {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  width: 100%;
+  padding: .6rem .75rem .6rem calc(.75rem + 2px);
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  cursor: pointer;
   font-family: var(--font-body);
-  font-size: .7rem;
+  font-size: .8rem;
   font-weight: 500;
+  text-align: left;
   white-space: nowrap;
   transition: all var(--transition);
-  min-width: 64px;
 }
-.nav-btn svg { opacity: .55; transition: opacity var(--transition); flex-shrink: 0; }
-.nav-icon-text { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; line-height: 1; opacity: .55; transition: opacity var(--transition); }
-.nav-btn:hover .nav-icon-text, .nav-btn.active .nav-icon-text { opacity: 1; }
-.nav-btn:hover {
-  color: var(--text);
-  background: var(--surface-2);
-}
-.nav-btn:hover svg { opacity: .9; }
-.nav-btn.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  background: var(--accent-dim);
-}
-.nav-btn.active svg { opacity: 1; filter: drop-shadow(0 0 4px var(--accent)); }
+.nav-drop-item svg { opacity: .6; transition: opacity var(--transition); flex-shrink: 0; }
+.nav-icon-text { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; line-height: 1; opacity: .6; transition: opacity var(--transition); width: 18px; text-align: center; flex-shrink: 0; }
+.nav-drop-item:hover .nav-icon-text, .nav-drop-item.active .nav-icon-text { opacity: 1; }
+.nav-drop-item:hover { color: var(--text); background: var(--surface-3); }
+.nav-drop-item:hover svg { opacity: .9; }
+.nav-drop-item.active { color: var(--accent); background: var(--accent-dim); border-left-color: var(--accent); }
+.nav-drop-item.active svg { opacity: 1; filter: drop-shadow(0 0 4px var(--accent)); }
+.nav-drop-item:disabled { opacity: .5; cursor: not-allowed; }
 
 /* Divisor entre grupos */
 .nav-divider {

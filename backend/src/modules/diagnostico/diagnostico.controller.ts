@@ -1,13 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthPayload } from '../auth/auth.service';
 import prisma from '../../config/prisma';
-import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual } from './diagnostico.service';
+import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual, intervaloMesAtual } from './diagnostico.service';
 import {
   buscarClientePorNome,
   buscarRankingVendedores,
   buscarEvolucaoVendas,
   buscarStatusPops,
 } from './diagnostico.repository';
+import { buscarPioresClientesHoje } from '../otdr/otdr.service';
+import { getResumoAuditoriaRetencao, getRetencao } from '../retencao/retencao.service';
 import { obterMetricasIxc } from '../../config/ixcSession';
 import { obterMetricasAgregadasGemini } from './diagnostico.ia';
 
@@ -111,12 +113,15 @@ export async function statusGemini(req: Request, res: Response, next: NextFuncti
 /// pra perguntas que exigem síntese/interpretação.
 export async function resumoGestao(req: Request, res: Response, next: NextFunction) {
   try {
-    const [ranking, evolucao, pops] = await Promise.all([
+    const [ranking, evolucao, statusRede, piores, auditoriaRetencao, retencaoMes] = await Promise.all([
       buscarRankingVendedores(),
       buscarEvolucaoVendas(),
-      buscarStatusPops().catch(() => []),
+      buscarStatusPops().catch(() => ({ pops: [], piorGeral: null })),
+      buscarPioresClientesHoje(5).catch(() => []),
+      getResumoAuditoriaRetencao().catch(() => null),
+      getRetencao('gestor', '', intervaloMesAtual()).then((r) => r.kpis).catch(() => null),
     ]);
-    res.json({ ranking, evolucao, pops });
+    res.json({ ranking, evolucao, pops: statusRede.pops, piorGeral: statusRede.piorGeral, piores, auditoriaRetencao, retencaoMes });
   } catch (err) { next(err); }
 }
 

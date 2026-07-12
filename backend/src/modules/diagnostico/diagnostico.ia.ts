@@ -69,7 +69,7 @@ export function obterMetricasAgregadasGemini() {
 /// principal (já aconteceu uma vez nesta mesma base de código). Também
 /// acumula latência/tokens no agregado em memória e devolve as métricas
 /// dessa chamada específica, pra persistir por consulta.
-async function chamarGemini(contents: any[], config: Record<string, unknown>): Promise<{ texto: string; metricas: MetricasGemini }> {
+export async function chamarGemini(contents: any[], config: Record<string, unknown>): Promise<{ texto: string; metricas: MetricasGemini }> {
   const client = getClient();
   const tentativas = [GEMINI_MODEL, GEMINI_MODEL, GEMINI_MODEL_FALLBACK];
 

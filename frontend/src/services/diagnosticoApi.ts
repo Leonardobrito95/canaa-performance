@@ -104,10 +104,55 @@ export interface PopStatusEntry {
   piorSinalRx: number | null;
 }
 
+export interface ClienteDegradadoHojeEntry {
+  idCliente: number;
+  nome: string;
+  sn: string;
+  olt: string;
+  rxHoje: number;
+  rxAnterior: number;
+}
+
+export interface PiorSinalAgoraEntry {
+  clienteId: number;
+  nome: string;
+  pop: string;
+  olt: string;
+  sinalRx: number;
+}
+
+export interface ResumoAuditoriaOperadorEntry {
+  nomeOperador: string;
+  totalClassificado: number;
+  negociacaoReal: number;
+  semNegociacao: number;
+  indefinido: number;
+}
+
+export interface ResumoAuditoriaRetencaoEntry {
+  porOperador: ResumoAuditoriaOperadorEntry[];
+  totalGeralClassificado: number;
+  totalGeralOsRetencao: number;
+  totalGeralPendente: number;
+}
+
+export interface RetencaoKpisEntry {
+  totalTratadas: number;
+  totalRetidas: number;
+  totalNaoRetidas: number;
+  pctReversaoGeral: number;
+  totalComissoes: number;
+  operadoresNaMeta: number;
+}
+
 export interface ResumoGestao {
   ranking: RankingVendedorEntry[];
   evolucao: EvolucaoMensalEntry[];
   pops: PopStatusEntry[];
+  piorGeral: PiorSinalAgoraEntry | null;
+  piores: ClienteDegradadoHojeEntry[];
+  auditoriaRetencao: ResumoAuditoriaRetencaoEntry | null;
+  retencaoMes: RetencaoKpisEntry | null;
 }
 
 // ── Chamadas ─────────────────────────────────────────────────────

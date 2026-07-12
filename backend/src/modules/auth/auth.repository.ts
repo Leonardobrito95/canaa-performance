@@ -9,8 +9,11 @@ export interface IXCUser {
   id_grupo: number;
 }
 
-// 110 = consultor BDR, 134/101/147/140/123 = gestor, 109 = CS, 142/128/143 = estoque/compras, 138 = campo
-const ALLOWED_GROUPS = [110, 134, 101, 147, 140, 123, 109, 142, 128, 143, 138];
+// 110 = consultor BDR, 134/101/147/140/123 = gestor, 109 = CS (SAC), 142/128/143 = estoque/compras,
+// 138 = supervisão de campo (grupo misto — também tem N2 e alguns atendentes, não confiar como
+// sinal de papel isolado), 108 = suporte, 112 = backoffice — 108/112 liberados em 2026-07-12 pro
+// fluxo de "ciência" na avaliação de QA (agente ver a própria nota), confirmado com o usuário.
+const ALLOWED_GROUPS = [110, 134, 101, 147, 140, 123, 109, 142, 128, 143, 138, 108, 112];
 
 export async function findUserByCredentials(
   email: string,

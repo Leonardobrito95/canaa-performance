@@ -187,6 +187,38 @@
           <span v-if="buscaDetalhe" class="detalhe-clear" @click="buscaDetalhe = ''">×</span>
         </div>
       </div>
+
+      <template v-if="isGestor">
+        <p class="auditoria-resumo">
+          Auditoria de negociação real (IA lê a conversa e cruza com o OpaSuite quando disponível):
+          <strong class="aud-ok">{{ auditoriaResumo.confirmadas }} confirmadas</strong> ·
+          <strong class="aud-alerta">{{ auditoriaResumo.semNegociacao }} sem negociação real</strong> ·
+          {{ auditoriaResumo.pendentes }} ainda não auditadas
+          <span v-if="auditoriaResumo.divergencias"> · <strong class="aud-divergencia-texto">{{ auditoriaResumo.divergencias }} com divergência nota-vs-OpaSuite</strong></span>.
+          Não altera a comissão, é só um alerta pra revisão manual.
+        </p>
+
+        <div v-if="resumoAuditoriaPorOperador.length" class="auditoria-operador-resumo">
+          <div v-for="o in resumoAuditoriaPorOperador" :key="o.nomeOperador" class="auditoria-operador-item">
+            <span class="auditoria-operador-nome">{{ o.nomeOperador }}</span>
+            <span class="auditoria-operador-detalhe">
+              {{ o.totalClassificado }} auditadas ·
+              <strong class="aud-ok">{{ o.negociacaoReal }} real</strong> ·
+              <strong class="aud-alerta">{{ o.semNegociacao }} sem negociação</strong>
+              <span v-if="o.divergencias"> · <strong class="aud-divergencia-texto">{{ o.divergencias }} divergência(s)</strong></span>
+            </span>
+          </div>
+        </div>
+
+        <label class="filtro-divergencia">
+          <input type="checkbox" v-model="somenteDivergencias" />
+          Mostrar só casos com divergência (nota do operador vs. conversa real do OpaSuite)
+        </label>
+      </template>
+      <p v-else-if="auditoriaResumo.confirmadas > 0" class="auditoria-resumo auditoria-resumo-positivo">
+        ✓ <strong class="aud-ok">{{ auditoriaResumo.confirmadas }}</strong> das suas retenções neste período tiveram negociação real confirmada pela auditoria automática. Continue registrando bem o que foi negociado com o cliente!
+      </p>
+
       <div v-if="loadingDetalhe" class="state-msg">
         <span class="loading-dots"><span/><span/><span/></span> Carregando detalhes...
       </div>
@@ -198,13 +230,15 @@
               <th>Data</th>
               <th>Operador</th>
               <th>Cliente</th>
+              <th v-if="isGestor && somenteDivergencias">Resultado IXC</th>
+              <th v-if="isGestor">Auditoria (negociação real)</th>
               <th class="ta-r">Valor Mensal</th>
               <th class="ta-c">Ações</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="detalheFiltrado.length === 0">
-              <td colspan="6" class="state-msg">Nenhuma retenção encontrada.</td>
+              <td :colspan="colspanDetalhe" class="state-msg">Nenhuma retenção encontrada.</td>
             </tr>
             <tr v-for="d in detalheFiltrado" :key="d.id_chamado">
               <td class="td-mono td-os">{{ d.id_chamado }}</td>
@@ -214,6 +248,37 @@
                 <div>{{ d.nome_cliente || '—' }}</div>
                 <div v-if="d.negociacao" class="negociacao-badge" title="Retenção com negociação de valor">
                   Negociado: {{ fmt(d.negociacao.valor_negociado) }}
+                </div>
+              </td>
+              <td v-if="isGestor && somenteDivergencias">
+                <span :class="['badge-resultado-ixc', `badge-resultado-${d.resultado.toLowerCase()}`]">{{ d.resultado }}</span>
+              </td>
+              <td v-if="isGestor">
+                <div class="aud-cell">
+                  <span
+                    v-if="d.auditoria?.classificacao === 'NEGOCIACAO_REAL'"
+                    class="aud-badge aud-badge-ok"
+                    :title="d.auditoria.justificativa"
+                  >✓ Confirmada{{ d.auditoria.negociacao_detectada ? `: ${d.auditoria.negociacao_detectada}` : '' }}</span>
+                  <span
+                    v-else-if="d.auditoria?.classificacao === 'SEM_NEGOCIACAO'"
+                    class="aud-badge aud-badge-alerta"
+                    :title="d.auditoria.justificativa"
+                  >⚠ Sem negociação real</span>
+                  <span
+                    v-else-if="d.auditoria?.classificacao === 'INDEFINIDO'"
+                    class="aud-badge aud-badge-neutro"
+                    :title="d.auditoria.justificativa"
+                  >? Indefinido</span>
+                  <span v-else class="aud-pendente">Ainda não auditada</span>
+                  <span
+                    v-if="d.auditoria?.divergencia_nota_os"
+                    class="aud-badge aud-badge-divergencia"
+                    :title="'Nota da O.S. diverge da conversa real do OpaSuite: ' + d.auditoria.divergencia_nota_os"
+                  >🚩 Divergência com o OpaSuite</span>
+                  <button v-if="d.auditoria" class="btn-ver-conversa" @click="abrirModalConversa(d.id_chamado)">
+                    Ver conversa do OpaSuite
+                  </button>
                 </div>
               </td>
               <td class="ta-r td-mono">{{ d.valor_mensal > 0 ? fmt(d.valor_mensal) : '—' }}</td>
@@ -226,7 +291,7 @@
           </tbody>
           <tfoot v-if="detalheFiltrado.length > 0">
             <tr>
-              <td colspan="4"><strong>Total ({{ detalheFiltrado.length }} retenções)</strong></td>
+              <td :colspan="colspanDetalheAntesValor"><strong>Total ({{ detalheFiltrado.length }} retenções)</strong></td>
               <td class="ta-r td-mono"><strong class="val-ok">{{ fmt(totalValorFiltrado) }}</strong></td>
               <td></td>
             </tr>
@@ -267,12 +332,46 @@
       </div>
     </div>
 
+    <!-- Modal Conversa OpaSuite -->
+    <div v-if="modalConversa.open" class="modal-overlay" @click.self="fecharModalConversa">
+      <div class="modal-content modal-conversa">
+        <h3 class="modal-title">Conversa real do OpaSuite</h3>
+        <p class="modal-sub">O.S. {{ modalConversa.idChamado }}</p>
+
+        <div v-if="modalConversa.loading" class="state-msg">
+          <span class="loading-dots"><span/><span/><span/></span> Carregando conversa...
+        </div>
+        <div v-else-if="modalConversa.conversas.length === 0" class="empty-conversa">
+          Nenhum protocolo do OpaSuite foi localizado pra esta O.S.
+        </div>
+        <div v-else class="conversa-scroll">
+          <div v-for="c in modalConversa.conversas" :key="c.protocolo" class="conversa-bloco">
+            <p class="conversa-protocolo">Protocolo {{ c.protocolo }}</p>
+            <p v-if="c.canal === 'pabx'" class="conversa-aviso-ligacao">
+              📞 Atendimento por ligação — abaixo é só o roteiro automático da URA até a
+              transferência. A conversa real com o atendente não fica transcrita, só existe como
+              gravação de áudio (não disponível aqui).
+            </p>
+            <div v-if="c.mensagens.length === 0" class="empty-conversa">Sem mensagens de texto legíveis.</div>
+            <div v-for="(m, i) in c.mensagens" :key="i" class="conversa-msg">
+              <span class="conversa-msg-hora">{{ m.data ? fmtDateTime(m.data) : '?' }}</span>
+              <span class="conversa-msg-texto">{{ m.texto }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-cancel" @click="fecharModalConversa">Fechar</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { retencaoApiClient, type RetencaoResult, type RetencaoKpis, type RetencaoDetalhe } from '../services/api';
+import { retencaoApiClient, type RetencaoResult, type RetencaoKpis, type RetencaoDetalhe, type ConversaOpaSuite } from '../services/api';
 import { useAuth } from '../composables/useAuth';
 import { type Period, getPeriodRange } from '../composables/useDateRange';
 import PeriodFilter  from '../components/PeriodFilter.vue';
@@ -369,15 +468,60 @@ const progressoPct = computed(() => {
 });
 
 const buscaDetalhe = ref('');
+const somenteDivergencias = ref(false);
 
 const detalheRetidas = computed(() =>
   detalhe.value.filter((d) => d.resultado === 'RETIDO')
 );
 
+// A auditoria cobre RETIDO + NAO_RETIDO + PENDENTE — divergências aparecem em
+// qualquer um desses, então o filtro de divergência olha TODAS as tratadas no
+// período, não só as retidas (que é o que a tabela mostra por padrão).
+const detalheBase = computed(() => {
+  if (isGestor.value && somenteDivergencias.value) {
+    return detalhe.value.filter((d) => d.auditoria?.divergencia_nota_os);
+  }
+  return detalheRetidas.value;
+});
+
+const auditoriaResumo = computed(() => {
+  const todas = detalhe.value;
+  return {
+    confirmadas:   todas.filter((d) => d.auditoria?.classificacao === 'NEGOCIACAO_REAL').length,
+    semNegociacao: todas.filter((d) => d.auditoria?.classificacao === 'SEM_NEGOCIACAO').length,
+    pendentes:     todas.filter((d) => !d.auditoria).length,
+    divergencias:  todas.filter((d) => d.auditoria?.divergencia_nota_os).length,
+  };
+});
+
+interface ResumoAuditoriaOperadorLocal {
+  nomeOperador: string;
+  totalClassificado: number;
+  negociacaoReal: number;
+  semNegociacao: number;
+  divergencias: number;
+}
+
+const resumoAuditoriaPorOperador = computed((): ResumoAuditoriaOperadorLocal[] => {
+  const map = new Map<string, ResumoAuditoriaOperadorLocal>();
+  for (const d of detalhe.value) {
+    if (!d.auditoria) continue;
+    if (!map.has(d.nome_operador)) {
+      map.set(d.nome_operador, { nomeOperador: d.nome_operador, totalClassificado: 0, negociacaoReal: 0, semNegociacao: 0, divergencias: 0 });
+    }
+    const acc = map.get(d.nome_operador)!;
+    acc.totalClassificado++;
+    if (d.auditoria.classificacao === 'NEGOCIACAO_REAL') acc.negociacaoReal++;
+    else if (d.auditoria.classificacao === 'SEM_NEGOCIACAO') acc.semNegociacao++;
+    if (d.auditoria.divergencia_nota_os) acc.divergencias++;
+  }
+  return [...map.values()].sort((a, b) => b.totalClassificado - a.totalClassificado);
+});
+
 const detalheFiltrado = computed(() => {
   const q = buscaDetalhe.value.trim().toLowerCase();
-  if (!q) return detalheRetidas.value;
-  return detalheRetidas.value.filter((d) =>
+  if (!q) return detalheBase.value;
+  return detalheBase.value.filter((d) =>
     d.id_chamado.toLowerCase().includes(q) ||
     d.nome_cliente.toLowerCase().includes(q)
   );
@@ -386,6 +530,11 @@ const detalheFiltrado = computed(() => {
 const totalValorFiltrado = computed(() =>
   detalheFiltrado.value.reduce((s, d) => s + (d.valor_mensal ?? 0), 0)
 );
+
+const colspanDetalheAntesValor = computed(() =>
+  4 + (isGestor.value && somenteDivergencias.value ? 1 : 0) + (isGestor.value ? 1 : 0)
+);
+const colspanDetalhe = computed(() => colspanDetalheAntesValor.value + 2);
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 onMounted(load);
@@ -479,8 +628,33 @@ async function excluirNegociacao() {
   }
 }
 
-const fmt     = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
+const fmt         = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtDate     = (s: string) => new Date(s).toLocaleDateString('pt-BR');
+const fmtDateTime = (s: string) => new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+// ── Modal conversa OpaSuite (gestor) ──────────────────────────────────────
+const modalConversa = ref({
+  open:      false,
+  loading:   false,
+  idChamado: '',
+  conversas: [] as ConversaOpaSuite[],
+});
+
+async function abrirModalConversa(idChamado: string) {
+  modalConversa.value = { open: true, loading: true, idChamado, conversas: [] };
+  try {
+    const { conversas } = await retencaoApiClient.getConversaOpaSuite(idChamado);
+    modalConversa.value.conversas = conversas;
+  } catch {
+    modalConversa.value.conversas = [];
+  } finally {
+    modalConversa.value.loading = false;
+  }
+}
+
+function fecharModalConversa() {
+  modalConversa.value.open = false;
+}
 </script>
 
 <style scoped>
@@ -633,6 +807,60 @@ tfoot tr td { border-top:1px solid var(--border-2); padding-top:.6rem; }
   border: 1px solid rgba(199,255,0,.3);
 }
 
+/* Auditoria de negociação real (IA) */
+.auditoria-resumo {
+  font-size: .8rem; color: var(--text-2); line-height: 1.5;
+  margin-bottom: .9rem; padding: .6rem .8rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.aud-ok    { color: var(--upgrade); }
+.aud-alerta{ color: var(--downgrade); }
+.aud-badge {
+  display: inline-block; font-size: .72rem; font-weight: 600;
+  padding: .2rem .5rem; border-radius: 3px; cursor: help;
+}
+.aud-badge-ok      { background: rgba(199,255,0,.12); color: var(--upgrade);   border: 1px solid rgba(199,255,0,.3); }
+.aud-badge-alerta  { background: rgba(255,42,95,.12); color: var(--downgrade); border: 1px solid rgba(255,42,95,.3); }
+.aud-badge-neutro  { background: var(--surface-3);    color: var(--text-2);   border: 1px solid var(--border); }
+.aud-pendente      { font-size: .74rem; color: var(--text-3); }
+.btn-ver-conversa {
+  font-size: .7rem; font-weight: 600; color: var(--accent); background: transparent;
+  border: none; padding: 0; cursor: pointer; text-decoration: underline;
+}
+.btn-ver-conversa:hover { color: var(--text); }
+.aud-cell { display: flex; flex-direction: column; gap: .3rem; align-items: flex-start; }
+.aud-badge-divergencia {
+  background: rgba(255,42,95,.18); color: var(--downgrade); border: 1px solid var(--downgrade);
+  font-weight: 700;
+}
+.aud-divergencia-texto { color: var(--downgrade); }
+
+.auditoria-operador-resumo {
+  display: flex; flex-direction: column; margin-bottom: .8rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.auditoria-operador-item {
+  display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; flex-wrap: wrap;
+  padding: .55rem .8rem; border-bottom: 1px solid var(--border);
+}
+.auditoria-operador-item:last-child { border-bottom: none; }
+.auditoria-operador-nome { font-size: .84rem; font-weight: 600; color: var(--text); }
+.auditoria-operador-detalhe { font-size: .78rem; color: var(--text-2); }
+
+.filtro-divergencia {
+  display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: var(--text-2);
+  margin-bottom: .9rem; cursor: pointer;
+}
+.filtro-divergencia input { cursor: pointer; }
+
+.badge-resultado-ixc {
+  display: inline-block; font-size: .7rem; font-weight: 700; font-family: var(--font-mono);
+  padding: .15rem .5rem; border-radius: 3px; text-transform: uppercase;
+}
+.badge-resultado-retido      { background: rgba(199,255,0,.1); color: var(--upgrade);   border: 1px solid rgba(199,255,0,.2); }
+.badge-resultado-nao_retido  { background: rgba(255,42,95,.1); color: var(--downgrade); border: 1px solid rgba(255,42,95,.2); }
+.badge-resultado-pendente    { background: var(--surface-3);  color: var(--text-2);     border: 1px solid var(--border); }
+
 /* Modal */
 .modal-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -647,6 +875,22 @@ tfoot tr td { border-top:1px solid var(--border-2); padding-top:.6rem; }
 }
 .modal-title { font-size: 1.25rem; font-weight: 700; margin-bottom: .25rem; color: var(--text); }
 .modal-sub   { font-size: .85rem; color: var(--text-3); margin-bottom: 1.25rem; font-family: var(--font-mono); }
+
+.modal-conversa { max-width: 560px; }
+.conversa-scroll { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; }
+.conversa-bloco { display: flex; flex-direction: column; gap: .4rem; }
+.conversa-protocolo {
+  font-family: var(--font-mono); font-size: .72rem; font-weight: 700; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); padding-bottom: .3rem;
+}
+.conversa-aviso-ligacao {
+  font-size: .78rem; line-height: 1.5; color: #f59e0b; background: rgba(245, 158, 11, .1);
+  border: 1px solid rgba(245, 158, 11, .3); border-radius: var(--radius-sm); padding: .55rem .7rem;
+}
+.conversa-msg { display: flex; gap: .6rem; font-size: .82rem; line-height: 1.5; }
+.conversa-msg-hora { font-family: var(--font-mono); font-size: .68rem; color: var(--text-3); flex-shrink: 0; white-space: nowrap; padding-top: .1rem; }
+.conversa-msg-texto { color: var(--text); word-break: break-word; }
+.empty-conversa { font-size: .85rem; color: var(--text-3); padding: 1rem 0; }
 .modal-form { display: flex; flex-direction: column; gap: 1rem; }
 .form-group { display: flex; flex-direction: column; gap: .4rem; }
 .form-group label { font-size: .8rem; font-weight: 600; color: var(--text-2); }

@@ -97,7 +97,7 @@ export async function registerCommission(payload: {
 }
 
 export async function getAllCommissions(
-  perfil: 'consultor' | 'gestor' | 'cs' | 'estoque' | 'campo',
+  perfil: 'consultor' | 'gestor' | 'cs' | 'estoque' | 'campo' | 'agente',
   nome: string,
   filter: { dateFrom?: string; dateTo?: string; cursor?: string; take?: number } = {},
 ) {

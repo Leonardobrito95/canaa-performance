@@ -5,6 +5,8 @@ import {
   alertaFaturaNaoQuitada,
   alertaRetencaoMeta,
   alertaRetencaoFimMes,
+  alertaAtendimentoVolumeAlto,
+  alertaAtendimentoEscalonamentoAlto,
 } from '../modules/alertas/alertas.service';
 import { enviarRelatorioComercial } from '../modules/vendas/comissao-envio.service';
 import { gerarSnapshot } from '../modules/vendas/snapshot.service';
@@ -12,6 +14,10 @@ import { buscarPiorasHoje, buscarPioresClientesHoje, buscarEstadoPorOlt, EstadoO
 import { enviarResumoDiario, enviarAlertaQueda, CausaCliente } from '../modules/otdr/otdr.alerts';
 import { enviarRelatorioGovernanca } from '../modules/otdr/otdr.governance';
 import { gerarDiagnosticoIndividual } from '../modules/diagnostico/diagnostico.service';
+import { rodarAuditoriaRetencao } from '../modules/retencao/retencao.auditoria';
+import { rodarRollupAtendimentoMensal, mesAnterior as mesAnteriorAtendimento } from '../modules/atendimento/atendimento.rollup';
+import { rodarAnaliseIaEmMassa } from '../modules/atendimento/atendimento.analise-ia';
+import { rodarDeteccaoAlertasOperacionais } from '../modules/atendimento/atendimento.alertas-operacionais';
 
 const SOLICITANTE_CRON = { ixcUserId: 'cron-alertas', ixcUsername: 'cron-alertas' };
 const LIMITE_CAUSAS_RESUMO_DIARIO = 3;
@@ -40,6 +46,10 @@ async function coletarCausasDoDia(): Promise<CausaCliente[]> {
 
 const DIAS_VENDAS   = [15, 25, 30];
 const DIA_COMISSAO  = 19;
+const LIMITE_AUDITORIA_RETENCAO = 200; // volume diário de O.S. de retenção é bem menor que isso — folga de sobra
+// ~543 atendimentos de texto/dia medidos em produção (2026-07-11) — folga de
+// segurança sobre isso, não é uma amostra, é um teto de proteção contra pico.
+const LIMITE_ANALISE_IA_DIARIO = parseInt(process.env.LIMITE_ANALISE_IA_DIARIO ?? '700', 10);
 
 async function runSafe(nome: string, fn: () => Promise<void>): Promise<void> {
   try {
@@ -116,4 +126,80 @@ export function iniciarJobs(): void {
   }, { timezone: 'America/Sao_Paulo' });
 
   logger.info(`[JOBS] OTDR: resumo às 07:00 | detector de queda a cada 15 min (threshold: +${parseInt(process.env.OTDR_SPIKE_THRESHOLD ?? '10', 10)} ONUs/OLT) | governança dia 1 às 08h.`);
+
+  // ── Retenção: auditoria de negociação real (IA + OpaSuite) — todo dia às 18h ──
+  cron.schedule('0 18 * * *', async () => {
+    await runSafe('Auditoria de Retenção', async () => {
+      const resultado = await rodarAuditoriaRetencao({ limite: LIMITE_AUDITORIA_RETENCAO });
+      logger.info(
+        `[JOBS] Auditoria de Retenção: ${resultado.sucesso} classificados, ${resultado.falha} falhas, ` +
+        `${resultado.divergencias} divergências nota-vs-OpaSuite (de ${resultado.totalEncontrados} encontrados).`
+      );
+    });
+  }, { timezone: 'America/Sao_Paulo' });
+
+  logger.info('[JOBS] Auditoria de Retenção agendada — execução diária às 18:00 (Brasília).');
+
+  // ── Atendimento: alertas de volume/escalonamento — todo dia às 20h ───────────
+  // Tarde o bastante pro volume do dia não estar artificialmente baixo
+  // (comparar volume às 8h distorceria o alerta).
+  cron.schedule('0 20 * * *', async () => {
+    await runSafe('Atendimento Volume Alto',        alertaAtendimentoVolumeAlto);
+    await runSafe('Atendimento Escalonamento Alto', alertaAtendimentoEscalonamentoAlto);
+  }, { timezone: 'America/Sao_Paulo' });
+
+  logger.info('[JOBS] Alertas de Atendimento agendados — execução diária às 20:00 (Brasília).');
+
+  // ── Atendimento: rollup mensal de KPIs (snapshot pra tendência histórica no
+  // chat de gestão) — todo dia 1 às 03h, cobre o mês que acabou de fechar.
+  // Ver comentário do model AtendimentoKpiMensal no schema.prisma: calcular
+  // TMA/TME/TMR ao vivo pra vários meses é caro demais pra rodar por pergunta.
+  cron.schedule('0 3 1 * *', async () => {
+    await runSafe('Rollup Mensal de Atendimento', async () => {
+      const mes = mesAnteriorAtendimento();
+      await rodarRollupAtendimentoMensal(mes);
+      logger.info(`[JOBS] Rollup de Atendimento: mês ${mes} consolidado.`);
+    });
+  }, { timezone: 'America/Sao_Paulo' });
+
+  logger.info('[JOBS] Rollup Mensal de Atendimento agendado — todo dia 1 às 03:00 (Brasília).');
+
+  // ── Atendimento: camada analítica de IA em massa (Motivo/Adesão ao
+  // Script/Sentimento) — todo dia às 05h, processa os atendimentos de TEXTO
+  // (exclui pabx) FECHADOS do dia anterior. Idempotente por
+  // opasuite_atendimento_id — se não terminar na janela ou o cron rodar 2x,
+  // nada se perde nem duplica, o resto fica pendente pro próximo dia. Ver
+  // comentário do model AtendimentoAnaliseIa no schema.prisma: isso é sinal
+  // de triagem, NUNCA nota oficial de QA.
+  cron.schedule('0 5 * * *', async () => {
+    await runSafe('Análise IA em Massa de Atendimento', async () => {
+      const hoje = new Date();
+      const inicioOntem = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 1);
+      const fimOntem = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 1, 23, 59, 59, 999);
+      const resultado = await rodarAnaliseIaEmMassa(inicioOntem, fimOntem, LIMITE_ANALISE_IA_DIARIO);
+      logger.info(
+        `[JOBS] Análise IA de Atendimento: ${resultado.processados} processados, ${resultado.falhas} falhas ` +
+        `(de ${resultado.totalCandidatos} candidatos do dia).`
+      );
+    });
+  }, { timezone: 'America/Sao_Paulo' });
+
+  logger.info('[JOBS] Análise IA em Massa de Atendimento agendada — execução diária às 05:00 (Brasília).');
+
+  // ── Atendimento: alertas operacionais em tempo real (conversa parada, SLA
+  // de fila, agente ausente, fila acumulada) — a cada 2 min. Feed interno
+  // (GET /atendimento/alertas-operacionais), NÃO manda e-mail/WhatsApp — ver
+  // atendimento.alertas-operacionais.ts.
+  cron.schedule('*/2 * * * *', async () => {
+    await runSafe('Alertas Operacionais de Atendimento', async () => {
+      const r = await rodarDeteccaoAlertasOperacionais();
+      const criados = r.conversasParadas.criados + r.slaFila.criados + r.agenteAusente.criados + r.filaAcumulada.criados;
+      const resolvidos = r.conversasParadas.resolvidos + r.slaFila.resolvidos + r.agenteAusente.resolvidos + r.filaAcumulada.resolvidos;
+      if (criados || resolvidos) {
+        logger.info(`[JOBS] Alertas Operacionais: ${criados} aberto(s)/mantido(s), ${resolvidos} resolvido(s) automaticamente.`);
+      }
+    });
+  }, { timezone: 'America/Sao_Paulo' });
+
+  logger.info('[JOBS] Alertas Operacionais de Atendimento agendados — execução a cada 2 minutos.');
 }

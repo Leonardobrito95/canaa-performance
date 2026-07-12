@@ -43,7 +43,17 @@ import { ref, computed } from 'vue';
 
 interface RankItem { name: string; count: number; value: number; }
 
-const props = defineProps<{ title: string; items: RankItem[]; maxItems?: number; highlightName?: string }>();
+const props = defineProps<{
+  title: string;
+  items: RankItem[];
+  maxItems?: number;
+  highlightName?: string;
+  /// Quando a cor da barra não representa categoria/setor nenhum (ex: ranking
+  /// de atendentes, motivos de atendimento — é só ordem), o multicolorido vira
+  /// ruído visual. Nesses casos usa só a cor de destaque do tema, com opacidade
+  /// decrescente por posição, em vez da paleta padrão.
+  monochrome?: boolean;
+}>();
 
 const metric = ref<'count' | 'value'>('count');
 
@@ -64,7 +74,15 @@ const maxRaw = computed(() => {
 function pct(v: number) { return maxRaw.value ? (v / maxRaw.value) * 100 : 0; }
 
 const COLORS = ['#00f0ff', '#c7ff00', '#a855f7', '#f59e0b', '#f472b6', '#34d399', '#60a5fa', '#fb923c'];
-function barColor(i: number) { return COLORS[i % COLORS.length]; }
+function barColor(i: number) {
+  if (props.monochrome) {
+    // --accent (#00f0ff) com opacidade decrescente por posição — foca a
+    // atenção no comprimento da barra, não numa cor sem significado.
+    const opacity = Math.max(1 - i * 0.09, 0.35);
+    return `rgba(0, 240, 255, ${opacity})`;
+  }
+  return COLORS[i % COLORS.length];
+}
 
 const fmtR = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 </script>
@@ -159,14 +177,14 @@ const fmtR = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curre
   flex-shrink: 0;
 }
 .rank-bar-bg {
-  height: 4px;
+  height: 8px;
   background: var(--surface-3);
-  border-radius: 2px;
+  border-radius: 4px;
   overflow: hidden;
 }
 .rank-bar-fill {
   height: 100%;
-  border-radius: 2px;
+  border-radius: 4px;
   animation: barGrow .6s cubic-bezier(.4,0,.2,1) both;
   animation-delay: inherit;
 }

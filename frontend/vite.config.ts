@@ -9,12 +9,12 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/bdr/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3099',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/bdr/, ''),
       },
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3099',
         changeOrigin: true,
       },
     },

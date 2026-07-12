@@ -5,7 +5,9 @@ import {
   getRetencaoDetalhe,
   saveNegociacao,
   removeNegociacao as serviceRemoveNegociacao,
+  getResumoAuditoriaRetencao,
 } from './retencao.service';
+import { buscarConversasOpaSuitePorChamado } from './retencao.repository';
 
 type AuthRequest = Request & { user: AuthPayload };
 
@@ -53,5 +55,20 @@ export async function removeNegociacao(req: Request, res: Response, next: NextFu
     const { id_chamado } = req.params;
     await serviceRemoveNegociacao(id_chamado);
     res.json({ success: true });
+  } catch (err) { next(err); }
+}
+
+export async function resumoAuditoria(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await getResumoAuditoriaRetencao();
+    res.json(result);
+  } catch (err) { next(err); }
+}
+
+export async function conversaOpaSuite(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id_chamado } = req.params;
+    const conversas = await buscarConversasOpaSuitePorChamado(id_chamado);
+    res.json({ conversas });
   } catch (err) { next(err); }
 }

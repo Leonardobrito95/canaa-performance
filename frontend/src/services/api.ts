@@ -241,6 +241,13 @@ export interface NegociacaoData {
   data_registro:   string;
 }
 
+export interface AuditoriaData {
+  classificacao:        'NEGOCIACAO_REAL' | 'SEM_NEGOCIACAO' | 'INDEFINIDO';
+  justificativa:        string;
+  negociacao_detectada: string | null;
+  divergencia_nota_os:  string | null;
+}
+
 export interface RetencaoDetalhe {
   id_chamado:       string;
   data_abertura:    string;
@@ -251,6 +258,20 @@ export interface RetencaoDetalhe {
   desc_diagnostico: string;
   resultado:        'RETIDO' | 'NAO_RETIDO' | 'PENDENTE';
   negociacao:       NegociacaoData | null;
+  auditoria:        AuditoriaData | null;
+}
+
+export interface MensagemOpaSuite {
+  data:  string | null;
+  texto: string;
+}
+
+export interface ConversaOpaSuite {
+  protocolo: string;
+  mensagens: MensagemOpaSuite[];
+  /// 'pabx' = ligação — mensagens são só o roteiro automático da URA, não a
+  /// conversa real com o atendente (que só existe como gravação de áudio).
+  canal: string | null;
 }
 
 export const retencaoApiClient = {
@@ -265,4 +286,7 @@ export const retencaoApiClient = {
 
   deleteNegociacao: (id_chamado: string): Promise<void> =>
     retencaoApi.delete(`/negociacao/${id_chamado}`).then((r) => r.data),
+
+  getConversaOpaSuite: (id_chamado: string): Promise<{ conversas: ConversaOpaSuite[] }> =>
+    retencaoApi.get(`/auditoria/${id_chamado}/conversa`).then((r) => r.data),
 };

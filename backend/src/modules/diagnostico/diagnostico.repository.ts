@@ -12,9 +12,11 @@ import {
   ContextoComercial,
   ImagemAnexo,
   OscilacaoRede,
+  StatusSmartOlt,
   RankingVendedorEntry,
   EvolucaoMensalEntry,
   PopStatusEntry,
+  StatusRedeAgora,
 } from './diagnostico.types';
 
 const OTDR_BASE = process.env.OTDR_API_URL ?? 'http://127.0.0.1:5008';
@@ -156,6 +158,41 @@ export async function buscarOscilacaoRede(idCliente: number, equipamentoAtual: {
     };
   } catch (e: any) {
     logger.warn('[DIAGNOSTICO] Falha ao consultar oscilação de rede no OTDR', { error: e.message });
+    return null;
+  }
+}
+
+/// Busca o status granular da ONU no SmartOLT (otdr.historico_smartolt), pelo
+/// mesmo SN resolvido em buscarEquipamentoAtual. Cobre só uma parte do fleet
+/// (ONUs que já tiveram algum problema) — não encontrar é esperado, não erro,
+/// então retorna null silenciosamente nesse caso (só loga falha de conexão).
+export async function buscarStatusSmartOlt(equipamentoAtual: { descricao: string; numeroSerie: string }[]): Promise<StatusSmartOlt | null> {
+  const sn = equipamentoAtual.find((e) => /onu/i.test(e.descricao))?.numeroSerie || null;
+  if (!sn) return null;
+
+  try {
+    const rows = await prisma.$queryRaw<any[]>`
+      SELECT sn, status_onu, signal_class, nivel_sinal, dias_degradado, sinal_rx, last_status_change, snapshot_data
+      FROM otdr.historico_smartolt
+      WHERE sn = ${sn}
+      ORDER BY snapshot_data DESC
+      LIMIT 1
+    `;
+    const r = rows[0];
+    if (!r || !r.status_onu) return null;
+
+    return {
+      sn:                  r.sn,
+      statusOnu:           r.status_onu,
+      signalClass:         r.signal_class,
+      nivelSinal:          r.nivel_sinal,
+      diasDegradado:       r.dias_degradado,
+      sinalRx:             r.sinal_rx !== null ? Number(r.sinal_rx) : null,
+      ultimaMudancaStatus: dataValidaOuNula(r.last_status_change),
+      snapshotData:        dataValidaOuNula(r.snapshot_data),
+    };
+  } catch (e: any) {
+    logger.warn('[DIAGNOSTICO] Falha ao consultar status SmartOLT', { error: e.message, sn });
     return null;
   }
 }
@@ -372,7 +409,12 @@ function popDaOlt(olt: string): string {
   return olt.replace(/-N?\d+$/, '').trim();
 }
 
-export async function buscarStatusPops(): Promise<PopStatusEntry[]> {
+/// /api/onus é uma leitura AO VIVO (cada ONU já vem com cliente_id/cliente_nome
+/// resolvidos pelo próprio OTDR) — diferente de /api/historico/piora, que rastreia
+/// eventos de degradação dia-a-dia e pode ficar defasado se a ingestão atrasar.
+/// Por isso "pior sinal agora" (piorGeral) é calculado aqui, na mesma resposta,
+/// e não via buscarPioresClientesHoje.
+export async function buscarStatusPops(): Promise<StatusRedeAgora> {
   const { data } = await axios.get(`${OTDR_BASE}/api/onus`, { timeout: 30_000 });
   const onus: any[] = data.onus ?? [];
 
@@ -383,10 +425,10 @@ export async function buscarStatusPops(): Promise<PopStatusEntry[]> {
     porPop.get(pop)!.push(onu);
   }
 
-  const resultado: PopStatusEntry[] = [];
+  const pops: PopStatusEntry[] = [];
   for (const [pop, lista] of porPop) {
     const comLeitura = lista.filter((o) => typeof o.sinal_rx === 'number');
-    resultado.push({
+    pops.push({
       pop,
       totalOnus:      lista.length,
       normal:         lista.filter((o) => o.nivel === 'Normal').length,
@@ -398,7 +440,21 @@ export async function buscarStatusPops(): Promise<PopStatusEntry[]> {
     });
   }
 
-  return resultado.sort((a, b) => a.pop.localeCompare(b.pop));
+  const comClienteEleitura = onus.filter((o) => typeof o.sinal_rx === 'number' && o.cliente_id);
+  const piorOnu = comClienteEleitura.length
+    ? comClienteEleitura.reduce((pior, atual) => (atual.sinal_rx < pior.sinal_rx ? atual : pior))
+    : null;
+
+  return {
+    pops: pops.sort((a, b) => a.pop.localeCompare(b.pop)),
+    piorGeral: piorOnu ? {
+      clienteId: piorOnu.cliente_id,
+      nome:      piorOnu.cliente_nome,
+      pop:       popDaOlt(piorOnu.olt),
+      olt:       piorOnu.olt,
+      sinalRx:   piorOnu.sinal_rx,
+    } : null,
+  };
 }
 
 // ── Fotos da instalação (sessão de admin do IXC, ver config/ixcSession.ts) ────

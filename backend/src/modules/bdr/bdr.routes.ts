@@ -1,12 +1,16 @@
 import { Router } from 'express';
 import * as bdrController from './bdr.controller';
 import { authenticate } from '../../middlewares/authenticate';
+import { requirePerfil } from '../../middlewares/requirePerfil';
 import { validate } from '../../middlewares/validate';
 import { registerCommissionBodySchema, createAdjustmentBodySchema } from './bdr.schemas';
 
 const router = Router();
 
 router.use(authenticate);
+// 'agente' é um perfil novo, de nav mínima (só Minhas Avaliações de QA) — não deve
+// herdar acesso a comissões só porque este router nunca teve requirePerfil.
+router.use(requirePerfil('consultor', 'gestor', 'cs', 'estoque', 'campo'));
 
 router.get('/plans',                  bdrController.getPlans);
 router.get('/consultants',            bdrController.getConsultants);

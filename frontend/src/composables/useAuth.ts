@@ -6,7 +6,10 @@ interface AuthUser {
   nome: string;
   email: string;
   id_grupo: number;
-  perfil: 'consultor' | 'gestor' | 'cs' | 'estoque' | 'campo';
+  perfil: 'consultor' | 'gestor' | 'cs' | 'estoque' | 'campo' | 'agente';
+  /// true quando o usuário logado é um agente ativo do roster de QA — habilita
+  /// "Minhas Avaliações" independente do perfil (ver auth.service.ts).
+  souAgenteQa: boolean;
 }
 
 const TOKEN_KEY = 'bdr_token';
@@ -38,6 +41,8 @@ export function useAuth() {
   const isCS            = computed(() => user.value?.perfil === 'cs');
   const isEstoque       = computed(() => user.value?.perfil === 'estoque');
   const isCampo         = computed(() => user.value?.perfil === 'campo');
+  const isAgente        = computed(() => user.value?.perfil === 'agente');
+  const souAgenteQa     = computed(() => !!user.value?.souAgenteQa);
   const isHubAdmin      = computed(() => !!user.value && HUB_ADMIN_IDS.includes(String(user.value.id)));
 
   async function login(email: string, password: string) {
@@ -51,5 +56,5 @@ export function useAuth() {
     user.value = null;
   }
 
-  return { user, isAuthenticated, isGestor, isCS, isEstoque, isCampo, isHubAdmin, login, logout };
+  return { user, isAuthenticated, isGestor, isCS, isEstoque, isCampo, isAgente, souAgenteQa, isHubAdmin, login, logout };
 }

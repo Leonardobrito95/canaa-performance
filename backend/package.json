@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "eval:diagnostico": "ts-node -r dotenv/config scripts/eval-diagnostico.ts",
+    "auditar:retencao": "ts-node -r dotenv/config scripts/auditar-retencao.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:studio": "prisma studio"
@@ -26,6 +27,7 @@
     "express": "^4.19.2",
     "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.21.0",
     "multer": "^2.1.1",
     "mysql2": "^3.10.1",
     "node-cron": "^4.2.1",
