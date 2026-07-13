@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/authenticate';
 import { requirePerfil } from '../../middlewares/requirePerfil';
+import { PERFIS_MODULO } from '../../config/acesso';
 import {
   kpis, motivos, distribuicao, tendencia, churn, tecnicos, clientes, clientesExport, contatosCliente,
   bairros, canais, resolucaoSla,
@@ -12,7 +13,7 @@ const router = Router();
 // Centro de Solução também consulta (é quem trata o ticket que o cliente
 // abre depois, confirmado pelo usuário 2026-07-13). Não existe perfil
 // "infraestrutura" hoje.
-router.use(authenticate, requirePerfil('gestor', 'campo', 'cs'));
+router.use(authenticate, requirePerfil(...PERFIS_MODULO.posAtivacao));
 
 router.get('/kpis',                  kpis);
 router.get('/motivos',               motivos);

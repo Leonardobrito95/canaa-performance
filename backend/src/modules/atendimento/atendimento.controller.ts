@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthPayload } from '../auth/auth.service';
-import { getResumoKpisAtendimento, getRankingsAtendimento, auditarAtendimentoIndividual } from './atendimento.service';
+import { getResumoKpisAtendimento, getRankingsAtendimento, auditarAtendimentoIndividual, getOperadoresAoVivo, getIndicadoresJornada, getConfigJornada } from './atendimento.service';
 import { SetorAtendimento } from './atendimento.types';
 
 type AuthRequest = Request & { user: AuthPayload };
@@ -43,5 +43,36 @@ export async function auditarAtendimento(req: Request, res: Response, next: Next
       return;
     }
     res.json(resultado);
+  } catch (err) { next(err); }
+}
+
+export async function operadoresAoVivo(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { setores: setoresRaw } = req.query as Record<string, string>;
+    const setores = setoresRaw ? (setoresRaw.split(',') as SetorAtendimento[]) : undefined;
+    const operadores = await getOperadoresAoVivo(setores);
+    res.json({ operadores });
+  } catch (err) { next(err); }
+}
+
+export async function indicadoresJornada(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { dateFrom, dateTo, setores: setoresRaw } = req.query as Record<string, string>;
+    const hoje = new Date();
+    const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    const from = parseData(dateFrom, inicioMes);
+    const to   = parseData(dateTo, hoje);
+    to.setHours(23, 59, 59, 999);
+    const setores = setoresRaw ? (setoresRaw.split(',') as SetorAtendimento[]) : undefined;
+
+    const indicadores = await getIndicadoresJornada(from, to, setores);
+    res.json({ indicadores });
+  } catch (err) { next(err); }
+}
+
+export async function configJornada(req: Request, res: Response, next: NextFunction) {
+  try {
+    const config = await getConfigJornada();
+    res.json(config);
   } catch (err) { next(err); }
 }

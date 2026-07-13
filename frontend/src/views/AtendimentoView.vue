@@ -1,7 +1,7 @@
 <template>
   <AtendimentoResumoPanel
     titulo="Atendimento"
-    subtitulo="SAC, Suporte, Cobrança, Retenção e Backoffice — indicadores de volume, tempo e satisfação"
+    subtitulo="SAC, Suporte, Cobrança, Retenção e Backoffice: indicadores de volume, tempo e satisfação"
     :setores="SETORES_CENTRO_SOLUCAO"
   />
 </template>

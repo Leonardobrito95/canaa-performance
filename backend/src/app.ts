@@ -13,6 +13,7 @@ import diagnosticoRoutes from './modules/diagnostico/diagnostico.routes';
 import atendimentoRoutes from './modules/atendimento/atendimento.routes';
 import posativacaoRoutes from './modules/posativacao/posativacao.routes';
 import vistoriaPopRoutes from './modules/vistoriaPop/vistoriaPop.routes';
+import alertasHubRoutes from './modules/alertasHub/alertasHub.routes';
 import { errorHandler } from './middlewares/errorHandler';
 import logger from './config/logger';
 
@@ -61,6 +62,7 @@ app.use('/api/v1/diagnostico', diagnosticoRoutes);
 app.use('/api/v1/atendimento', atendimentoRoutes);
 app.use('/api/v1/posativacao', posativacaoRoutes);
 app.use('/api/v1/vistoria-pop', vistoriaPopRoutes);
+app.use('/api/v1/alertas-hub', alertasHubRoutes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

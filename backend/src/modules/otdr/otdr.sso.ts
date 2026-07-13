@@ -12,7 +12,7 @@ const OTDR_PUBLIC_URL = process.env.OTDR_PUBLIC_URL ?? 'https://exemplo.com.br/o
 // Isso é checado aqui, no backend, porque o botão escondido no menu (v-if)
 // é só uma conveniência de UI — sem essa checagem, qualquer usuário
 // autenticado poderia chamar essa rota direto e conseguir o link de acesso.
-const PERFIS_PERMITIDOS = ['gestor', 'campo'];
+import { PERFIS_MODULO } from '../../config/acesso';
 
 export function gerarLinkOtdr(req: Request, res: Response) {
   const secret = process.env.OTDR_SSO_SECRET;
@@ -21,7 +21,7 @@ export function gerarLinkOtdr(req: Request, res: Response) {
     return;
   }
 
-  if (!PERFIS_PERMITIDOS.includes(req.user!.perfil)) {
+  if (!(PERFIS_MODULO.otdrLink as readonly string[]).includes(req.user!.perfil)) {
     res.status(403).json({ message: 'Seu perfil não tem acesso ao OTDR.' });
     return;
   }

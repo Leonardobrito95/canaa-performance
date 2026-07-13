@@ -26,6 +26,12 @@
         Alertas
         <span v-if="alertas.length" class="atd-tab-badge">{{ alertas.length }}</span>
       </button>
+      <button :class="['atd-tab', { active: aba === 'operadores' }]" @click="aba = 'operadores'">
+        Operadores Ao Vivo
+      </button>
+      <button :class="['atd-tab', { active: aba === 'jornada' }]" @click="abrirJornada">
+        Jornada e Produtividade
+      </button>
     </div>
 
     <template v-if="aba === 'dashboard'">
@@ -73,9 +79,10 @@
     </div>
 
     <!-- Volume por setor + composição -->
-    <div v-if="!loadingKpis && kpis.length" class="charts-row charts-3">
+    <div v-if="!loadingKpis && kpis.length" class="charts-row charts-4">
       <ChartBars title="Volume de Atendimentos por Setor" :bars="volumeBarData" />
-      <ChartRanking title="Ranking de Atendentes" :items="rankingAtendentesData" :max-items="8" monochrome />
+      <ChartRanking title="Qtd de Atendimentos" :items="rankingAtendentesData" :max-items="8" monochrome />
+      <ChartRanking title="Índice de Satisfação" :items="rankingAvaliacoesData" :max-items="8" monochrome />
       <ChartRanking title="Motivos de Atendimento" :items="motivosData" :max-items="8" monochrome />
     </div>
     </template>
@@ -91,18 +98,42 @@
     </div>
     <div v-else class="alertas-lista">
       <div v-if="!alertas.length" class="state-msg">Nenhum alerta aberto agora. 🎉</div>
-      <div v-for="a in alertas" :key="a.id" :class="['alerta-card', a.severidade === 'CRITICO' ? 'alerta-critico' : 'alerta-aviso']">
-        <div class="alerta-topo">
-          <span :class="['alerta-badge', a.severidade === 'CRITICO' ? 'badge-critico' : 'badge-aviso']">{{ a.severidade }}</span>
-          <span class="alerta-titulo">{{ a.titulo }}</span>
-          <button class="btn-resolver" @click="resolver(a.id)" :disabled="resolvendoId === a.id">
-            {{ resolvendoId === a.id ? 'Resolvendo…' : 'Resolver' }}
-          </button>
-        </div>
-        <p class="alerta-descricao">{{ a.descricao }}</p>
-        <span class="alerta-meta">{{ a.setor }} · aberto {{ tempoRelativo(a.criado_em) }}</span>
-      </div>
+      <AlertaCard
+        v-for="a in alertas"
+        :key="a.id"
+        :alerta="{ ...a, origem: 'atendimento', contexto: a.setor }"
+        :podeResolver="true"
+        :resolvendo="resolvendoId === a.id"
+        @resolver="resolver(a.id)"
+      />
     </div>
+    </template>
+
+    <!-- Sala de Controle: Operadores Ao Vivo -->
+    <template v-if="aba === 'operadores'">
+      <AtendimentoOperadoresAoVivo :setores="setores" />
+    </template>
+
+    <!-- Indicadores de RH: jornada por operador num período configurável -->
+    <template v-if="aba === 'jornada'">
+      <div class="jornada-header-row">
+        <p class="jornada-desc">
+          Tempo real logado por operador no período (produtivo, pausa, ausente) e volume atendido,
+          para RH e gestão acompanharem jornada e ociosidade. Diferente de "Operadores Ao Vivo"
+          (que é só o status de agora), aqui é histórico e soma o período inteiro.
+        </p>
+        <PeriodFilter
+          v-model:model-period="periodJornada"
+          v-model:model-month="customMonthJornada"
+          v-model:model-year="customYearJornada"
+          @change="carregarIndicadoresJornada"
+        />
+      </div>
+
+      <div v-if="loadingJornada" class="state-msg">
+        <span class="loading-dots"><span/><span/><span/></span> Calculando jornada (pode levar alguns segundos)…
+      </div>
+      <IndicadorJornadaTable v-else :indicadores="indicadoresJornada" />
     </template>
   </div>
 </template>
@@ -112,6 +143,9 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import PeriodFilter from './PeriodFilter.vue';
 import ChartBars from './ChartBars.vue';
 import ChartRanking from './ChartRanking.vue';
+import AlertaCard from './shared/AlertaCard.vue';
+import AtendimentoOperadoresAoVivo from './AtendimentoOperadoresAoVivo.vue';
+import IndicadorJornadaTable from './shared/IndicadorJornadaTable.vue';
 import { type Period, getPeriodRange } from '../composables/useDateRange';
 import {
   atendimentoApiClient,
@@ -119,11 +153,14 @@ import {
   CORES_SETOR,
   type KpisAtendimento,
   type SetorAtendimento,
-  type RankingsAtendimento,
+  type RankingAtendenteEntry,
+  type RankingAvaliacaoEntry,
+  type MotivoAtendimentoEntry,
   type AlertaOperacional,
+  type IndicadorJornadaOperador,
 } from '../services/atendimentoApi';
 
-type Aba = 'dashboard' | 'alertas';
+type Aba = 'dashboard' | 'alertas' | 'operadores' | 'jornada';
 
 const props = defineProps<{
   titulo:    string;
@@ -153,21 +190,15 @@ function formatarDuracao(ms: number | null): string {
   return `${h}h${m > 0 ? `${m}min` : ''}`;
 }
 
-function tempoRelativo(iso: string): string {
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (min < 1) return 'agora mesmo';
-  if (min < 60) return `há ${min}min`;
-  const h = Math.floor(min / 60);
-  return `há ${h}h${min % 60 > 0 ? `${min % 60}min` : ''}`;
-}
-
 const aba         = ref<Aba>('dashboard');
 const period      = ref<Period>('this_month');
 const customMonth = ref(new Date().getMonth());
 const customYear  = ref(new Date().getFullYear());
 
 const kpis = ref<KpisAtendimento[]>([]);
-const rankings = ref<RankingsAtendimento>({ atendentes: [], motivos: [] });
+const rankingAtendentes = ref<RankingAtendenteEntry[]>([]);
+const rankingAvaliacoes = ref<RankingAvaliacaoEntry[]>([]);
+const rankingMotivos    = ref<MotivoAtendimentoEntry[]>([]);
 const loadingKpis = ref(false);
 
 const alertas        = ref<AlertaOperacional[]>([]);
@@ -177,10 +208,12 @@ const resolvendoId   = ref<string | null>(null);
 async function carregarKpis() {
   loadingKpis.value = true;
   try {
-    const range = getPeriodRange(period.value, customYear.value, customMonth.value);
-    const r = await atendimentoApiClient.getResumo({ ...range, setores: props.setores });
+    const d = getPeriodRange(period.value, customYear.value, customMonth.value);
+    const r = await atendimentoApiClient.getResumo({ dateFrom: d.dateFrom, dateTo: d.dateTo, setores: props.setores });
     kpis.value = r.kpis;
-    rankings.value = r.rankings;
+    rankingAtendentes.value = r.rankings.atendentes;
+    rankingAvaliacoes.value = r.rankings.avaliacoes;
+    rankingMotivos.value = r.rankings.motivos;
   } finally {
     loadingKpis.value = false;
   }
@@ -194,14 +227,16 @@ const volumeBarData = computed(() =>
   kpis.value.map((k) => ({ label: nomeSetor(k.setor), value: k.volume, color: CORES_SETOR[k.setor] })),
 );
 
-// ChartRanking foi feito pra métricas Qtd/Valor (Valor em R$) — como aqui não
-// há um "valor" monetário, usamos a mesma contagem nos dois pra não formatar
-// um número genérico como moeda (o toggle Qtd/Valor vira um no-op inofensivo).
 const rankingAtendentesData = computed(() =>
-  rankings.value.atendentes.map((a) => ({ name: a.nome, count: a.qtd, value: a.qtd })),
+  rankingAtendentes.value.map((r) => ({ name: r.nome, count: r.qtd, value: r.qtd, displayValue: String(r.qtd) }))
 );
+
+const rankingAvaliacoesData = computed(() =>
+  rankingAvaliacoes.value.map((r) => ({ name: r.nome, count: r.notaMedia, value: r.notaMedia, displayValue: `${r.notaMedia}/5 (${r.qtdAvaliacoes})` }))
+);
+
 const motivosData = computed(() =>
-  rankings.value.motivos.map((m) => ({ name: m.motivo, count: m.qtd, value: m.qtd })),
+  rankingMotivos.value.map((r) => ({ name: r.motivo, count: r.qtd, value: r.qtd, displayValue: String(r.qtd) }))
 );
 
 async function carregarAlertas() {
@@ -221,6 +256,35 @@ async function resolver(id: string) {
     alertas.value = alertas.value.filter((a) => a.id !== id);
   } finally {
     resolvendoId.value = null;
+  }
+}
+
+// Jornada e Produtividade: período próprio, independente do filtro da aba
+// Dashboard, pra trocar de aba não resetar o filtro um do outro.
+const periodJornada      = ref<Period>('this_month');
+const customMonthJornada = ref(new Date().getMonth());
+const customYearJornada  = ref(new Date().getFullYear());
+const indicadoresJornada = ref<IndicadorJornadaOperador[]>([]);
+const loadingJornada     = ref(false);
+let jornadaJaCarregada   = false;
+
+async function carregarIndicadoresJornada() {
+  loadingJornada.value = true;
+  try {
+    const d = getPeriodRange(periodJornada.value, customYearJornada.value, customMonthJornada.value);
+    const r = await atendimentoApiClient.getIndicadoresJornada({ dateFrom: d.dateFrom, dateTo: d.dateTo, setores: props.setores });
+    indicadoresJornada.value = r.indicadores;
+  } finally {
+    loadingJornada.value = false;
+  }
+}
+
+// Lazy: só busca (pode levar alguns segundos) na primeira vez que a aba é aberta.
+function abrirJornada() {
+  aba.value = 'jornada';
+  if (!jornadaJaCarregada) {
+    jornadaJaCarregada = true;
+    carregarIndicadoresJornada();
   }
 }
 
@@ -263,22 +327,10 @@ onUnmounted(() => { if (pollingId) clearInterval(pollingId); });
 .atd-aviso { font-size: .8rem; color: var(--text-2); margin-bottom: 1rem; max-width: 720px; line-height: 1.5; }
 
 .alertas-lista { display: flex; flex-direction: column; gap: .7rem; }
-.alerta-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: var(--radius); padding: .9rem 1.1rem; display: flex; flex-direction: column; gap: .4rem; }
-.alerta-aviso { border-left-color: #f59e0b; }
-.alerta-critico { border-left-color: var(--error); }
-.alerta-topo { display: flex; align-items: center; gap: .6rem; }
-.alerta-badge { font-size: .64rem; font-weight: 700; padding: .15rem .5rem; border-radius: 20px; text-transform: uppercase; letter-spacing: .04em; }
-.badge-aviso { background: rgba(245, 158, 11, .12); color: #f59e0b; }
-.badge-critico { background: var(--error-bg); color: var(--error); }
-.alerta-titulo { font-weight: 700; color: var(--text); font-size: .88rem; flex: 1; }
-.btn-resolver { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); border-radius: var(--radius-sm); padding: .3rem .7rem; font-size: .74rem; cursor: pointer; white-space: nowrap; }
-.btn-resolver:hover:not(:disabled) { color: var(--text); border-color: var(--border-2); }
-.btn-resolver:disabled { opacity: .5; cursor: not-allowed; }
-.alerta-descricao { font-size: .8rem; color: var(--text-2); line-height: 1.4; }
-.alerta-meta { font-size: .7rem; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
 
-.setor-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: .8rem; margin-bottom: 1.25rem; }
-@media (max-width: 600px) { .setor-cards { grid-template-columns: 1fr; } }
+.setor-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin-bottom: 1.25rem; }
+@media (max-width: 1100px) { .setor-cards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px)  { .setor-cards { grid-template-columns: 1fr; } }
 .setor-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .8rem; }
 .setor-card-header { display: flex; align-items: flex-start; justify-content: space-between; }
 .setor-nome { font-family: var(--font-mono); font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); padding-top: .2rem; }
@@ -291,13 +343,16 @@ onUnmounted(() => { if (pollingId) clearInterval(pollingId); });
 .setor-stat-valor { font-family: var(--font-mono); font-size: 1rem; font-weight: 700; color: var(--text); }
 .setor-stat-detalhe { font-size: .7rem; color: var(--text-2); }
 
-.charts-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin-bottom: 1.5rem; }
-@media (max-width: 1100px) { .charts-3 { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 700px)  { .charts-3 { grid-template-columns: 1fr; } }
+.charts-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; margin-bottom: 1.5rem; }
+@media (max-width: 1400px) { .charts-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px)  { .charts-4 { grid-template-columns: 1fr; } }
 
 .loading-dots { display: inline-flex; gap: 3px; vertical-align: middle; }
 .loading-dots span { width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); animation: dot-pulse 1.1s ease-in-out infinite; }
 .loading-dots span:nth-child(2) { animation-delay: .15s; }
 .loading-dots span:nth-child(3) { animation-delay: .3s; }
 @keyframes dot-pulse { 0%, 80%, 100% { opacity: .25; transform: scale(.8); } 40% { opacity: 1; transform: scale(1); } }
+
+.jornada-header-row { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+.jornada-desc { font-size: .85rem; color: var(--text-2); max-width: 700px; line-height: 1.5; }
 </style>

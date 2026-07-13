@@ -65,7 +65,7 @@ export async function detectarPendenciaSeguranca(): Promise<ResultadoDeteccao> {
     await upsertAlerta({
       tipo: 'PENDENCIA_SEGURANCA', severidade: 'CRITICO',
       titulo: `${p.categoria} pendente em ${p.popName}`,
-      descricao: `${p.descricao} — em aberto há ${p.diasAberta} dia(s).`,
+      descricao: `${p.descricao} em aberto há ${p.diasAberta} dia(s).`,
       popName: p.popName, pendenciaId: String(p.id),
     });
   }

@@ -92,6 +92,12 @@ export interface RankingAtendenteEntry {
   qtd:  number;
 }
 
+export interface RankingAvaliacaoEntry {
+  nome: string;
+  notaMedia: number;
+  qtdAvaliacoes: number;
+}
+
 export interface MotivoAtendimentoEntry {
   motivo: string;
   qtd:    number;
@@ -107,4 +113,50 @@ export interface AtendimentoParaMonitoria {
   /// como chave de idempotência (ex: análise em massa por IA). protocolo
   /// não é confiável como chave única (ver AtendimentoMonitoriaQa.id_legado).
   opasuiteAtendimentoId?: string;
+}
+
+export interface OperadorAoVivo {
+  nome: string;
+  setor: string;
+  status: 'on' | 'au' | 'pause';
+  tempoStatusMs: number;
+  volumeHoje: number;
+  tmaMs: number | null;
+  tmeMs: number | null;
+  tmrMs: number | null;
+}
+
+/// Indicador de jornada por operador num período configurável (RH/gestão do
+/// Centro de Solução) — diferente de OperadorAoVivo (que é só o status ATUAL
+/// em tempo real): aqui é histórico, somando o tempo real logado em cada
+/// status ao longo do período inteiro. "Logado" = produtivo + pausa + ausente
+/// (exclui "off", que é o operador fora do sistema — sem escala cadastrada
+/// no sistema hoje, não dá pra saber se isso é fora do horário de trabalho
+/// ou ausência durante o expediente).
+export interface IndicadorJornadaOperador {
+  nome: string;
+  setor: SetorAtendimento;
+  volumeAtendimentos: number;
+  tempoLogadoMs: number;
+  tempoProdutivoMs: number;
+  tempoPausaMs: number;
+  tempoAusenteMs: number;
+  /// null quando tempoLogadoMs é 0 (sem nenhum registro de status no período)
+  pctProdutivo: number | null;
+  pctPausa: number | null;
+  pctAusente: number | null;
+}
+
+/// Limites de jornada configuráveis pela gestão via Regras de Negócio
+/// (categoria ATENDIMENTO, mesma tela/CRUD do resto do C.A.I.O., hoje restrita
+/// a hub-admin), usados só pra destacar visualmente a tabela de jornada, não
+/// alteram nenhum cálculo. limiteIndisponibilidadePct é único pra todos os
+/// setores (ausente é comportamento, comparável entre áreas); metaEficiencia
+/// é por setor porque TMA varia muito de área pra área (ex: Retenção demora
+/// bem mais por atendimento que SAC): só entra no mapa quem tiver meta
+/// configurada, os demais setores ficam sem comparação (não tem "bom" padrão
+/// universal de atendimentos/hora).
+export interface ConfigJornada {
+  limiteIndisponibilidadePct: number;
+  metasEficienciaPorSetor: Partial<Record<SetorAtendimento, number>>;
 }

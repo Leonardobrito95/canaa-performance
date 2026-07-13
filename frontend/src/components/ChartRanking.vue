@@ -19,7 +19,7 @@
         <div class="rank-info">
           <div class="rank-name-row">
             <span class="rank-name">{{ item.name }}</span>
-            <span class="rank-val">{{ metric === 'value' ? fmtR(item.value) : item.count }}</span>
+            <span class="rank-val">{{ item.displayValue ?? (metric === 'value' ? fmtR(item.value) : item.count) }}</span>
           </div>
           <div class="rank-bar-bg">
             <div
@@ -41,7 +41,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 
-interface RankItem { name: string; count: number; value: number; }
+interface RankItem { name: string; count: number; value: number; displayValue?: string; }
 
 const props = defineProps<{
   title: string;

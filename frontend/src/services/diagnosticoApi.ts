@@ -59,7 +59,7 @@ export interface ClienteCandidato {
   endereco: string;
 }
 
-export type CategoriaRegra = 'VENDAS' | 'RETENCAO' | 'REDE' | 'COMISSAO';
+export type CategoriaRegra = 'VENDAS' | 'RETENCAO' | 'REDE' | 'COMISSAO' | 'ATENDIMENTO';
 
 export interface RegraNegocio {
   chave: string;

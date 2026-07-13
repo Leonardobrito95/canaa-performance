@@ -1,12 +1,10 @@
 <template>
   <LoginView v-if="!isAuthenticated" @login-success="() => {}" />
 
-  <div v-else class="app">
-    <!-- ── Header com navbar integrada ── -->
-    <header class="app-header">
-      <div class="header-inner">
-
-        <!-- Logo -->
+  <div v-else class="app app-layout-sidebar">
+    <!-- ── Sidebar (Desktop) ── -->
+    <aside :class="['app-sidebar', { collapsed: isSidebarCollapsed }]">
+      <div class="sidebar-header">
         <div class="logo">
           <div class="logo-mark">
             <svg width="28" height="30" viewBox="0 -4 32 34" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -32,48 +30,50 @@
               <path d="M22.5 1.8 L23.7 3 L25.7 0.6" stroke="#4a6500" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </div>
-          <div class="logo-text-wrap">
+          <div class="logo-text-wrap" v-if="!isSidebarCollapsed">
             <span class="logo-title">CANAÃ</span>
             <span class="logo-sub">PERFORMANCE</span>
           </div>
         </div>
+        <button class="btn-toggle-sidebar" @click="isSidebarCollapsed = !isSidebarCollapsed">
+          <i class="fa-solid fa-chevron-left" v-if="!isSidebarCollapsed"></i>
+          <i class="fa-solid fa-bars" v-else></i>
+        </button>
+      </div>
 
-        <!-- Navegação central: cada grupo é um dropdown, alinhado à mesma taxonomia de
-             setores do Hub (hub.sectors) — config única em useNavMenu.ts, consumida aqui
-             e na drawer mobile via v-for (elimina a duplicação que existia antes). -->
-        <nav class="header-nav" ref="headerNavRef">
-          <template v-for="(group, idx) in visibleGroups" :key="group.key">
-            <div v-if="idx > 0" class="nav-divider"></div>
-            <div :class="['nav-group', { open: openNavGroup === group.key }]">
-              <button type="button" :class="['nav-group-trigger', { active: grupoAtivo === group.key }]" @click="toggleNavGroup(group.key)">
+      <nav class="sidebar-nav">
+        <template v-for="(group, idx) in visibleGroups" :key="group.key">
+          <div v-if="idx > 0" class="nav-divider"></div>
+          <div :class="['sidebar-group', { open: openNavGroup === group.key }]">
+            <button type="button" :class="['sidebar-group-trigger', { active: grupoAtivo === group.key }]" @click="toggleSidebarGroup(group.key)">
+              <div class="sidebar-icon-wrap">
                 <i v-if="group.icon" :class="`fa-solid ${group.icon}`" :style="group.color ? `color:${group.color}` : ''"></i>
-                <span class="nav-group-label">{{ group.label }}</span>
-                <svg class="nav-caret" width="9" height="6" viewBox="0 0 9 6" fill="none"><path d="M1 1l3.5 3.5L8 1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
-              <div v-if="openNavGroup === group.key" class="nav-dropdown" @click="openNavGroup = null">
-                <button
-                  v-for="item in group.items.filter((i) => i.visible)"
-                  :key="item.label"
-                  :class="['nav-drop-item', { active: isItemActive(item, tab) }]"
-                  :disabled="item.disabled"
-                  @click="activateNavItem(item)"
-                >
-                  <!-- eslint-disable-next-line vue/no-v-html -- SVG 100% estático do próprio código-fonte, nunca vem de API/usuário -->
-                  <span v-if="item.icon" v-html="item.icon"></span>
-                  <span v-else-if="item.iconText" class="nav-icon-text">{{ item.iconText }}</span>
-                  <span>{{ item.dynamicLabel ? item.dynamicLabel() : item.label }}</span>
-                </button>
               </div>
+              <span class="sidebar-group-label" v-if="!isSidebarCollapsed">{{ group.label }}</span>
+              <svg v-if="!isSidebarCollapsed" class="nav-caret" width="9" height="6" viewBox="0 0 9 6" fill="none"><path d="M1 1l3.5 3.5L8 1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="sidebar-dropdown" v-if="openNavGroup === group.key && !isSidebarCollapsed">
+              <button
+                v-for="item in group.items.filter((i) => i.visible)"
+                :key="item.label"
+                :class="['sidebar-drop-item', { active: isItemActive(item, tab) }]"
+                :disabled="item.disabled"
+                @click="activateNavItem(item)"
+              >
+                <span v-if="item.icon" v-html="item.icon"></span>
+                <span v-else-if="item.iconText" class="nav-icon-text">{{ item.iconText }}</span>
+                <span>{{ item.dynamicLabel ? item.dynamicLabel() : item.label }}</span>
+              </button>
             </div>
-          </template>
+          </div>
+        </template>
+      </nav>
 
-          <!-- Divisor -->
-          <div class="nav-divider"></div>
-
-          <!-- C.A.I.O. (Canaã Artificial Intelligence Operator) — módulo próprio do agente de IA,
-               não é dropdown de setor, fica fora do loop de grupos -->
-          <button type="button" :class="['nav-standalone-btn', { active: tab === 'diagnostico' }]" @click="tab = 'diagnostico'" title="Canaã Artificial Intelligence Operator">
-            <svg width="20" height="20" viewBox="0 0 15 15" fill="none">
+      <div style="margin-top: auto; flex-shrink: 0; padding-bottom: 0.5rem;">
+        <div class="nav-divider" style="margin-top: 0;"></div>
+        <button type="button" :class="['sidebar-caio-btn', { active: tab === 'diagnostico' }]" @click="tab = 'diagnostico'" title="Canaã Artificial Intelligence Operator">
+          <div class="sidebar-icon-wrap" style="width: auto; height: 32px; display: flex; align-items: center; justify-content: center;">
+            <svg width="26" height="26" viewBox="0 0 15 15" fill="none">
               <circle cx="7.5" cy="1.1" r="0.75" fill="currentColor"/>
               <path d="M7.5 1.85v1.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
               <rect x="2.5" y="3.15" width="10" height="7.3" rx="2.6" stroke="currentColor" stroke-width="1.3"/>
@@ -83,10 +83,24 @@
               <path d="M5.6 8.6h3.8" stroke="currentColor" stroke-width="1.15" stroke-linecap="round"/>
               <path d="M4.2 10.45v1.15M10.8 10.45v1.15" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
             </svg>
-            <span class="nav-group-label">C.A.I.O.</span>
-          </button>
-        </nav>
+          </div>
+          <span class="sidebar-caio-label" v-if="!isSidebarCollapsed">C.A.I.O.</span>
+        </button>
+      </div>
+    </aside>
 
+    <!-- ── Main Area ── -->
+    <div class="app-content-wrapper">
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <!-- Mobile hamburger só renderizado via media query -->
+          <button class="btn-hamburger mobile-only" @click="menuOpen = !menuOpen" aria-label="Menu">
+            <span :class="['hb-bar', { open: menuOpen }]"></span>
+            <span :class="['hb-bar', { open: menuOpen }]"></span>
+            <span :class="['hb-bar', { open: menuOpen }]"></span>
+          </button>
+        </div>
+        
         <!-- Direita: relógio + usuário + logout -->
         <div class="header-right">
           <div class="header-clock">
@@ -100,18 +114,8 @@
           <button class="btn-logout" @click="logout" title="Sair">
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M6 2H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3M10 10l3-3-3-3M13 7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <!-- Hamburger (mobile only) -->
-          <button class="btn-hamburger" @click="menuOpen = !menuOpen" aria-label="Menu">
-            <span :class="['hb-bar', { open: menuOpen }]"></span>
-            <span :class="['hb-bar', { open: menuOpen }]"></span>
-            <span :class="['hb-bar', { open: menuOpen }]"></span>
-          </button>
         </div>
-      </div>
-    </header>
-
-    <!-- Backdrop sutil atrás do dropdown de navegação aberto -->
-    <div v-if="openNavGroup" class="nav-backdrop" @click="openNavGroup = null"></div>
+      </header>
 
     <!-- ── Mobile nav drawer ── -->
     <Transition name="backdrop">
@@ -167,6 +171,10 @@
         <Transition name="fade" mode="out-in">
           <section v-if="tab === 'vendas'" key="vendas">
             <VendasView :refresh="refreshTick" />
+          </section>
+
+          <section v-else-if="tab === 'alertas-hub'" key="alertas-hub" class="hub-section">
+            <AlertasHubView :refresh="refreshTick" />
           </section>
 
           <section v-else-if="tab === 'comissao'" key="comissao">
@@ -238,8 +246,13 @@
           <section v-else-if="tab === 'sala-reuniao'" key="sala-reuniao" class="hub-section agenda-section">
             <AgendaView />
           </section>
+
+          <section v-else-if="tab === 'rh'" key="rh" class="hub-section">
+            <RhView />
+          </section>
         </Transition>
       </main>
+    </div>
     </div>
   </div>
 </template>
@@ -264,6 +277,8 @@ import HubView               from './views/hub/HubView.vue';
 import HubViewerView         from './views/hub/HubViewerView.vue';
 import HubAdminView          from './views/hub/HubAdminView.vue';
 import AgendaView            from './views/AgendaView.vue';
+import AlertasHubView        from './views/AlertasHubView.vue';
+import RhView                from './views/RhView.vue';
 import { useAuth } from './composables/useAuth';
 import { useNavMenu, type Tab, type NavItem, type NavGroupKey } from './composables/useNavMenu';
 import type { HubDashboard } from './services/hubApi';
@@ -288,7 +303,8 @@ async function abrirOtdr() {
 }
 
 const { visibleGroups, tabParaGrupo, isItemActive } = useNavMenu({
-  isGestor, isCS, isEstoque, isCampo, isAgente, souAgenteQa, isHubAdmin, abrindoOtdr, abrirOtdr,
+  isGestor, isCS, isEstoque, isCampo, isAgente, souAgenteQa, isHubAdmin, abrindoOtdr, 
+  perfilAtual: computed(() => user.value?.perfil ?? ''), abrirOtdr,
 });
 
 const tab = ref<Tab>(
@@ -300,6 +316,7 @@ const tab = ref<Tab>(
 );
 const refreshTick = ref(0);
 const menuOpen = ref(false);
+const isSidebarCollapsed = ref(false);
 
 // Log de navegação por módulo — uma vez por troca de aba, não a cada chamada
 // de API interna do módulo (evita poluir o log com refresh/filtro).
@@ -320,6 +337,8 @@ const TAB_LOG_ACTION: Partial<Record<Tab, string>> = {
   hub: 'VIEW_HUB',
   'hub-admin': 'VIEW_HUB_ADMIN',
   'sala-reuniao': 'VIEW_SALA_REUNIAO',
+  'alertas-hub': 'VIEW_ALERTAS_HUB',
+  rh: 'VIEW_RH',
 };
 watch([tab, isAuthenticated], ([novaTab, autenticado]) => {
   if (!autenticado) return;
@@ -336,16 +355,10 @@ function activateNavItem(item: NavItem) {
 
 // ── Dropdowns do header (grupos de setor + Hub/Ferramentas) ──────────────
 const openNavGroup = ref<NavGroupKey | null>(null);
-const headerNavRef = ref<HTMLElement | null>(null);
 
-function toggleNavGroup(grupo: NavGroupKey) {
+function toggleSidebarGroup(grupo: NavGroupKey) {
+  if (isSidebarCollapsed.value) isSidebarCollapsed.value = false;
   openNavGroup.value = openNavGroup.value === grupo ? null : grupo;
-}
-
-function handleOutsideNavClick(e: MouseEvent) {
-  if (headerNavRef.value && !headerNavRef.value.contains(e.target as Node)) {
-    openNavGroup.value = null;
-  }
 }
 
 const grupoAtivo = computed(() => tabParaGrupo.value.get(tab.value) ?? null);
@@ -364,11 +377,10 @@ function updateClock() {
 onMounted(() => {
   updateClock();
   timer = setInterval(updateClock, 1000);
-  document.addEventListener('mousedown', handleOutsideNavClick);
 });
+
 onUnmounted(() => {
   clearInterval(timer);
-  document.removeEventListener('mousedown', handleOutsideNavClick);
 });
 
 function onRegistered() { refreshTick.value++; }
@@ -436,28 +448,20 @@ body {
 }
 
 /* ── App shell ── */
-.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.app { display: flex; flex-direction: row; height: 100vh; overflow: hidden; }
 
-/* ── Header ── */
-.app-header {
-  background: rgba(11, 13, 18, 0.95);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  flex-shrink: 0;
-  height: var(--header-h);
-}
-
-.header-inner {
-  height: 100%;
-  padding: 0 2rem;
+/* ── Sidebar (Menu Lateral) ── */
+.app-sidebar {
+  width: 260px;
+  background: rgba(11, 13, 18, 0.98);
+  border-right: 1px solid var(--border);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 2rem;
+  flex-direction: column;
+  transition: width var(--transition);
+  z-index: 100;
+}
+.app-sidebar.collapsed {
+  width: 70px;
 }
 
 /* Logo */
@@ -481,138 +485,156 @@ body {
   margin-top: 2px;
 }
 
-/* ── Navbar central ── */
-.header-nav {
+.sidebar-header {
+  height: var(--header-h);
   display: flex;
-  align-items: stretch;
-  gap: .25rem;
-  height: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.app-sidebar.collapsed .sidebar-header {
+  justify-content: center;
+  padding: 0;
+}
+.btn-toggle-sidebar {
+  background: none; border: none; color: var(--text-2); cursor: pointer;
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  transition: color var(--transition);
+}
+.btn-toggle-sidebar:hover { color: var(--accent); }
+
+.sidebar-nav {
   flex: 1;
-  justify-content: center;
-}
-
-.nav-group {
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  height: 100%;
-}
-
-/* Botão-gatilho do dropdown de cada grupo */
-.nav-group-trigger {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  height: 100%;
-  padding: 0 1rem;
-  background: none;
-  border: none;
-  border-bottom: 3px solid transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: all var(--transition);
-}
-.nav-group-trigger:hover { color: var(--text); background: var(--surface-2); }
-.nav-group-trigger.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-dim); }
-.nav-group.open .nav-group-trigger { color: var(--text); background: var(--surface-2); }
-
-/* C.A.I.O. — botão standalone (não é dropdown, só um destino); ícone em cima, nome embaixo, tudo centralizado */
-.nav-standalone-btn {
+  overflow-y: auto;
+  padding: 1rem 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: .18rem;
-  height: 100%;
-  padding: 0 1rem;
-  background: none;
-  border: none;
-  border-bottom: 3px solid transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: all var(--transition);
-}
-.nav-standalone-btn svg { opacity: .65; transition: opacity var(--transition); flex-shrink: 0; }
-.nav-standalone-btn:hover { color: var(--text); background: var(--surface-2); }
-.nav-standalone-btn:hover svg { opacity: .95; }
-.nav-standalone-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-dim); }
-.nav-standalone-btn.active svg { opacity: 1; filter: drop-shadow(0 0 4px var(--accent)); }
-.nav-standalone-btn .nav-group-label { line-height: 1; }
-
-.nav-group-label {
-  font-family: var(--font-mono);
-  font-size: .62rem;
-  font-weight: 600;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.nav-caret { opacity: .6; transition: transform var(--transition); flex-shrink: 0; }
-.nav-group.open .nav-caret { transform: rotate(180deg); }
-
-/* Backdrop sutil atrás do dropdown aberto — ajuda o foco sem escurecer demais */
-.nav-backdrop {
-  position: fixed;
-  top: var(--header-h, 62px);
-  left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, .35);
-  z-index: 30;
+  gap: 0.2rem;
 }
 
-/* Painel do dropdown */
-.nav-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
-  min-width: 215px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
-  padding: .35rem;
+.sidebar-group {
   display: flex;
   flex-direction: column;
-  gap: .1rem;
-  z-index: 40;
 }
 
-/* Item dentro do dropdown */
-.nav-drop-item {
+.sidebar-group-trigger {
   display: flex;
   align-items: center;
-  gap: .65rem;
-  width: 100%;
-  padding: .6rem .75rem .6rem calc(.75rem + 2px);
+  gap: 0.8rem;
+  padding: 0.75rem 1.25rem;
   background: none;
   border: none;
-  border-left: 2px solid transparent;
-  border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
   color: var(--text-2);
   cursor: pointer;
-  font-family: var(--font-body);
-  font-size: .8rem;
-  font-weight: 500;
   text-align: left;
-  white-space: nowrap;
   transition: all var(--transition);
 }
-.nav-drop-item svg { opacity: .6; transition: opacity var(--transition); flex-shrink: 0; }
-.nav-icon-text { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; line-height: 1; opacity: .6; transition: opacity var(--transition); width: 18px; text-align: center; flex-shrink: 0; }
-.nav-drop-item:hover .nav-icon-text, .nav-drop-item.active .nav-icon-text { opacity: 1; }
-.nav-drop-item:hover { color: var(--text); background: var(--surface-3); }
-.nav-drop-item:hover svg { opacity: .9; }
-.nav-drop-item.active { color: var(--accent); background: var(--accent-dim); border-left-color: var(--accent); }
-.nav-drop-item.active svg { opacity: 1; filter: drop-shadow(0 0 4px var(--accent)); }
-.nav-drop-item:disabled { opacity: .5; cursor: not-allowed; }
+.app-sidebar.collapsed .sidebar-group-trigger {
+  padding: 0.75rem 0;
+  justify-content: center;
+}
+.sidebar-icon-wrap {
+  width: 20px;
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-group-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-group-trigger:hover { color: var(--text); background: var(--surface-2); }
+.sidebar-group-trigger.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-dim); }
+.sidebar-group.open .sidebar-group-trigger { color: var(--text); background: var(--surface-2); }
+
+.nav-caret { opacity: .6; transition: transform var(--transition); flex-shrink: 0; }
+.sidebar-group.open .nav-caret { transform: rotate(180deg); }
+
+.sidebar-dropdown {
+  display: flex;
+  flex-direction: column;
+  background: rgba(0,0,0,0.2);
+  padding: 0.25rem 0;
+}
+.sidebar-drop-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 1.25rem 0.6rem 3rem; /* indented */
+  background: none; border: none; color: var(--text-2); cursor: pointer;
+  font-family: var(--font-body); font-size: 0.8rem; font-weight: 500;
+  text-align: left; transition: all var(--transition);
+}
+.sidebar-drop-item:hover { color: var(--text); background: var(--surface-3); }
+.sidebar-drop-item.active { color: var(--accent); background: var(--accent-dim); }
+.sidebar-drop-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.nav-icon-text { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; line-height: 1; opacity: .6; width: 18px; text-align: center; }
+
+/* C.A.I.O. */
+.sidebar-caio-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.25rem 0.5rem;
+  width: 100%;
+  background: none; border: none; color: var(--accent); cursor: pointer;
+  transition: all var(--transition);
+  opacity: 0.85;
+}
+.sidebar-caio-btn:hover { opacity: 1; background: var(--surface-2); }
+.sidebar-caio-btn.active { opacity: 1; background: var(--accent-dim); box-shadow: inset 0 0 10px rgba(0,240,255,0.1); }
+.sidebar-caio-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.sidebar-caio-btn svg { filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.4)); }
 
 /* Divisor entre grupos */
 .nav-divider {
-  width: 1px;
+  height: 1px;
   background: var(--border);
-  margin: .75rem .5rem;
+  margin: 0.5rem 1rem;
+}
+.app-sidebar.collapsed .nav-divider { margin: 0.5rem; }
+
+/* ── App Content Wrapper (Direita) ── */
+.app-content-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.app-topbar {
+  height: var(--header-h);
+  background: rgba(11, 13, 18, 0.8);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
   flex-shrink: 0;
 }
+.topbar-left { display: flex; align-items: center; }
 
 /* Clock + User */
 .header-right { display: flex; align-items: center; gap: .75rem; flex-shrink: 0; }
@@ -1008,11 +1030,10 @@ tbody td { padding: .38rem .75rem; color: var(--text); vertical-align: middle; }
 @media (max-width: 768px) {
   :root { --header-h: 56px; }
 
-  .header-inner { padding: 0 1rem; gap: 1rem; }
-
-  /* Oculta nav desktop, mostra hamburger */
-  .header-nav { display: none; }
+  /* Oculta nav desktop (sidebar), mostra hamburger */
+  .app-sidebar { display: none; }
   .btn-hamburger { display: flex; }
+  .topbar-left { flex: 1; }
 
   /* Oculta relógio e dados do usuário */
   .header-clock { display: none; }

@@ -79,6 +79,12 @@ export interface RankingAtendenteEntry {
   qtd:  number;
 }
 
+export interface RankingAvaliacaoEntry {
+  nome: string;
+  notaMedia: number;
+  qtdAvaliacoes: number;
+}
+
 export interface MotivoAtendimentoEntry {
   motivo: string;
   qtd:    number;
@@ -86,6 +92,7 @@ export interface MotivoAtendimentoEntry {
 
 export interface RankingsAtendimento {
   atendentes: RankingAtendenteEntry[];
+  avaliacoes: RankingAvaliacaoEntry[];
   motivos:    MotivoAtendimentoEntry[];
 }
 
@@ -106,6 +113,39 @@ export interface AlertaOperacional {
   resolvido_em:             string | null;
 }
 
+export interface OperadorAoVivo {
+  nome: string;
+  setor: string;
+  status: 'on' | 'au' | 'pause';
+  tempoStatusMs: number;
+  volumeHoje: number;
+  tmaMs: number | null;
+  tmeMs: number | null;
+  tmrMs: number | null;
+}
+
+/// Indicador de jornada por operador (RH/gestão) num período configurável —
+/// diferente de OperadorAoVivo (status atual, sem histórico).
+export interface IndicadorJornadaOperador {
+  nome: string;
+  setor: SetorAtendimento;
+  volumeAtendimentos: number;
+  tempoLogadoMs: number;
+  tempoProdutivoMs: number;
+  tempoPausaMs: number;
+  tempoAusenteMs: number;
+  pctProdutivo: number | null;
+  pctPausa: number | null;
+  pctAusente: number | null;
+}
+
+/// Limites de jornada configurados pela gestão via Regras de Negócio
+/// (categoria ATENDIMENTO) — só pra destaque visual da tabela.
+export interface ConfigJornada {
+  limiteIndisponibilidadePct: number;
+  metasEficienciaPorSetor: Partial<Record<SetorAtendimento, number>>;
+}
+
 // ── Chamadas ─────────────────────────────────────────────────────
 
 export const atendimentoApiClient = {
@@ -120,4 +160,13 @@ export const atendimentoApiClient = {
 
   resolverAlertaOperacional: (id: string): Promise<AlertaOperacional> =>
     api.post(`/alertas-operacionais/${id}/resolver`).then((r) => r.data),
+
+  getOperadoresAoVivo: (setores?: SetorAtendimento[]): Promise<{ operadores: OperadorAoVivo[] }> =>
+    api.get('/operadores-ao-vivo', { params: { setores: setores?.join(',') } }).then((r) => r.data),
+
+  getIndicadoresJornada: (params: { dateFrom?: string; dateTo?: string; setores?: SetorAtendimento[] }): Promise<{ indicadores: IndicadorJornadaOperador[] }> =>
+    api.get('/indicadores-jornada', { params: { ...params, setores: params.setores?.join(',') } }).then((r) => r.data),
+
+  getConfigJornada: (): Promise<ConfigJornada> =>
+    api.get('/config-jornada').then((r) => r.data),
 };

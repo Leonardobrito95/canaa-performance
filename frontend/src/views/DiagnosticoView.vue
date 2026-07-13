@@ -888,7 +888,7 @@ function enviarSugestaoGestao(sugestao: string) {
   enviarGestao(sugestao);
 }
 
-const CATEGORIAS: CategoriaRegra[] = ['VENDAS', 'RETENCAO', 'REDE', 'COMISSAO'];
+const CATEGORIAS: CategoriaRegra[] = ['VENDAS', 'RETENCAO', 'REDE', 'COMISSAO', 'ATENDIMENTO'];
 
 const regras = ref<RegraNegocio[]>([]);
 const loadingRegras = ref(false);

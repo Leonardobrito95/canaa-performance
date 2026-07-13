@@ -36,7 +36,7 @@ export const gestaoConsultaBodySchema = z.object({
   historico: z.array(historicoTurnoSchema).max(8).optional(),
 });
 
-const CATEGORIAS_REGRA = ['VENDAS', 'RETENCAO', 'REDE', 'COMISSAO'] as const;
+const CATEGORIAS_REGRA = ['VENDAS', 'RETENCAO', 'REDE', 'COMISSAO', 'ATENDIMENTO'] as const;
 
 export const regraNegocioBodySchema = z.object({
   chave: z.string().min(2).max(80).regex(/^[A-Z0-9_]+$/, 'Use apenas maiúsculas, números e _'),

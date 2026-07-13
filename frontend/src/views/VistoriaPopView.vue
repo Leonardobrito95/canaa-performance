@@ -68,17 +68,14 @@
       </div>
       <div v-else class="alertas-lista">
         <div v-if="!alertas.length" class="state-msg">Nenhum alerta aberto agora.</div>
-        <div v-for="a in alertas" :key="a.id" :class="['alerta-card', a.severidade === 'CRITICO' ? 'alerta-critico' : 'alerta-aviso']">
-          <div class="alerta-topo">
-            <span :class="['alerta-badge', a.severidade === 'CRITICO' ? 'badge-critico' : 'badge-aviso']">{{ a.severidade }}</span>
-            <span class="alerta-titulo">{{ a.titulo }}</span>
-            <button class="btn-resolver" @click="resolver(a.id)" :disabled="resolvendoId === a.id">
-              {{ resolvendoId === a.id ? 'Resolvendo…' : 'Resolver' }}
-            </button>
-          </div>
-          <p class="alerta-descricao">{{ a.descricao }}</p>
-          <span class="alerta-meta">{{ a.pop_name }} · aberto {{ tempoRelativo(a.criado_em) }}</span>
-        </div>
+        <AlertaCard
+          v-for="a in alertas"
+          :key="a.id"
+          :alerta="{ ...a, origem: 'vistoria', contexto: a.pop_name }"
+          :podeResolver="true"
+          :resolvendo="resolvendoId === a.id"
+          @resolver="resolver(a.id)"
+        />
       </div>
     </template>
 
@@ -111,17 +108,12 @@ import {
   vistoriaPopApiClient,
   type VistoriaResumoPop, type VistoriaPendencia, type VistoriaAlerta, type VistoriaHistoricoItem,
 } from '../services/vistoriaPopApi';
+import AlertaCard from '../components/shared/AlertaCard.vue';
 
 type Aba = 'status' | 'alertas';
 
 function fmtData(s: string | null): string { return s ? new Date(s).toLocaleDateString('pt-BR') : '—'; }
-function tempoRelativo(iso: string): string {
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (min < 60) return `há ${min}min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `há ${h}h`;
-  return `há ${Math.floor(h / 24)}d`;
-}
+
 function categoriaSeguranca(categoria: string): boolean {
   return (['Extintor', 'Gerador', 'Banco de Baterias'] as readonly string[]).includes(categoria);
 }
@@ -264,19 +256,6 @@ onMounted(carregarTudo);
 .vp-badge-aviso { background: rgba(245, 158, 11, .12); color: #f59e0b; }
 
 .alertas-lista { display: flex; flex-direction: column; gap: .7rem; }
-.alerta-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: var(--radius); padding: .9rem 1.1rem; display: flex; flex-direction: column; gap: .4rem; }
-.alerta-critico { border-left-color: var(--error); }
-.alerta-aviso { border-left-color: #f59e0b; }
-.alerta-topo { display: flex; align-items: center; gap: .6rem; }
-.alerta-badge { font-size: .64rem; font-weight: 700; padding: .15rem .5rem; border-radius: 20px; text-transform: uppercase; letter-spacing: .04em; }
-.badge-critico { background: var(--error-bg); color: var(--error); }
-.badge-aviso { background: rgba(245, 158, 11, .12); color: #f59e0b; }
-.alerta-titulo { flex: 1; font-weight: 600; font-size: .85rem; color: var(--text); }
-.alerta-descricao { font-size: .8rem; color: var(--text-2); }
-.alerta-meta { font-size: .72rem; color: var(--text-3); }
-.btn-resolver { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); border-radius: var(--radius-sm); padding: .3rem .7rem; font-size: .74rem; cursor: pointer; white-space: nowrap; }
-.btn-resolver:hover:not(:disabled) { color: var(--text); border-color: var(--border-2); }
-.btn-resolver:disabled { opacity: .5; cursor: not-allowed; }
 
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0, .6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
 .modal-content { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; padding: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,.5); }

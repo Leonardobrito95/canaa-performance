@@ -1,9 +1,10 @@
 import { ObjectId } from 'mongodb';
 import { getOpaSuiteDb } from '../../config/opasuiteMongo';
 import { buscarMensagensAtendimento } from '../opasuite/opasuite.service';
+import prisma from '../../config/prisma';
 import {
-  SetorAtendimento, KpisAtendimento, AtendimentoParaMonitoria, RankingAtendenteEntry, MotivoAtendimentoEntry,
-  SETORES_ATENDIMENTO, TODOS_SETORES, setorEscalonaPara,
+  SetorAtendimento, KpisAtendimento, AtendimentoParaMonitoria, RankingAtendenteEntry, MotivoAtendimentoEntry, RankingAvaliacaoEntry,
+  SETORES_ATENDIMENTO, TODOS_SETORES, setorEscalonaPara, OperadorAoVivo, IndicadorJornadaOperador, ConfigJornada,
 } from './atendimento.types';
 
 /// ObjectId do departamento no OpaSuite pra cada setor — derivado da config
@@ -272,10 +273,54 @@ export async function buscarRankingAtendentes(dateFrom: Date, dateTo: Date, seto
   const nomesPorId = new Map(usuarios.map((u) => [u._id.toString(), u.nome as string]));
 
   return rows
-    .filter((r) => r._id)
     .map((r) => ({
       nome: nomesPorId.get(r._id.toString()) ?? 'Desconhecido',
       qtd:  r.qtd,
+    }));
+}
+
+/// Ranking de atendentes por nota média de satisfação (CSAT).
+/// Apenas atendentes que tiveram pelo menos 1 avaliação.
+export async function buscarRankingAvaliacaoAtendentes(dateFrom: Date, dateTo: Date, setores?: SetorAtendimento[], limite = 10): Promise<RankingAvaliacaoEntry[]> {
+  const db = await getOpaSuiteDb();
+  const deptIds = (setores ?? TODOS_SETORES).map((s) => new ObjectId(DEPARTAMENTO_IDS[s]));
+
+  const rows = await db.collection('atendimentos').aggregate([
+    { $match: {
+        setor: { $in: deptIds },
+        date: { $gte: dateFrom, $lte: dateTo },
+        'evaluations.metric': 'likert'
+      }
+    },
+    { $unwind: '$atendentes' },
+    { $match: { 'atendentes.atendimentoHumano': true } },
+    { $unwind: '$evaluations' },
+    { $match: { 'evaluations.metric': 'likert', 'evaluations.likert.rating': { $type: 'number' } } },
+    { $group: { 
+        _id: '$atendentes.atendente', 
+        notaMedia: { $avg: '$evaluations.likert.rating' },
+        qtdAvaliacoes: { $sum: 1 }
+      } 
+    },
+    // Desempate: quem tem mais avaliações fica na frente se a nota for igual
+    { $sort: { notaMedia: -1, qtdAvaliacoes: -1 } },
+    { $limit: limite },
+  ]).toArray();
+
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r._id).filter(Boolean);
+  const usuarios = await db.collection('usuarios').find(
+    { _id: { $in: ids } },
+    { projection: { nome: 1 } },
+  ).toArray();
+  const nomesPorId = new Map(usuarios.map((u) => [u._id.toString(), u.nome as string]));
+
+  return rows
+    .filter((r) => r._id)
+    .map((r) => ({
+      nome: nomesPorId.get(r._id.toString()) ?? 'Desconhecido',
+      notaMedia: Math.round(r.notaMedia * 100) / 100,
+      qtdAvaliacoes: r.qtdAvaliacoes,
     }));
 }
 
@@ -376,3 +421,424 @@ export async function buscarAtendimentosParaAnaliseIa(dateFrom: Date, dateTo: Da
   });
   return candidatos.filter((a): a is Omit<AtendimentoParaMonitoria, 'mensagens'> => a !== null);
 }
+
+// AtendimentoAgenteQa.equipe guarda o nome do time em português, digitado
+// por quem cadastrou o roster (ex: "Retenção"), não o código interno de
+// SetorAtendimento (ex: "RETENCAO") — os dois só coincidem por acaso pra
+// SAC/N1/N2. Sem essa tradução, o filtro por setor nunca casa pra Retenção/
+// Cobrança/Backoffice mesmo com agente ativo no roster.
+const EQUIPE_ROSTER_PARA_CODIGO: Record<string, SetorAtendimento> = {
+  'SAC': 'SAC',
+  'N1': 'N1',
+  'Suporte N1': 'N1',
+  'N2': 'N2',
+  'Suporte N2': 'N2',
+  'Cobrança': 'COBRANCA',
+  'Vendas': 'VENDAS',
+  'Retenção': 'RETENCAO',
+  'Pós-Vendas': 'POS_VENDAS',
+  'Backoffice': 'BACKOFFICE',
+};
+
+// Status reais observados em user_status (OpaSuite): on/off/call/oc/pause/au.
+// 'call' (em ligação) e 'oc' (ocupado) contam como presente/online — só
+// 'off' é de fato ausente do sistema.
+const STATUS_PARA_UI: Record<string, 'on' | 'au' | 'pause'> = {
+  on: 'on', call: 'on', oc: 'on', pause: 'pause', au: 'au',
+};
+
+export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): Promise<OperadorAoVivo[]> {
+  const db = await getOpaSuiteDb();
+
+  const hojeInicio = new Date();
+  hojeInicio.setHours(0, 0, 0, 0);
+  const hojeFim = new Date();
+  hojeFim.setHours(23, 59, 59, 999);
+
+  // 1. Achar agentes do roster (QA) para os setores solicitados
+  const agentes = await prisma.atendimentoAgenteQa.findMany({
+    where: { status: 'Ativo', nome: { notIn: ['APRIMORAR', 'TESTE'] } },
+    select: { nome: true, equipe: true },
+  });
+
+  const agentesRoster = setores
+    ? agentes.filter((a) => {
+        const codigo = EQUIPE_ROSTER_PARA_CODIGO[a.equipe];
+        return codigo && setores.includes(codigo);
+      })
+    : agentes;
+  
+  // 2. Achar operadores que tocaram em atendimentos dos setores hoje (cobre Vendas/Pós-Vendas que não estão no QA)
+  const deptIds = (setores ?? TODOS_SETORES).map((s) => new ObjectId(DEPARTAMENTO_IDS[s]));
+  
+  const atendimentosHoje = await db.collection('atendimentos').find(
+    { setor: { $in: deptIds }, date: { $gte: hojeInicio, $lte: hojeFim } },
+    { projection: { date: 1, setor: 1, atendentes: 1, operacoes: 1 } }
+  ).toArray();
+
+  const idsOperadoresHoje = new Set<string>();
+  const setorPorIdOpaSuite = new Map<string, SetorAtendimento>();
+
+  for (const doc of atendimentosHoje) {
+    const setorAtendimento = resolverSetorPorObjectId(doc.setor);
+    if (!setorAtendimento) continue;
+    for (const a of (doc.atendentes || [])) {
+      if (a.atendimentoHumano && a.atendente) {
+        const idStr = a.atendente.toString();
+        idsOperadoresHoje.add(idStr);
+        setorPorIdOpaSuite.set(idStr, setorAtendimento); // guarda o setor do último atendimento processado
+      }
+    }
+  }
+
+  // 3. Buscar os nomes no Mongo para cruzar
+  const nomesDoRoster = agentesRoster.map(a => a.nome);
+  const idsDoOpa = Array.from(idsOperadoresHoje).map(id => new ObjectId(id));
+  
+  const queryUsuarios: any = {};
+  if (nomesDoRoster.length && idsDoOpa.length) {
+    queryUsuarios.$or = [{ nome: { $in: nomesDoRoster } }, { _id: { $in: idsDoOpa } }];
+  } else if (nomesDoRoster.length) {
+    queryUsuarios.nome = { $in: nomesDoRoster };
+  } else if (idsDoOpa.length) {
+    queryUsuarios._id = { $in: idsDoOpa };
+  } else {
+    return []; // Ninguém no roster e nenhum atendimento hoje
+  }
+
+  const usuarios = await db.collection('usuarios').find(
+    queryUsuarios,
+    { projection: { nome: 1 } }
+  ).toArray();
+
+  const opsMap = new Map<string, OperadorAoVivo & { _userId: string }>();
+
+  for (const u of usuarios) {
+    const uid = u._id.toString();
+    const nome = (u.nome as string) || 'Desconhecido';
+    
+    // Descobrir o setor: prioriza o roster, senão usa o setor do atendimento
+    const noRoster = agentesRoster.find(a => a.nome === nome);
+    let setor = noRoster ? EQUIPE_ROSTER_PARA_CODIGO[noRoster.equipe] : setorPorIdOpaSuite.get(uid);
+    
+    // Se ainda não tiver setor, pula
+    if (!setor) continue;
+    
+    opsMap.set(uid, {
+      nome,
+      setor,
+      status: 'on', // placeholder
+      tempoStatusMs: 0,
+      volumeHoje: 0,
+      tmaMs: null,
+      tmeMs: null,
+      tmrMs: null,
+      _userId: uid
+    });
+  }
+
+  if (opsMap.size === 0) return [];
+
+  // 4. Pegar o último status de cada um (coleção user_status) e filtrar os offline.
+  // user_status.userId é ObjectId, não string — comparar com a string do uid
+  // nunca bate e derrubava a lista inteira (todo mundo virava "offline").
+  const idsParaDeletar = [];
+  for (const [uid, op] of opsMap) {
+    const ultimoStatusArr = await db.collection('user_status')
+      .find({ userId: new ObjectId(uid) }).sort({ startAt: -1 }).limit(1).toArray();
+
+    if (!ultimoStatusArr.length) { idsParaDeletar.push(uid); continue; }
+
+    const ultimoStatus = ultimoStatusArr[0];
+    const statusUi = STATUS_PARA_UI[ultimoStatus.status];
+    if (!statusUi) { idsParaDeletar.push(uid); continue; }
+
+    op.status = statusUi;
+    op.tempoStatusMs = ultimoStatus.startAt ? (Date.now() - new Date(ultimoStatus.startAt).getTime()) : 0;
+  }
+  
+  for (const uid of idsParaDeletar) opsMap.delete(uid);
+  if (opsMap.size === 0) return [];
+
+  const idsAtivosStr = Array.from(opsMap.keys());
+  
+  // 5. Pegar KPIs do dia para esses operadores (usando os atendimentos já buscados + filtrando para esses IDs ativos)
+  const tmasPorOp = new Map<string, number[]>();
+  const tmesPorOp = new Map<string, number[]>();
+  const volumePorOp = new Map<string, Set<string>>();
+  const segmentosPorAtendimento = new Map<string, { inicio: number; fim: number }[]>();
+  const atendimentosValidos = [];
+
+  for (const doc of atendimentosHoje) {
+    const docId = doc._id.toString();
+    const tme = calcularTme(doc);
+    const opIdsNoAtendimento = new Set<string>();
+    let teveAtivo = false;
+
+    for (const a of (doc.atendentes || [])) {
+      if (a.atendimentoHumano && a.atendente) {
+        const opId = a.atendente.toString();
+        if (opsMap.has(opId)) {
+          teveAtivo = true;
+          opIdsNoAtendimento.add(opId);
+          
+          if (!volumePorOp.has(opId)) volumePorOp.set(opId, new Set());
+          volumePorOp.get(opId)!.add(docId);
+
+          if (typeof a.tempoDeAtendimento === 'number') {
+            if (!tmasPorOp.has(opId)) tmasPorOp.set(opId, []);
+            tmasPorOp.get(opId)!.push(a.tempoDeAtendimento);
+          }
+        }
+      }
+    }
+
+    if (teveAtivo) {
+      if (tme !== null) {
+        for (const opId of opIdsNoAtendimento) {
+          if (!tmesPorOp.has(opId)) tmesPorOp.set(opId, []);
+          tmesPorOp.get(opId)!.push(tme);
+        }
+      }
+      segmentosPorAtendimento.set(docId, segmentosHumanos(doc));
+      atendimentosValidos.push(doc);
+    }
+  }
+
+  // TMR
+  const tmrsPorOp = new Map<string, number[]>();
+  if (atendimentosValidos.length) {
+    const msgs = await db.collection('atendimentos_mensagens').find(
+      { id_rota: { $in: atendimentosValidos.map((d) => d._id) }, tipo: 'texto' },
+      { projection: { id_rota: 1, data: 1, id_user: 1, id_atend: 1, mensagem: 1 } }
+    ).sort({ data: 1 }).toArray();
+
+    const porAtendimento = new Map<string, { data: Date; ehCliente: boolean; ehSaida: boolean; idAtend?: string }[]>();
+    for (const m of msgs) {
+      if (!m.data) continue;
+      const ehCliente = Boolean(m.id_user) && !m.id_atend;
+      const ehSaida = Boolean(m.id_atend) && typeof m.mensagem === 'string';
+      if (!ehCliente && !ehSaida) continue;
+
+      const chave = m.id_rota.toString();
+      if (!porAtendimento.has(chave)) porAtendimento.set(chave, []);
+      porAtendimento.get(chave)!.push({ 
+        data: new Date(m.data), 
+        ehCliente, 
+        ehSaida, 
+        idAtend: m.id_atend?.toString() 
+      });
+    }
+
+    for (const [chave, mensagens] of porAtendimento) {
+      const segmentos = segmentosPorAtendimento.get(chave) ?? [];
+      if (!segmentos.length) continue;
+
+      let ultimaMensagemCliente: number | null = null;
+      for (const m of mensagens) {
+        const t = m.data.getTime();
+        if (m.ehCliente) {
+          ultimaMensagemCliente = t;
+          continue;
+        }
+        if (!m.ehSaida || ultimaMensagemCliente === null) continue;
+
+        const ehHumano = segmentos.some((s) => t >= s.inicio && t <= s.fim);
+        if (ehHumano && m.idAtend) {
+          if (!tmrsPorOp.has(m.idAtend)) tmrsPorOp.set(m.idAtend, []);
+          tmrsPorOp.get(m.idAtend)!.push(t - ultimaMensagemCliente);
+          ultimaMensagemCliente = null;
+        }
+      }
+    }
+  }
+
+  // Montar resposta final
+  const opsFinal: OperadorAoVivo[] = [];
+  for (const [uid, op] of opsMap) {
+    op.volumeHoje = volumePorOp.get(uid)?.size ?? 0;
+    op.tmaMs = mediana(tmasPorOp.get(uid) ?? []);
+    op.tmeMs = mediana(tmesPorOp.get(uid) ?? []);
+    op.tmrMs = mediana(tmrsPorOp.get(uid) ?? []);
+    const { _userId, ...cleanOp } = op;
+    opsFinal.push(cleanOp);
+  }
+
+  return opsFinal;
+}
+
+/// Indicador de jornada por operador num PERÍODO configurável (RH/gestão do
+/// Centro de Solução) — diferente de buscarKpisOperadoresAoVivo, que só olha
+/// o status ATUAL de agora. Mesma descoberta de candidatos (roster QA ∪ quem
+/// atendeu no período), mas soma o tempo real gasto em cada status ao longo
+/// de todo o período, não só o mais recente.
+export async function buscarIndicadoresJornada(
+  dateFrom: Date,
+  dateTo: Date,
+  setores?: SetorAtendimento[],
+): Promise<IndicadorJornadaOperador[]> {
+  const db = await getOpaSuiteDb();
+
+  // 1. Roster QA ativo, filtrado pelos setores pedidos
+  const agentes = await prisma.atendimentoAgenteQa.findMany({
+    where: { status: 'Ativo', nome: { notIn: ['APRIMORAR', 'TESTE'] } },
+    select: { nome: true, equipe: true },
+  });
+  const agentesRoster = setores
+    ? agentes.filter((a) => {
+        const codigo = EQUIPE_ROSTER_PARA_CODIGO[a.equipe];
+        return codigo && setores.includes(codigo);
+      })
+    : agentes;
+
+  // 2. Quem atendeu no período (cobre Vendas/Pós-Vendas, fora do roster de QA),
+  // e já aproveita pra contar o volume de cada um.
+  const deptIds = (setores ?? TODOS_SETORES).map((s) => new ObjectId(DEPARTAMENTO_IDS[s]));
+  const atendimentosPeriodo = await db.collection('atendimentos').find(
+    { setor: { $in: deptIds }, date: { $gte: dateFrom, $lte: dateTo } },
+    { projection: { setor: 1, atendentes: 1 } },
+  ).toArray();
+
+  const volumePorOp = new Map<string, Set<string>>();
+  const setorPorIdOpaSuite = new Map<string, SetorAtendimento>();
+  for (const doc of atendimentosPeriodo) {
+    const setorAtendimento = resolverSetorPorObjectId(doc.setor);
+    if (!setorAtendimento) continue;
+    const docId = doc._id.toString();
+    for (const a of (doc.atendentes || [])) {
+      if (a.atendimentoHumano && a.atendente) {
+        const idStr = a.atendente.toString();
+        setorPorIdOpaSuite.set(idStr, setorAtendimento);
+        if (!volumePorOp.has(idStr)) volumePorOp.set(idStr, new Set());
+        volumePorOp.get(idStr)!.add(docId);
+      }
+    }
+  }
+
+  // 3. Cruzar nomes (roster por nome ∪ quem atendeu por id) pra achar os candidatos
+  const nomesDoRoster = agentesRoster.map((a) => a.nome);
+  const idsDoOpa = Array.from(volumePorOp.keys()).map((id) => new ObjectId(id));
+
+  const queryUsuarios: any = {};
+  if (nomesDoRoster.length && idsDoOpa.length) {
+    queryUsuarios.$or = [{ nome: { $in: nomesDoRoster } }, { _id: { $in: idsDoOpa } }];
+  } else if (nomesDoRoster.length) {
+    queryUsuarios.nome = { $in: nomesDoRoster };
+  } else if (idsDoOpa.length) {
+    queryUsuarios._id = { $in: idsDoOpa };
+  } else {
+    return [];
+  }
+
+  const usuarios = await db.collection('usuarios').find(queryUsuarios, { projection: { nome: 1 } }).toArray();
+
+  const candidatos = new Map<string, { nome: string; setor: SetorAtendimento }>();
+  for (const u of usuarios) {
+    const uid = u._id.toString();
+    const nome = (u.nome as string) || 'Desconhecido';
+    const noRoster = agentesRoster.find((a) => a.nome === nome);
+    const setor = noRoster ? EQUIPE_ROSTER_PARA_CODIGO[noRoster.equipe] : setorPorIdOpaSuite.get(uid);
+    if (!setor) continue;
+    candidatos.set(uid, { nome, setor });
+  }
+
+  if (candidatos.size === 0) return [];
+
+  // 4. Somar tempo por status no período.
+  const idsAtivos = Array.from(candidatos.keys()).map((id) => new ObjectId(id));
+  const temposPorOp = new Map<string, { produtivo: number; pausa: number; ausente: number }>();
+  function somarTempo(uid: string, status: string, ms: number) {
+    if (ms <= 0) return;
+    const statusUi = STATUS_PARA_UI[status];
+    if (!statusUi) return; // 'off' (ou status desconhecido) não conta como tempo logado
+    if (!temposPorOp.has(uid)) temposPorOp.set(uid, { produtivo: 0, pausa: 0, ausente: 0 });
+    const bucket = temposPorOp.get(uid)!;
+    if (statusUi === 'on') bucket.produtivo += ms;
+    else if (statusUi === 'pause') bucket.pausa += ms;
+    else if (statusUi === 'au') bucket.ausente += ms;
+  }
+
+  // 4a. Janelas FECHADAS: user_status.timeSpent já vem calculado pelo próprio
+  // OpaSuite, confiável, soma em massa via aggregate.
+  const fechadosRows = await db.collection('user_status').aggregate([
+    { $match: { userId: { $in: idsAtivos }, startAt: { $gte: dateFrom, $lte: dateTo }, timeSpent: { $exists: true } } },
+    { $group: { _id: { userId: '$userId', status: '$status' }, totalMs: { $sum: '$timeSpent' } } },
+  ]).toArray();
+  for (const row of fechadosRows) {
+    somarTempo((row._id.userId as ObjectId).toString(), row._id.status, row.totalMs);
+  }
+
+  // 4b. Janelas SEM timeSpent: NÃO é sempre "o status atual, em andamento até
+  // agora" — confirmado empiricamente que existem várias janelas abandonadas
+  // no meio do período (reconexão cria um "on" novo sem fechar o anterior
+  // direito), não só a mais recente. Assumir "até agora" pra todas gerava
+  // durações de dias/semanas para um operador só. A duração real é até o
+  // PRÓXIMO status desse mesmo operador (esteja esse próximo dentro ou fora
+  // do período pedido); só quando não existe nenhum próximo é que é de fato
+  // o status atual, aí sim conta até agora.
+  const abertosRows = await db.collection('user_status').find({
+    userId: { $in: idsAtivos }, startAt: { $gte: dateFrom, $lte: dateTo }, timeSpent: { $exists: false },
+  }).toArray();
+  for (const doc of abertosRows) {
+    const uid = (doc.userId as ObjectId).toString();
+    const proximo = await db.collection('user_status')
+      .find({ userId: doc.userId, startAt: { $gt: doc.startAt } })
+      .sort({ startAt: 1 }).limit(1).toArray();
+    const fimReal = proximo.length ? new Date(proximo[0].startAt) : new Date();
+    somarTempo(uid, doc.status, fimReal.getTime() - new Date(doc.startAt).getTime());
+  }
+
+  const resultado: IndicadorJornadaOperador[] = [];
+  for (const [uid, { nome, setor }] of candidatos) {
+    const t = temposPorOp.get(uid) ?? { produtivo: 0, pausa: 0, ausente: 0 };
+    const tempoLogadoMs = t.produtivo + t.pausa + t.ausente;
+    resultado.push({
+      nome,
+      setor,
+      volumeAtendimentos: volumePorOp.get(uid)?.size ?? 0,
+      tempoLogadoMs,
+      tempoProdutivoMs: t.produtivo,
+      tempoPausaMs: t.pausa,
+      tempoAusenteMs: t.ausente,
+      pctProdutivo: tempoLogadoMs > 0 ? Math.round((t.produtivo / tempoLogadoMs) * 1000) / 10 : null,
+      pctPausa:     tempoLogadoMs > 0 ? Math.round((t.pausa     / tempoLogadoMs) * 1000) / 10 : null,
+      pctAusente:   tempoLogadoMs > 0 ? Math.round((t.ausente   / tempoLogadoMs) * 1000) / 10 : null,
+    });
+  }
+
+  return resultado.sort((a, b) => b.tempoProdutivoMs - a.tempoProdutivoMs);
+}
+
+const PREFIXO_META_EFICIENCIA = 'META_EFICIENCIA_';
+const CHAVE_LIMITE_INDISPONIBILIDADE = 'LIMITE_INDISPONIBILIDADE_ATENDIMENTO';
+const LIMITE_INDISPONIBILIDADE_PADRAO = 15;
+
+/// Lê os limites de jornada configurados pela gestão (Regras de Negócio,
+/// categoria ATENDIMENTO): só formatação visual da tabela, nunca altera o
+/// cálculo em si. Sem regra cadastrada, usa o padrão de indisponibilidade e
+/// nenhuma meta de eficiência (não tem "bom" universal por setor).
+export async function buscarConfigJornada(): Promise<ConfigJornada> {
+  const regras = await prisma.diagnosticoRegraNegocio.findMany({
+    where: { categoria: 'ATENDIMENTO' },
+    select: { chave: true, valor: true },
+  });
+
+  let limiteIndisponibilidadePct = LIMITE_INDISPONIBILIDADE_PADRAO;
+  const metasEficienciaPorSetor: Partial<Record<SetorAtendimento, number>> = {};
+
+  for (const r of regras) {
+    if (r.chave === CHAVE_LIMITE_INDISPONIBILIDADE) {
+      const n = Number(r.valor);
+      if (!isNaN(n)) limiteIndisponibilidadePct = n;
+      continue;
+    }
+    if (r.chave.startsWith(PREFIXO_META_EFICIENCIA)) {
+      const setor = r.chave.slice(PREFIXO_META_EFICIENCIA.length) as SetorAtendimento;
+      const n = Number(r.valor);
+      if (TODOS_SETORES.includes(setor) && !isNaN(n)) metasEficienciaPorSetor[setor] = n;
+    }
+  }
+
+  return { limiteIndisponibilidadePct, metasEficienciaPorSetor };
+}
+

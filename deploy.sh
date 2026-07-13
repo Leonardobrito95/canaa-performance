@@ -16,6 +16,7 @@ chown -R www-data:www-data /var/www/bdr
 
 echo "[3/4] Build backend..."
 cd "$APP_DIR/backend"
+npm test
 npm run build
 
 echo "[4/4] Reiniciando backend..."

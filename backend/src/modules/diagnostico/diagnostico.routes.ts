@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/authenticate';
 import { requirePerfil } from '../../middlewares/requirePerfil';
+import { PERFIS_MODULO } from '../../config/acesso';
 import { requireHubAdmin } from '../../middlewares/requireHubAdmin';
 import { validate } from '../../middlewares/validate';
 import {
@@ -50,18 +51,18 @@ router.post(
 );
 
 // Painel agregado — somente gestor
-router.get('/agregado', authenticate, requirePerfil('gestor'), listarAgregados);
+router.get('/agregado', authenticate, requirePerfil(...PERFIS_MODULO.diagnosticoGestao), listarAgregados);
 // Resumo direto (ranking/evolução/POPs) pros cards do Painel de Gestão — sem Gemini
-router.get('/gestao/resumo', authenticate, requirePerfil('gestor'), resumoGestao);
+router.get('/gestao/resumo', authenticate, requirePerfil(...PERFIS_MODULO.diagnosticoGestao), resumoGestao);
 
 // Saúde da dependência de sessão do IXC (fotos de O.S.) — somente gestor
-router.get('/_health/ixc', authenticate, requirePerfil('gestor'), statusIxc);
+router.get('/_health/ixc', authenticate, requirePerfil(...PERFIS_MODULO.diagnosticoGestao), statusIxc);
 // Custo/latência agregados do Gemini (desde o início do processo) — somente gestor
-router.get('/_health/gemini', authenticate, requirePerfil('gestor'), statusGemini);
+router.get('/_health/gemini', authenticate, requirePerfil(...PERFIS_MODULO.diagnosticoGestao), statusGemini);
 router.post(
   '/gestao/consulta',
   authenticate,
-  requirePerfil('gestor'),
+  requirePerfil(...PERFIS_MODULO.diagnosticoGestao),
   validate('body', gestaoConsultaBodySchema),
   criarConsultaGestao,
 );

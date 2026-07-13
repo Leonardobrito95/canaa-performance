@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/authenticate';
 import { requirePerfil } from '../../middlewares/requirePerfil';
-import { resumoAtendimento, auditarAtendimento } from './atendimento.controller';
+import { PERFIS_MODULO } from '../../config/acesso';
+import { resumoAtendimento, auditarAtendimento, operadoresAoVivo, indicadoresJornada, configJornada } from './atendimento.controller';
 import {
   listarMonitoriaQa, dashboardQa, criarMonitoria, atualizarMonitoria, buscarMonitoria, sugestaoQa,
   minhasAvaliacoes, comunicarCiencia,
@@ -11,14 +12,14 @@ import { listarAlertasOperacionais, resolverAlertaOperacional } from './atendime
 
 const router = Router();
 
-router.get('/resumo',    authenticate, requirePerfil('gestor', 'cs'), resumoAtendimento);
-router.post('/auditoria/:protocolo', authenticate, requirePerfil('gestor'), auditarAtendimento);
+router.get('/resumo',    authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), resumoAtendimento);
+router.post('/auditoria/:protocolo', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoAuditoria), auditarAtendimento);
 
 // Monitoria de qualidade por QA humano (incorporada do sistema legado) —
 // mesmo RBAC do resto do módulo atendimento.
-router.get('/qa',                    authenticate, requirePerfil('gestor', 'cs'), listarMonitoriaQa);
-router.get('/qa/dashboard',          authenticate, requirePerfil('gestor', 'cs'), dashboardQa);
-router.get('/qa/sugestao/:protocolo', authenticate, requirePerfil('gestor', 'cs'), sugestaoQa);
+router.get('/qa',                    authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), listarMonitoriaQa);
+router.get('/qa/dashboard',          authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), dashboardQa);
+router.get('/qa/sugestao/:protocolo', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), sugestaoQa);
 
 // Autoatendimento do agente ("ciência" na própria nota) — sem requirePerfil:
 // qualquer perfil autenticado pode ser um agente de QA (souAgenteQa não
@@ -28,17 +29,30 @@ router.get('/qa/sugestao/:protocolo', authenticate, requirePerfil('gestor', 'cs'
 router.get('/qa/minhas-avaliacoes',  authenticate, minhasAvaliacoes);
 router.post('/qa/:id/comunicar',     authenticate, comunicarCiencia);
 
-router.get('/qa/:id',                authenticate, requirePerfil('gestor', 'cs'), buscarMonitoria);
-router.post('/qa',                   authenticate, requirePerfil('gestor', 'cs'), criarMonitoria);
-router.put('/qa/:id',                authenticate, requirePerfil('gestor', 'cs'), atualizarMonitoria);
+router.get('/qa/:id',                authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), buscarMonitoria);
+router.post('/qa',                   authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), criarMonitoria);
+router.put('/qa/:id',                authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), atualizarMonitoria);
 
 // Camada analítica de IA em massa (sinal de triagem, não QA oficial) — mesmo RBAC.
-router.get('/analise-ia/triagem',   authenticate, requirePerfil('gestor', 'cs'), triagemAnaliseIa);
-router.get('/analise-ia/dashboard', authenticate, requirePerfil('gestor', 'cs'), dashboardAnaliseIa);
+router.get('/analise-ia/triagem',   authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), triagemAnaliseIa);
+router.get('/analise-ia/dashboard', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), dashboardAnaliseIa);
 
 // Alertas operacionais em tempo real (conversa parada, SLA de fila, agente
 // ausente, fila acumulada) — feed interno, mesmo RBAC do módulo.
-router.get('/alertas-operacionais',              authenticate, requirePerfil('gestor', 'cs'), listarAlertasOperacionais);
-router.post('/alertas-operacionais/:id/resolver', authenticate, requirePerfil('gestor', 'cs'), resolverAlertaOperacional);
+router.get('/alertas-operacionais',              authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), listarAlertasOperacionais);
+router.post('/alertas-operacionais/:id/resolver', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), resolverAlertaOperacional);
+
+// Tabela em tempo real de operadores online
+router.get('/operadores-ao-vivo', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), operadoresAoVivo);
+
+// Indicador de jornada (RH/gestão) num período configurável — tempo
+// produtivo/pausa/ausente e volume por operador, histórico (não é só o
+// status atual como /operadores-ao-vivo).
+router.get('/indicadores-jornada', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), indicadoresJornada);
+
+// Limites de jornada configurados pela gestão (Regras de Negócio, categoria
+// ATENDIMENTO): só leitura aqui; escrever/editar é só via /diagnostico/regras
+// (hub-admin), não duplicado neste módulo.
+router.get('/config-jornada', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), configJornada);
 
 export default router;

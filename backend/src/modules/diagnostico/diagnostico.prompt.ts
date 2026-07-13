@@ -6,13 +6,23 @@ import {
 
 const CRITERIOS_INSTALACAO = `Critérios de boa instalação verificáveis visualmente numa foto (use como
 referência ao analisar fotos, não recalcule ou invente outros critérios):
-- Posição: equipamento em local elevado (prateleira, mesa), nunca direto no chão.
-- Posição: longe de paredes grossas, espelhos, aquários, caixas de som e outros obstáculos.
-- Posição: não excessivamente próximo de micro-ondas ou outros aparelhos que causem interferência.
+- Posição: equipamento em local elevado (prateleira, mesa, fixado na parede), nunca direto no chão.
+- Posição: de preferência num cômodo central do imóvel, não num canto/extremidade. Só avalie isso
+  se a foto mostrar contexto suficiente do cômodo (não dá pra saber centralização vendo só o
+  equipamento de perto).
+- Posição: longe de paredes grossas, espelhos, aquários, caixas de som e outras grandes superfícies
+  metálicas.
+- Posição: não excessivamente próximo de micro-ondas ou outros aparelhos que operem em 2.4GHz e
+  causem interferência (a cozinha é o pior cômodo para o equipamento por esse motivo).
 - Posição CRÍTICA: equipamento dentro de caixa ou armário fechado (mesmo que pareça um quadro
   de distribuição/luz, mas não seja) é pior do que só estar perto de parede — causa
   superaquecimento e bloqueia o sinal Wi-Fi de forma significativa. Se a foto mostrar o
   equipamento dentro de qualquer caixa/nicho fechado, aponte isso explicitamente.
+- Antenas (quando o modelo do equipamento tiver antena externa visível): devem apontar pra cima
+  (posição vertical), já que o sinal se propaga na horizontal ao redor da antena, não na direção
+  que ela aponta. Em imóvel de dois andares com o equipamento no térreo, uma das antenas inclinada
+  a 45 graus ajuda a levar sinal pro andar de cima; se a foto mostrar um imóvel de dois andares e
+  todas as antenas na vertical sem nenhuma inclinada, vale mencionar como oportunidade de ajuste.
 - Múltiplos repetidores Wi-Fi na residência podem indicar que a cobertura do roteador
   principal já era insuficiente — mencione se a foto ou o histórico da O.S. indicar isso.
 - Conexão: cabo de fibra/rede ligado na porta correta (WAN), sem folga excessiva ou tensão no cabo.
@@ -20,9 +30,14 @@ referência ao analisar fotos, não recalcule ou invente outros critérios):
 - Conexão: fonte de alimentação ligada corretamente, sem fios expostos.
 - Estado físico: equipamento sem danos visíveis, sem sinais de superaquecimento, sem poeira/sujeira excessiva.
 - Organização: fiação organizada, sem emendas expostas ou fios soltos pelo ambiente.
-Itens do manual de instalação que NÃO dá pra verificar por foto (config de Wi-Fi, senha do
-sistema, WPA2/WPA3) — não comente sobre eles a menos que a foto seja um print da tela de
-configuração mostrando isso explicitamente.`;
+Itens do manual de instalação que dependem do painel administrativo do equipamento, não da
+posição física: login/senha de administrador trocados do padrão de fábrica, nome (SSID) e senha
+do Wi-Fi personalizados, configuração das bandas 2.4GHz/5GHz (dual-band), tipo de criptografia
+(WPA2/WPA3) e versão do firmware. Não temos acesso remoto à configuração do equipamento hoje,
+só ao que aparece nas fotos anexadas à O.S. Se perguntarem sobre qualquer um desses itens, diga
+explicitamente que não há acesso remoto a essa configuração, e que só dá pra confirmar visualmente
+se alguma foto anexada for um print da própria tela de configuração mostrando o item (raro nas
+fotos de O.S., que costumam ser da instalação física).`;
 
 export const DIAGNOSTICO_SYSTEM_PROMPT = `Você é um analista sênior do Canaã Performance, o hub interno da Canaã Telecom.
 Você tem acesso a três fontes de dados sobre um cliente: histórico de sinal de rede (OTDR),

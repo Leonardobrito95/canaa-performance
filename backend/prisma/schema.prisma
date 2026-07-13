@@ -334,7 +334,7 @@ model DiagnosticoRegraNegocio {
   chave          String   @id
   valor          String
   descricao      String
-  /// 'VENDAS' | 'RETENCAO' | 'REDE' | 'COMISSAO'
+  /// 'VENDAS' | 'RETENCAO' | 'REDE' | 'COMISSAO' | 'ATENDIMENTO'
   categoria      String
   atualizado_em  DateTime @updatedAt
   atualizado_por String?

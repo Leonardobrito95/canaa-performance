@@ -5,9 +5,13 @@ import {
   buscarVolumeDiario,
   buscarRankingAtendentes,
   buscarMotivosAtendimento,
+  buscarRankingAvaliacaoAtendentes,
+  buscarKpisOperadoresAoVivo,
+  buscarIndicadoresJornada,
+  buscarConfigJornada,
 } from './atendimento.repository';
 import { auditarAtendimentoPontual } from './atendimento.ia';
-import { SetorAtendimento, KpisAtendimento, RankingAtendenteEntry, MotivoAtendimentoEntry, TODOS_SETORES } from './atendimento.types';
+import { SetorAtendimento, KpisAtendimento, RankingAtendenteEntry, MotivoAtendimentoEntry, RankingAvaliacaoEntry, TODOS_SETORES, OperadorAoVivo, IndicadorJornadaOperador, ConfigJornada } from './atendimento.types';
 
 export interface SolicitanteAtendimento {
   ixcUserId:   string;
@@ -24,21 +28,19 @@ export async function getResumoKpisAtendimento(dateFrom: Date, dateTo: Date, set
 
 export interface RankingsAtendimento {
   atendentes: RankingAtendenteEntry[];
+  avaliacoes: RankingAvaliacaoEntry[];
   motivos:    MotivoAtendimentoEntry[];
 }
 
-/// Ranking de atendentes (por volume) e top motivos de atendimento, somando
-/// os setores informados no período (todos os 8, se `setores` não for
-/// passado) — alimenta os gráficos de composição das views e o contexto do
-/// chat de gestão. É ranking por VOLUME de atendimentos, não por
-/// qualidade/nota — não existe hoje um cruzamento entre monitoria/satisfação
-/// e atendente individual, então nunca tratar isso como "melhor atendente".
+/// Ranking de atendentes (por volume), ranking de avaliações (CSAT) e top 
+/// motivos de atendimento, somando os setores informados no período.
 export async function getRankingsAtendimento(dateFrom: Date, dateTo: Date, setores?: SetorAtendimento[]): Promise<RankingsAtendimento> {
-  const [atendentes, motivos] = await Promise.all([
+  const [atendentes, avaliacoes, motivos] = await Promise.all([
     buscarRankingAtendentes(dateFrom, dateTo, setores),
+    buscarRankingAvaliacaoAtendentes(dateFrom, dateTo, setores),
     buscarMotivosAtendimento(dateFrom, dateTo, setores),
   ]);
-  return { atendentes, motivos };
+  return { atendentes, avaliacoes, motivos };
 }
 
 export interface KpiAtendimentoMensal extends KpisAtendimento {
@@ -137,4 +139,24 @@ export async function auditarAtendimentoIndividual(
   });
 
   return { texto, consultaId: consulta.id };
+}
+
+/// Tabela de operadores ao vivo — KPIs em tempo real dos operadores online,
+/// focada na sala de controle (Dashboard de Atendimento).
+export async function getOperadoresAoVivo(setores?: SetorAtendimento[]): Promise<OperadorAoVivo[]> {
+  return buscarKpisOperadoresAoVivo(setores);
+}
+
+/// Indicador de jornada por operador (RH/gestão) num período configurável —
+/// tempo produtivo/pausa/ausente e volume atendido, diferente de
+/// getOperadoresAoVivo (que é só o status atual, sem histórico).
+export async function getIndicadoresJornada(dateFrom: Date, dateTo: Date, setores?: SetorAtendimento[]): Promise<IndicadorJornadaOperador[]> {
+  return buscarIndicadoresJornada(dateFrom, dateTo, setores);
+}
+
+/// Limites de jornada configurados pela gestão (Regras de Negócio, categoria
+/// ATENDIMENTO) — pra a tabela de jornada destacar visualmente quem passou
+/// do limite de indisponibilidade ou ficou abaixo da meta de eficiência.
+export async function getConfigJornada(): Promise<ConfigJornada> {
+  return buscarConfigJornada();
 }

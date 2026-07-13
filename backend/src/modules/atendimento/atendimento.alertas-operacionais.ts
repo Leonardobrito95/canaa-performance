@@ -101,7 +101,7 @@ export async function detectarConversasParadas(): Promise<ResultadoDeteccao> {
 
   for (const doc of emAndamento) {
     const setor = resolverSetorPorObjectId(doc.setor);
-    if (!setor) continue;
+    if (!setor || setor === 'VENDAS') continue;
     const temHumanoAtivo = (doc.atendentes ?? []).some((a: any) => a.atendimentoHumano && a.fim === null);
     if (!temHumanoAtivo) continue;
 
@@ -116,7 +116,7 @@ export async function detectarConversasParadas(): Promise<ResultadoDeteccao> {
     idsAtivos.push(id);
     await upsertAlerta({
       tipo: 'CONVERSA_PARADA', severidade: 'AVISO', setor, opasuiteAtendimentoId: id,
-      titulo: `Conversa parada — protocolo ${doc.protocolo}`,
+      titulo: `Conversa parada protocolo ${doc.protocolo}`,
       descricao: `Última mensagem foi do cliente e está sem resposta do atendente há mais de ${LIMIAR_CONVERSA_PARADA_MIN} min.`,
     });
     criados++;
@@ -146,7 +146,7 @@ export async function detectarSlaFila(): Promise<ResultadoDeteccao> {
 
   for (const doc of aguardando) {
     const setor = resolverSetorPorObjectId(doc.setor);
-    if (!setor) continue;
+    if (!setor || setor === 'VENDAS') continue;
     const abertura = doc.operacoes?.[0]?.date ? new Date(doc.operacoes[0].date) : null;
     if (!abertura || abertura > limite) continue;
 
@@ -154,7 +154,7 @@ export async function detectarSlaFila(): Promise<ResultadoDeteccao> {
     idsAtivos.push(id);
     await upsertAlerta({
       tipo: 'SLA_FILA', severidade: 'CRITICO', setor, opasuiteAtendimentoId: id,
-      titulo: `Fila sem 1ª resposta — protocolo ${doc.protocolo}`,
+      titulo: `Fila sem 1ª resposta protocolo ${doc.protocolo}`,
       descricao: `Aguardando atendimento humano há mais de ${LIMIAR_SLA_FILA_MIN} min.`,
     });
     criados++;
@@ -219,6 +219,7 @@ export async function detectarFilaAcumulada(): Promise<ResultadoDeteccao> {
   const setoresComBacklog: string[] = [];
 
   for (const setor of TODOS_SETORES) {
+    if (setor === 'VENDAS') continue;
     const deptId = new ObjectId(DEPARTAMENTO_IDS[setor]);
     const qtd = await db.collection('atendimentos').countDocuments({ setor: deptId, status: 'AG' });
     if (qtd < LIMIAR_FILA_BACKLOG) continue;

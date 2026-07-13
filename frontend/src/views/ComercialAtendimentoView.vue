@@ -1,7 +1,7 @@
 <template>
   <AtendimentoResumoPanel
     titulo="Atendimento"
-    subtitulo="Vendas e Pós-Vendas — indicadores de volume, tempo e satisfação"
+    subtitulo="Vendas e Pós-Vendas - indicadores de volume, tempo e satisfação"
     :setores="SETORES_COMERCIAL"
   />
 </template>

@@ -5,6 +5,7 @@ vi.mock('./bdr.repository', () => ({
   fetchConsultantsFromIXC: vi.fn(),
   clearConsultantsCache:   vi.fn(),
   findContractById:        vi.fn(),
+  findDuplicateCommission: vi.fn(() => Promise.resolve(null)),
   createCommission:        vi.fn((data) => Promise.resolve({ id: 'uuid-mock', ...data })),
   listCommissions:         vi.fn(() => Promise.resolve([])),
   createAdjustment:        vi.fn((data) => Promise.resolve({ id: 'uuid-mock', ...data })),

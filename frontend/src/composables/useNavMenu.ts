@@ -1,12 +1,14 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
+import { PERFIS_MODULO, temAcesso } from '../config/acesso';
 
 export type Tab =
   | 'form' | 'vendas' | 'comissao' | 'comissao-campo' | 'bdr-dash' | 'atendimento-comercial'
   | 'retencao' | 'atendimento' | 'monitoria-qa' | 'minhas-avaliacoes'
   | 'pos-ativacao' | 'vistoria-pop'
-  | 'diagnostico' | 'hub' | 'hub-viewer' | 'hub-admin' | 'sala-reuniao';
+  | 'diagnostico' | 'hub' | 'hub-viewer' | 'hub-admin' | 'sala-reuniao'
+  | 'alertas-hub' | 'rh';
 
-export type NavGroupKey = 'comercial' | 'centro-solucao' | 'campo' | 'redes' | 'infraestrutura' | 'hub' | 'ferramentas';
+export type NavGroupKey = 'alertas' | 'comercial' | 'centro-solucao' | 'campo' | 'redes' | 'infraestrutura' | 'hub' | 'rh' | 'ferramentas';
 
 export interface NavItem {
   tab?: Tab;
@@ -42,6 +44,7 @@ export interface UseNavMenuDeps {
   souAgenteQa:  ComputedRef<boolean>;
   isHubAdmin:   ComputedRef<boolean>;
   abrindoOtdr:  Ref<boolean>;
+  perfilAtual:  Ref<string>;
   abrirOtdr:    () => void;
 }
 
@@ -60,6 +63,8 @@ const ICON_VISTORIA = `<svg width="18" height="18" viewBox="0 0 15 15" fill="non
 const ICON_HUB = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>`;
 const ICON_ADMIN = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 1a6.5 6.5 0 1 0 0 13A6.5 6.5 0 0 0 7.5 1z" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4v3.5l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 const ICON_SALA_REUNIAO = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><rect x="1" y="3" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 12v1.5M10 12v1.5M3.5 13.5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 6.5h7M4 8.5h4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".5"/></svg>`;
+const ICON_ALERTA = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5l6.5 11.5H1L7.5 1.5zM7.5 7v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7.5" cy="12.5" r=".7" fill="currentColor"/></svg>`;
+const ICON_RH = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><circle cx="5.5" cy="4.5" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 13v-1a4 4 0 0 1 4-4h0a4 4 0 0 1 4 4v1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="11" cy="5" r="1.6" stroke="currentColor" stroke-width="1.2"/><path d="M13.5 13v-.8a3 3 0 0 0-2.3-2.9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
 
 /// Config de navegação centralizada — antes duplicada literalmente 2x em
 /// App.vue (dropdown desktop + drawer mobile), agora 1 fonte só, consumida
@@ -67,9 +72,16 @@ const ICON_SALA_REUNIAO = `<svg width="18" height="18" viewBox="0 0 15 15" fill=
 /// setores do Hub (hub.sectors: nome/cor/ícone), não mais uma lista solta
 /// "Performance" sem estrutura.
 export function useNavMenu(deps: UseNavMenuDeps) {
-  const { isGestor, isCS, isEstoque, isCampo, isAgente, souAgenteQa, isHubAdmin, abrindoOtdr, abrirOtdr } = deps;
+  const { isGestor, isCS, isEstoque, isCampo, isAgente, souAgenteQa, isHubAdmin, abrindoOtdr, perfilAtual, abrirOtdr } = deps;
 
   const navGroups = computed<NavGroupConfig[]>(() => [
+    {
+      key: 'alertas', label: 'Central de Alertas', icon: 'fa-bell',
+      visible: temAcesso(perfilAtual.value, PERFIS_MODULO.alertasHub),
+      items: [
+        { tab: 'alertas-hub', label: 'Alertas', icon: ICON_ALERTA, visible: true }
+      ],
+    },
     {
       key: 'comercial', label: 'Comercial', color: '#1565C0', icon: 'fa-handshake',
       visible: !isEstoque.value,
@@ -86,8 +98,8 @@ export function useNavMenu(deps: UseNavMenuDeps) {
       visible: !isEstoque.value,
       items: [
         { tab: 'retencao', label: 'Retenção', icon: ICON_RETENCAO, visible: !isCampo.value && !isAgente.value },
-        { tab: 'atendimento', label: 'Atendimento', icon: ICON_ATENDIMENTO, visible: isGestor.value || isCS.value },
-        { tab: 'monitoria-qa', label: 'Monitoria de Qualidade', icon: ICON_MONITORIA_QA, visible: isGestor.value || isCS.value },
+        { tab: 'atendimento', label: 'Atendimento', icon: ICON_ATENDIMENTO, visible: temAcesso(perfilAtual.value, PERFIS_MODULO.atendimentoGestaoQa) },
+        { tab: 'monitoria-qa', label: 'Monitoria de Qualidade', icon: ICON_MONITORIA_QA, visible: temAcesso(perfilAtual.value, PERFIS_MODULO.atendimentoGestaoQa) },
         // Autoatendimento do agente (ciência na própria nota) — visibilidade
         // por souAgenteQa, não por perfil (109/138 já logam como cs/campo e
         // também podem ser agente avaliado, ver auth.service.ts).
@@ -102,7 +114,7 @@ export function useNavMenu(deps: UseNavMenuDeps) {
         // Dono é Campo (quem instala), mas Centro de Solução também consulta
         // — é quem trata o ticket que o cliente abre depois (confirmado pelo
         // usuário 2026-07-13).
-        { tab: 'pos-ativacao', label: 'Pós-Ativação', icon: ICON_POS_ATIVACAO, visible: isGestor.value || isCampo.value || isCS.value },
+        { tab: 'pos-ativacao', label: 'Pós-Ativação', icon: ICON_POS_ATIVACAO, visible: temAcesso(perfilAtual.value, PERFIS_MODULO.posAtivacao) },
       ],
     },
     {
@@ -114,7 +126,7 @@ export function useNavMenu(deps: UseNavMenuDeps) {
       visible: !isEstoque.value,
       items: [
         {
-          label: 'OTDR (Rede)', icon: ICON_OTDR, visible: isGestor.value || isCampo.value,
+          label: 'OTDR (Rede)', icon: ICON_OTDR, visible: temAcesso(perfilAtual.value, PERFIS_MODULO.otdrLink),
           disabled: abrindoOtdr.value, action: abrirOtdr,
           dynamicLabel: () => (abrindoOtdr.value ? 'Abrindo...' : 'OTDR (Rede)'),
         },
@@ -130,18 +142,31 @@ export function useNavMenu(deps: UseNavMenuDeps) {
       key: 'infraestrutura', label: 'Infraestrutura', color: '#6D4C41', icon: 'fa-tower-broadcast',
       visible: !isEstoque.value,
       items: [
-        { tab: 'vistoria-pop', label: 'Vistoria de POP', icon: ICON_VISTORIA, visible: isGestor.value || isCampo.value },
+        { tab: 'vistoria-pop', label: 'Vistoria de POP', icon: ICON_VISTORIA, visible: temAcesso(perfilAtual.value, PERFIS_MODULO.vistoriaPop) },
       ],
     },
     {
-      key: 'hub', label: 'Hub', visible: true,
+      key: 'hub', label: 'Hub', icon: 'fa-layer-group', visible: true,
       items: [
         { tab: 'hub', activeTabs: ['hub', 'hub-viewer'], label: 'Dashboards', icon: ICON_HUB, visible: true },
         { tab: 'hub-admin', label: 'Administração', icon: ICON_ADMIN, visible: isHubAdmin.value },
       ],
     },
     {
-      key: 'ferramentas', label: 'Ferramentas', visible: isGestor.value,
+      // RH: módulo próprio de indicadores de pessoas (jornada, desempenho),
+      // separado dos setores operacionais (Comercial/Centro de Solução/Campo)
+      // porque cruza equipes de vários setores ao mesmo tempo, não é dono de
+      // 1 setor só. Não substitui o acesso que Comercial/Centro de Solução já
+      // têm aos mesmos indicadores dentro da própria tela de Atendimento
+      // (aba "Jornada e Produtividade"); aqui é a visão ampliada, com filtro
+      // de setor livre, pra RH olhar a empresa inteira de uma vez.
+      key: 'rh', label: 'RH', icon: 'fa-users', visible: temAcesso(perfilAtual.value, PERFIS_MODULO.rh),
+      items: [
+        { tab: 'rh', label: 'Indicadores de Atendimento', icon: ICON_RH, visible: true },
+      ],
+    },
+    {
+      key: 'ferramentas', label: 'Ferramentas', icon: 'fa-screwdriver-wrench', visible: isGestor.value,
       items: [
         { tab: 'sala-reuniao', label: 'Sala de Reunião', icon: ICON_SALA_REUNIAO, visible: true },
       ],
