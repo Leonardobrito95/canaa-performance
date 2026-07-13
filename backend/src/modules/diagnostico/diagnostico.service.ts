@@ -9,12 +9,13 @@ import {
   buscarMensagensOs,
   buscarArquivosOs,
   buscarAtendimentos,
-  buscarIdsContratoPorCliente,
+  buscarContratosCliente,
   buscarContextoComercial,
   buscarRetencaoNegociacoes,
   buscarRegrasNegocio,
   buscarFotosRelevantes,
 } from './diagnostico.repository';
+import { buscarFatoPosAtivacaoCliente } from '../posativacao/posativacao.repository';
 import { ContextoClienteDiagnostico } from './diagnostico.types';
 import { montarContextoTextual, montarContextoGestaoTextual } from './diagnostico.prompt';
 import { FONTES_GESTAO, DadosGestao, JanelaTemporalGestao } from './diagnostico.gestao-fontes';
@@ -23,17 +24,20 @@ import { gerarDiagnostico, gerarRespostaGestao, DiagnosticoIaResultado } from '.
 /// Monta o contexto completo de um cliente (rede + O.S. + comercial) para a IA.
 /// Cada fonte é buscada fresca a cada chamada — nada fica em cache permanente.
 export async function montarContextoCliente(idCliente: number): Promise<ContextoClienteDiagnostico> {
-  const idsContrato = await buscarIdsContratoPorCliente(idCliente);
+  const contratos = await buscarContratosCliente(idCliente);
+  const idsContrato = contratos.map((c) => c.id);
+  const idsContratoAtivos = new Set(contratos.filter((c) => c.ativo).map((c) => c.id));
   const equipamentoAtual = await buscarEquipamentoAtual(idCliente);
 
-  const [historicoSinal, oscilacaoRede, statusSmartOlt, ordensServico, atendimentos, comercial, regrasNegocio] = await Promise.all([
+  const [historicoSinal, oscilacaoRede, statusSmartOlt, ordensServico, atendimentos, comercial, regrasNegocio, posAtivacao] = await Promise.all([
     buscarHistoricoSinal(idCliente),
     buscarOscilacaoRede(idCliente, equipamentoAtual),
     buscarStatusSmartOlt(equipamentoAtual),
-    buscarOrdensServico(idCliente),
-    buscarAtendimentos(idCliente),
+    buscarOrdensServico(idCliente, idsContratoAtivos),
+    buscarAtendimentos(idCliente, idsContratoAtivos),
     buscarContextoComercial(idCliente, idsContrato),
     buscarRegrasNegocio(),
+    buscarFatoPosAtivacaoCliente(idCliente, idsContratoAtivos),
   ]);
 
   const idsOssChamado = ordensServico.map((os) => os.idOssChamado);
@@ -45,6 +49,8 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
 
   return {
     idCliente,
+    contratos,
+    posAtivacao,
     equipamentoAtual,
     historicoSinal,
     oscilacaoRede,
@@ -84,7 +90,14 @@ export async function gerarDiagnosticoIndividual(
 ): Promise<DiagnosticoIaResultado & { consultaId: string }> {
   const contexto = await montarContextoCliente(idCliente);
   const contextoTextual = montarContextoTextual(contexto);
-  const imagens = await buscarFotosRelevantes(contexto.osArquivos);
+  // Fotos só são buscadas/reenviadas na PRIMEIRA pergunta de uma conversa (sem
+  // histórico ainda) — reenviar a mesma foto em base64 a cada pergunta de
+  // acompanhamento é o maior custo de token da consulta (medido em produção:
+  // média de ~9.700 tokens de entrada por chamada, com 81% sendo perguntas de
+  // acompanhamento) sem ganho real, já que a foto não muda no meio da
+  // conversa. `gerarDiagnostico` avisa a IA quando isso acontece, pra ela usar
+  // o que já descreveu antes em vez de inventar detalhe visual novo.
+  const imagens = historico?.length ? [] : await buscarFotosRelevantes(contexto.osArquivos);
   const resultado = await gerarDiagnostico(contextoTextual, pergunta, imagens, historico);
 
   const consulta = await prisma.diagnosticoConsulta.create({

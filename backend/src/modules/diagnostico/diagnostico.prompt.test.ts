@@ -6,6 +6,8 @@ import type { ContextoClienteDiagnostico, RankingVendedorEntry, EvolucaoMensalEn
 function makeContexto(overrides: Partial<ContextoClienteDiagnostico> = {}): ContextoClienteDiagnostico {
   return {
     idCliente: 42929,
+    contratos: [],
+    posAtivacao: null,
     equipamentoAtual: [{ descricao: 'ONU TP-LINK', numeroSerie: 'ABC123' }],
     historicoSinal: [],
     oscilacaoRede: null,
@@ -27,6 +29,7 @@ describe('montarContextoTextual — Ordens de Serviço', () => {
         idOssChamado: 559047, mensagem: 'Cliente relata lentidão', mensagemResposta: null,
         status: 'A', dataAbertura: new Date('2026-07-06'), dataFechamento: null,
         tecnicoId: 167, tecnicoNome: 'MARCOS VINICIUS SILVA SANTOS (CLT)', endereco: null,
+        idContrato: null, contratoAtivo: null,
       }],
     });
     const texto = montarContextoTextual(ctx);
@@ -38,6 +41,7 @@ describe('montarContextoTextual — Ordens de Serviço', () => {
       ordensServico: [{
         idOssChamado: 1, mensagem: 'x', mensagemResposta: null, status: 'F',
         dataAbertura: null, dataFechamento: null, tecnicoId: null, tecnicoNome: null, endereco: null,
+        idContrato: null, contratoAtivo: null,
       }],
     });
     const texto = montarContextoTextual(ctx);
@@ -48,6 +52,89 @@ describe('montarContextoTextual — Ordens de Serviço', () => {
     const texto = montarContextoTextual(makeContexto());
     expect(texto).toContain('Sem ordens de serviço registradas.');
   });
+
+  // Guarda contra a regressão vista em produção 2026-07-12: cliente com contrato
+  // novo recém-instalado (ATIVO) e um contrato antigo já CANCELADO teve uma O.S.
+  // do contrato antigo (financeira/penalidade, sem relação com a instalação)
+  // usada pra explicar o problema do contrato novo, porque nada no texto
+  // indicava que eram contratos diferentes.
+  it('rotula o contrato de cada O.S. e marca claramente se está cancelado', () => {
+    const ctx = makeContexto({
+      ordensServico: [{
+        idOssChamado: 553025, mensagem: 'Controle de descontos e penalidades', mensagemResposta: null,
+        status: 'F', dataAbertura: new Date('2026-06-19'), dataFechamento: new Date('2026-06-19'),
+        tecnicoId: 1, tecnicoNome: 'CARLOS EDUARDO RODRIGUES', endereco: null,
+        idContrato: '38291', contratoAtivo: false,
+      }],
+    });
+    const texto = montarContextoTextual(ctx);
+    expect(texto).toContain('contrato 38291 (NÃO ATIVO)');
+  });
+
+  it('rotula o contrato ativo de forma distinta do cancelado', () => {
+    const ctx = makeContexto({
+      ordensServico: [{
+        idOssChamado: 554561, mensagem: 'Instalação', mensagemResposta: null,
+        status: 'F', dataAbertura: new Date('2026-06-23'), dataFechamento: null,
+        tecnicoId: 2, tecnicoNome: 'TÉCNICO X', endereco: null,
+        idContrato: '45862', contratoAtivo: true,
+      }],
+    });
+    const texto = montarContextoTextual(ctx);
+    expect(texto).toContain('contrato 45862 (ATIVO)');
+  });
+});
+
+// Guarda contra a regressão vista em produção 2026-07-12 (segunda parte do mesmo
+// caso): mesmo depois de rotular cada O.S./atendimento por contrato, o C.A.I.O.
+// respondeu "não há contrato cancelado" pra um cliente que tinha um, porque a
+// amostra de O.S. mostrada a ele já priorizava só o contrato ativo — o contrato
+// cancelado nunca aparecia em NADA do contexto. A seção CONTRATOS DO CLIENTE
+// existe justamente pra ser a fonte de verdade dessa pergunta, independente de
+// quais O.S./atendimentos entraram na amostra.
+describe('montarContextoTextual — Contratos do cliente', () => {
+  it('lista todos os contratos do cliente, mesmo quando nenhuma O.S. do contrato cancelado está na amostra', () => {
+    const ctx = makeContexto({
+      contratos: [
+        { id: '45862', status: 'A', ativo: true, dataAtivacao: new Date('2026-06-17'), dataCancelamento: null },
+        { id: '38291', status: 'I', ativo: false, dataAtivacao: new Date('2025-02-12'), dataCancelamento: new Date('2026-06-25') },
+      ],
+      // amostra de O.S. só do contrato ativo, como o fix de priorização já garante
+      ordensServico: [{
+        idOssChamado: 554561, mensagem: 'Instalação', mensagemResposta: null, status: 'F',
+        dataAbertura: new Date('2026-06-23'), dataFechamento: null,
+        tecnicoId: 2, tecnicoNome: 'TÉCNICO X', endereco: null,
+        idContrato: '45862', contratoAtivo: true,
+      }],
+    });
+    const texto = montarContextoTextual(ctx);
+    expect(texto).toContain('Contrato 45862 | ATIVO');
+    expect(texto).toContain('Contrato 38291 | NÃO ATIVO (status "I")');
+    expect(texto).toContain('encerrado em 2026-06-25');
+  });
+
+  it('usa a mensagem de fallback quando o cliente não tem nenhum contrato', () => {
+    const texto = montarContextoTextual(makeContexto());
+    expect(texto).toContain('Nenhum contrato encontrado para este cliente.');
+  });
+
+  it('inclui o fato de pós-ativação junto da lista de contratos, quando presente', () => {
+    const ctx = makeContexto({
+      contratos: [{ id: '45862', status: 'A', ativo: true, dataAtivacao: new Date('2026-06-17'), dataCancelamento: null }],
+      posAtivacao: { dataAtivacao: '2026-06-17', totalContatos: 2, diasPrimeiro: 3, motivos: ['Conexão', 'Financeiro'] },
+    });
+    const texto = montarContextoTextual(ctx);
+    expect(texto).toContain('Pós-ativação: este cliente abriu 2 ticket(s)');
+    expect(texto).toContain('1º contato 3 dia(s) depois');
+    expect(texto).toContain('Conexão, Financeiro');
+  });
+
+  it('não menciona pós-ativação quando não houve contato', () => {
+    const texto = montarContextoTextual(makeContexto({
+      contratos: [{ id: '45862', status: 'A', ativo: true, dataAtivacao: new Date('2026-06-17'), dataCancelamento: null }],
+    }));
+    expect(texto).not.toContain('Pós-ativação');
+  });
 });
 
 describe('montarContextoTextual — Atendimentos (tickets)', () => {
@@ -57,10 +144,12 @@ describe('montarContextoTextual — Atendimentos (tickets)', () => {
         idOssChamado: 558426, mensagem: 'Vistoria', mensagemResposta: null, status: 'F',
         dataAbertura: new Date('2026-07-06'), dataFechamento: new Date('2026-07-07'),
         tecnicoId: 167, tecnicoNome: 'MARCOS VINICIUS SILVA SANTOS (CLT)', endereco: null,
+        idContrato: null, contratoAtivo: null,
       }],
       atendimentos: [{
         id: 602545, titulo: 'Pedido de Vistoria', status: 'F',
         dataCriacao: new Date('2026-07-05'), responsavelNome: 'WALISON FELIPE SOUSA RODRIGUES',
+        idContrato: null, contratoAtivo: null,
       }],
     });
     const texto = montarContextoTextual(ctx);

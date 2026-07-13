@@ -391,7 +391,7 @@ import {
   type MotivoIaResumo,
   type SentimentoCategoria,
 } from '../services/atendimentoAnaliseIaApi';
-import { atendimentoApiClient, NOMES_SETOR, type SetorAtendimento, type KpisAtendimento } from '../services/atendimentoApi';
+import { atendimentoApiClient, NOMES_SETOR, SETORES_CENTRO_SOLUCAO, type SetorAtendimento, type KpisAtendimento } from '../services/atendimentoApi';
 
 type Aba = 'dashboard' | 'lancamentos' | 'triagem';
 
@@ -486,9 +486,12 @@ function filtrosAtuais() {
 }
 
 /// AtendimentoAnaliseIa não tem agente/equipe (é por atendimento, não por
-/// avaliação de QA) — filtro próprio, só período.
+/// avaliação de QA) — filtro próprio, só período + setores. `setores` é
+/// obrigatório aqui pra não misturar Comercial (VENDAS/POS_VENDAS) nesta
+/// tela, que só cobre Centro de Solução (mesma mistura já corrigida no
+/// resumo de KPIs de atendimento).
 function filtrosAnaliseIa() {
-  return getPeriodRange(period.value, customYear.value, customMonth.value);
+  return { ...getPeriodRange(period.value, customYear.value, customMonth.value), setores: SETORES_CENTRO_SOLUCAO };
 }
 
 async function carregarDashboard() {

@@ -16,6 +16,10 @@ import { getResumoNaoConformesPorCriterio, getRankingAgentesPorQualidade } from 
 import { CriterioNaoConformeResumo, AgenteQaRanking } from '../atendimento/atendimento.qa.types';
 import { getResumoPorSetor, getRankingMotivosIa, SentimentoPorSetor, MotivoIaResumo } from '../atendimento/atendimento.analise-ia.service';
 import { KpisAtendimento } from '../atendimento/atendimento.types';
+import { getKpis as getPosAtivacaoKpis } from '../posativacao/posativacao.service';
+import { PosAtivacaoKpis } from '../posativacao/posativacao.types';
+import { buscarPendenciasAbertas } from '../vistoriaPop/vistoriaPop.repository';
+import { VistoriaPendencia } from '../vistoriaPop/vistoriaPop.types';
 import { RankingVendedorEntry, EvolucaoMensalEntry, PopStatusEntry, PiorSinalAgora } from './diagnostico.types';
 
 /// Registry de fontes de dados do chat de gestão (C.A.I.O.) — mesmo princípio
@@ -45,6 +49,8 @@ export interface DadosGestao {
   rankingsAtendimento:     RankingsAtendimento | null;
   historicoAtendimento:    KpiAtendimentoMensal[] | null;
   analiseIaAtendimento:    { porSetor: SentimentoPorSetor[]; motivos: MotivoIaResumo[] } | null;
+  posAtivacaoKpis:         PosAtivacaoKpis | null;
+  vistoriaPendencias:      VistoriaPendencia[];
 }
 
 export interface FonteGestao<T = any> {
@@ -220,6 +226,40 @@ function formatarMotivosIa(motivos: MotivoIaResumo[]): string {
   return motivos.map((m, i) => `${i + 1}. ${m.motivo} — ${m.qtd} ocorrências`).join('\n');
 }
 
+/// Indicador de qualidade de instalação/campo — % de clientes que abriram
+/// ticket de suporte nos primeiros 30 dias após ativar o contrato. Portado
+/// do sistema Pós-Ativação (porta 5009, ver posativacao.repository.ts).
+function formatarPosAtivacaoKpis(kpis: PosAtivacaoKpis | null): string {
+  if (!kpis) return 'Sem dado de pós-ativação disponível.';
+  const deltaTxt = kpis.deltaPct !== null
+    ? ` (${kpis.deltaPct >= 0 ? '+' : ''}${kpis.deltaPct} p.p. vs período anterior equivalente)`
+    : '';
+  return `${kpis.total} clientes ativaram contrato (instalação ou mudança de endereço) nos últimos ` +
+    `${kpis.janela} dias. Desses, ${kpis.comContato} (${kpis.pct}%) abriram pelo menos 1 ticket de ` +
+    `suporte dentro de 30 dias da ativação${deltaTxt}. Tempo médio até o 1º contato: ${kpis.mediaDias} dia(s).`;
+}
+
+/// Pendências abertas da Vistoria de POP (porta 5002, ver
+/// vistoriaPop.repository.ts) — checklist de inspeção técnica (rack,
+/// gerador, baterias, ar-condicionado, extintor). NÃO cruzado com saúde de
+/// rede (STATUS DE POPS AGORA, fonte statusRede) — o nome do POP não bate
+/// entre os dois sistemas de forma direta (ex: OTDR usa "POP AGUAS CLARAS",
+/// Vistoria usa "aguas-claras", e a Vistoria tem 1 POP a mais que nunca
+/// apareceu no OTDR) — checado empiricamente 2026-07-13, não tratar como o
+/// mesmo POP sem confirmar o nome primeiro.
+function formatarVistoriaPendencias(pendencias: VistoriaPendencia[]): string {
+  if (!pendencias.length) return 'Nenhuma pendência de vistoria em aberto.';
+  const porPop = new Map<string, VistoriaPendencia[]>();
+  for (const p of pendencias) {
+    if (!porPop.has(p.popName)) porPop.set(p.popName, []);
+    porPop.get(p.popName)!.push(p);
+  }
+  return Array.from(porPop.entries()).map(([pop, itens]) =>
+    `- POP ${pop}: ${itens.length} pendência(s) — ` +
+    itens.map((i) => `${i.categoria} (${i.diasAberta ?? '?'}d aberta)`).join(', ')
+  ).join('\n');
+}
+
 /// Tendência histórica mensal — snapshot pré-calculado (AtendimentoKpiMensal),
 /// só cobre meses JÁ FECHADOS. O mês corrente vem à parte, nos "KPIS BRUTOS
 /// DO MES EM ANDAMENTO", sempre ao vivo.
@@ -380,6 +420,29 @@ export const FONTES_GESTAO: FonteGestao[] = [
       { titulo: 'ATENDIMENTO — ANÁLISE DE IA EM MASSA: SENTIMENTO E ADESÃO POR SETOR (últimos 3 meses, sinal de triagem)', formatar: (d) => formatarAnaliseIaPorSetor(d.porSetor) },
       { titulo: 'ATENDIMENTO — ANÁLISE DE IA EM MASSA: MOTIVOS CLASSIFICADOS (últimos 3 meses)', formatar: (d) => formatarMotivosIa(d.motivos) },
     ],
+  },
+  {
+    chave: 'posAtivacaoKpis',
+    buscar: () => getPosAtivacaoKpis({}),
+    valorVazio: null as PosAtivacaoKpis | null,
+    resiliente: { logErroMsg: 'Falha ao buscar KPIs de pós-ativação para o chat de gestão' },
+    blocos: [{ titulo: 'PÓS-ATIVAÇÃO — CLIENTES QUE CONTATARAM O SUPORTE APÓS INSTALAR (janela de 30 dias)', formatar: formatarPosAtivacaoKpis }],
+    regraPrompt: `- "Pós-ativação" é sobre contato do cliente NOS PRIMEIROS 30 DIAS após ativar o contrato
+  (instalação ou mudança de endereço) — é um indicador de qualidade de instalação/campo, DIFERENTE
+  do volume geral de atendimento (que cobre todo mundo, não só quem acabou de ativar). Não misture
+  os dois números.`,
+  },
+  {
+    chave: 'vistoriaPendencias',
+    buscar: () => buscarPendenciasAbertas(),
+    valorVazio: [] as VistoriaPendencia[],
+    resiliente: { logErroMsg: 'Falha ao buscar pendências de vistoria de POP para o chat de gestão' },
+    blocos: [{ titulo: 'VISTORIA DE POP — PENDÊNCIAS ABERTAS (checklist de inspeção técnica: rack, gerador, baterias, ar-condicionado, extintor)', formatar: formatarVistoriaPendencias }],
+    regraPrompt: `- Pendências de Vistoria de POP são achados de checklist físico (ex: extintor ausente,
+  gerador precisando de manutenção) — NÃO é a mesma coisa que "status de POP agora" (fonte
+  STATUS DE POPS AGORA, que é sobre sinal/rede ao vivo). O nome do POP nas duas fontes pode não
+  bater exatamente (convenções diferentes entre os dois sistemas) — não assuma que é o mesmo POP
+  sem o nome corresponder claramente, e não cruze as duas fontes como se fossem uma coisa só.`,
   },
 ];
 

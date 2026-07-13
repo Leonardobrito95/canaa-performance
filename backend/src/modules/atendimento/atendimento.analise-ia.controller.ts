@@ -8,9 +8,10 @@ function parseData(valor: unknown, fallback: Date): Date {
 }
 
 function parseFiltros(req: Request) {
-  const { setor, dateFrom, dateTo } = req.query as Record<string, string>;
+  const { setor, setores: setoresRaw, dateFrom, dateTo } = req.query as Record<string, string>;
   return {
     setor,
+    setores:  setoresRaw ? setoresRaw.split(',') : undefined,
     dateFrom: dateFrom ? parseData(dateFrom, new Date(0)) : undefined,
     dateTo:   dateTo ? parseData(dateTo, new Date()) : undefined,
   };

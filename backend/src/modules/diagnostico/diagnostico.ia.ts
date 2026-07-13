@@ -167,7 +167,20 @@ export async function gerarDiagnostico(
       'instruções de formato do system prompt.');
   }
   if (!imagens.length) {
-    partes.push('', `=== FOTOS DA INSTALACAO ===`, 'Nenhuma foto anexada a esta consulta.');
+    // Duas situações diferentes por trás de "sem imagens", que a IA precisa
+    // tratar diferente: nunca existiu foto pra esse cliente (pode apontar como
+    // erro de processo, ver system prompt), vs. existe foto mas ela já foi
+    // enviada e analisada numa pergunta anterior desta mesma conversa (não
+    // reenviada de novo por custo, ver gerarDiagnosticoIndividual) — nesse
+    // segundo caso a IA NÃO pode fingir que está vendo a foto de novo.
+    partes.push('', `=== FOTOS DA INSTALACAO ===`,
+      historico?.length
+        ? 'As fotos desta consulta NÃO foram reenviadas nesta pergunta de acompanhamento (elas já ' +
+          'foram analisadas e descritas numa resposta anterior desta mesma conversa, ver CONVERSA ' +
+          'ANTERIOR acima). Use o que você já descreveu sobre elas nas respostas anteriores. Se a ' +
+          'pergunta atual pedir um detalhe visual específico que você não descreveu antes, diga que ' +
+          'não pode confirmar sem reanalisar a foto, em vez de especular ou inventar.'
+        : 'Nenhuma foto anexada a esta consulta.');
   }
 
   // Cada foto é intercalada com a legenda original do IXC (geralmente a

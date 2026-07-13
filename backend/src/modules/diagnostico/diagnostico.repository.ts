@@ -5,6 +5,7 @@ import logger from '../../config/logger';
 import { buscarArquivoBinario, registrarFalhaFotosEsperadas } from '../../config/ixcSession';
 import {
   HistoricoSinalEntry,
+  ContratoResumo,
   OsEntry,
   OsMensagemEntry,
   OsArquivoEntry,
@@ -83,12 +84,51 @@ export async function buscarHistoricoSinal(idCliente: number, limite = 30): Prom
   }));
 }
 
-export async function buscarIdsContratoPorCliente(idCliente: number): Promise<string[]> {
+/// Traz todos os contratos do cliente (ativos e não ativos) — usado pra: (1)
+/// montar a lista de ids que alimenta ContextoComercial, (2) identificar
+/// qual(is) contrato(s) estão ATIVOS agora (status='A', mesmo código usado em
+/// vendas.repository.ts/retencao.repository.ts) pra não misturar O.S./
+/// atendimentos de um contrato já cancelado com os do contrato vigente (ver
+/// buscarOrdensServico/buscarAtendimentos abaixo), e (3) alimentar a seção
+/// própria "CONTRATOS" do contexto — sem essa lista explícita, o C.A.I.O. só
+/// enxergava contrato indiretamente via O.S./atendimento, e como esses agora
+/// priorizam o contrato ativo, ele parou de conseguir responder se o cliente
+/// tinha algum contrato cancelado (bug reportado 2026-07-12, corrigido aqui).
+export async function buscarContratosCliente(idCliente: number): Promise<ContratoResumo[]> {
   const [rows] = await mysqlPool.query<any[]>(
-    `SELECT id FROM cliente_contrato WHERE id_cliente = ?`,
+    `SELECT id, status, data_ativacao, data_cancelamento FROM cliente_contrato WHERE id_cliente = ? ORDER BY data_ativacao DESC`,
     [idCliente],
   );
-  return rows.map((r) => String(r.id));
+  return rows.map((r) => {
+    const ativo = String(r.status) === 'A';
+    return {
+      id:               String(r.id),
+      status:           String(r.status),
+      ativo,
+      dataAtivacao:     dataValidaOuNula(r.data_ativacao),
+      dataCancelamento: ativo ? null : dataValidaOuNula(r.data_cancelamento),
+    };
+  });
+}
+
+/// Ordena por relevância de contrato primeiro (ativo ou não vinculado a
+/// nenhum contrato específico), depois por data mais recente dentro de cada
+/// grupo — garante que o corte por `limite` não fique dominado por O.S./
+/// atendimentos de um contrato JÁ CANCELADO só porque calharam de ter uma
+/// data mais recente que os do contrato vigente (ex: O.S. financeira de
+/// encerramento de um contrato antigo, aberta dias depois da instalação do
+/// contrato novo).
+function ordenarPorRelevanciaEData<T>(
+  itens: T[],
+  contratoAtivo: (item: T) => boolean | null,
+  data: (item: T) => Date | null,
+): T[] {
+  return [...itens].sort((a, b) => {
+    const pesoA = contratoAtivo(a) === false ? 1 : 0;
+    const pesoB = contratoAtivo(b) === false ? 1 : 0;
+    if (pesoA !== pesoB) return pesoA - pesoB;
+    return (data(b)?.getTime() ?? 0) - (data(a)?.getTime() ?? 0);
+  });
 }
 
 /// Resolve todo equipamento atualmente em comodato ativo com o cliente (ONU,
@@ -199,51 +239,67 @@ export async function buscarStatusSmartOlt(equipamentoAtual: { descricao: string
 
 // ── O.S. / instalação (MariaDB IXC, somente leitura) ──────────────────────────
 
-export async function buscarOrdensServico(idCliente: number, limite = 10): Promise<OsEntry[]> {
+/// `idsContratoAtivos` vem de buscarContratosCliente — usado só pra marcar
+/// contratoAtivo em cada linha, não pra filtrar no SQL (busca um pool maior
+/// que `limite` justamente pra poder reordenar por relevância de contrato
+/// ANTES de cortar, ver ordenarPorRelevanciaEData).
+export async function buscarOrdensServico(idCliente: number, idsContratoAtivos: Set<string>, limite = 10): Promise<OsEntry[]> {
   const [rows] = await mysqlPool.query<any[]>(
     `SELECT oc.id AS id_oss_chamado, oc.mensagem, oc.mensagem_resposta, oc.status, oc.data_abertura,
-            oc.data_fechamento, oc.id_tecnico, oc.endereco, ft.funcionario AS tecnico_nome
+            oc.data_fechamento, oc.id_tecnico, oc.endereco, oc.id_contrato_kit, ft.funcionario AS tecnico_nome
      FROM su_oss_chamado oc
        LEFT JOIN funcionarios ft ON ft.id = oc.id_tecnico
      WHERE oc.id_cliente = ?
      ORDER BY oc.data_abertura DESC
      LIMIT ?`,
-    [idCliente, limite],
+    [idCliente, Math.max(limite * 3, 30)],
   );
-  return rows.map((r) => ({
-    idOssChamado:    r.id_oss_chamado,
-    mensagem:        r.mensagem ?? '',
-    mensagemResposta: r.mensagem_resposta,
-    status:          r.status,
-    dataAbertura:    dataValidaOuNula(r.data_abertura),
-    dataFechamento:  dataValidaOuNula(r.data_fechamento),
-    tecnicoId:       r.id_tecnico || null,
-    tecnicoNome:     r.tecnico_nome || null,
-    endereco:        r.endereco,
-  }));
+  const entradas: OsEntry[] = rows.map((r) => {
+    const idContrato = r.id_contrato_kit ? String(r.id_contrato_kit) : null;
+    return {
+      idOssChamado:    r.id_oss_chamado,
+      mensagem:        r.mensagem ?? '',
+      mensagemResposta: r.mensagem_resposta,
+      status:          r.status,
+      dataAbertura:    dataValidaOuNula(r.data_abertura),
+      dataFechamento:  dataValidaOuNula(r.data_fechamento),
+      tecnicoId:       r.id_tecnico || null,
+      tecnicoNome:     r.tecnico_nome || null,
+      endereco:        r.endereco,
+      idContrato,
+      contratoAtivo:   idContrato ? idsContratoAtivos.has(idContrato) : null,
+    };
+  });
+  return ordenarPorRelevanciaEData(entradas, (e) => e.contratoAtivo, (e) => e.dataAbertura).slice(0, limite);
 }
 
 /// "Atendimentos" (su_ticket) são um conceito separado de O.S. (su_oss_chamado)
 /// no IXC — tickets de suporte/solicitação. O responsável (id_responsavel_tecnico)
 /// resolve pela mesma tabela funcionarios usada para o técnico da O.S. (não
 /// usuarios, que é a tabela de login/acesso ao sistema, nem cliente).
-export async function buscarAtendimentos(idCliente: number, limite = 10): Promise<AtendimentoEntry[]> {
+export async function buscarAtendimentos(idCliente: number, idsContratoAtivos: Set<string>, limite = 10): Promise<AtendimentoEntry[]> {
   const [rows] = await mysqlPool.query<any[]>(
-    `SELECT t.id, t.titulo, t.status, t.data_criacao, ft.funcionario AS responsavel_nome
+    `SELECT t.id, t.titulo, t.status, t.data_criacao, t.id_contrato, ft.funcionario AS responsavel_nome
      FROM su_ticket t
        LEFT JOIN funcionarios ft ON ft.id = t.id_responsavel_tecnico
      WHERE t.id_cliente = ?
      ORDER BY t.data_criacao DESC
      LIMIT ?`,
-    [idCliente, limite],
+    [idCliente, Math.max(limite * 3, 30)],
   );
-  return rows.map((r) => ({
-    id:              r.id,
-    titulo:          r.titulo ?? '',
-    status:          r.status,
-    dataCriacao:     dataValidaOuNula(r.data_criacao),
-    responsavelNome: r.responsavel_nome || null,
-  }));
+  const entradas: AtendimentoEntry[] = rows.map((r) => {
+    const idContrato = r.id_contrato ? String(r.id_contrato) : null;
+    return {
+      id:              r.id,
+      titulo:          r.titulo ?? '',
+      status:          r.status,
+      dataCriacao:     dataValidaOuNula(r.data_criacao),
+      responsavelNome: r.responsavel_nome || null,
+      idContrato,
+      contratoAtivo:   idContrato ? idsContratoAtivos.has(idContrato) : null,
+    };
+  });
+  return ordenarPorRelevanciaEData(entradas, (e) => e.contratoAtivo, (e) => e.dataCriacao).slice(0, limite);
 }
 
 export async function buscarMensagensOs(idsOssChamado: number[]): Promise<Record<number, OsMensagemEntry[]>> {

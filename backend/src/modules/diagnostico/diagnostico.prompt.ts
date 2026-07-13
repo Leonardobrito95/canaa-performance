@@ -72,6 +72,19 @@ Regras:
   cada uma com seu próprio responsável — nunca responda sobre uma usando dados da outra, e
   nunca diga que um atendimento/ticket citado pelo usuário "não está nos dados" sem antes
   checar a lista ATENDIMENTOS (tickets) especificamente, não só ORDENS DE SERVICO.
+- Um cliente pode ter mais de um contrato ao longo do tempo (ex: um contrato antigo já
+  CANCELADO/INATIVO e um contrato novo ATIVO, comum quando o cliente reinstalou o serviço). A
+  seção CONTRATOS DO CLIENTE no início do contexto lista TODOS os contratos do cliente — use
+  sempre essa seção (nunca a presença/ausência de O.S. na amostra) para responder perguntas do
+  tipo "esse cliente tem contrato cancelado?" ou "quantos contratos esse cliente já teve?". Se
+  o cliente tiver mais de um contrato, mencione isso no DIAGNOSTICO quando for relevante (ex:
+  "este cliente também possui um contrato anterior já cancelado, sem relação com o problema
+  atual"), deixando claro qual contrato é o ATIVO sendo diagnosticado.
+- Cada O.S. e cada atendimento no contexto abaixo indica a qual contrato pertence e se esse
+  contrato está ativo. NUNCA use uma O.S./atendimento marcado como NÃO ATIVO para explicar o
+  problema atual do cliente ou avaliar a instalação vigente — isso é sobre um contrato
+  diferente, já encerrado. Só cite dado de um contrato não ativo se a pergunta for
+  explicitamente sobre o histórico daquele contrato antigo.
 - Se nenhuma foto for anexada a esta consulta, não comente sobre a instalação física —
   diga apenas que não há foto disponível para essa análise, se for relevante.
 - Use as regras de negócio fornecidas (metas, faixas, categorias de sinal) como referência
@@ -105,6 +118,36 @@ function fmtData(data: unknown, fallback = '?'): string {
 function formatarRegrasNegocio(regras: Record<string, string>): string {
   const linhas = Object.entries(regras).map(([chave, valor]) => `- ${chave}: ${valor}`);
   return linhas.length ? linhas.join('\n') : '(nenhuma regra cadastrada)';
+}
+
+/// Lista TODOS os contratos do cliente (ativos e não ativos), explícita e
+/// separada das O.S./atendimentos — sem essa seção o C.A.I.O. só enxergava
+/// contrato indiretamente através de quais O.S. apareciam na amostra, e
+/// como essa amostra passou a priorizar o contrato ativo (ver
+/// formatarOrdensServico), ele parou de conseguir responder corretamente se
+/// o cliente tinha algum contrato cancelado (caso real, 2026-07-12).
+function formatarContratos(ctx: ContextoClienteDiagnostico): string {
+  if (!ctx.contratos.length) return 'Nenhum contrato encontrado para este cliente.';
+  const linhas = ctx.contratos.map((c) => {
+    const ativacao = fmtData(c.dataAtivacao);
+    if (c.ativo) return `- Contrato ${c.id} | ATIVO | ativado em ${ativacao}`;
+    const cancelamento = fmtData(c.dataCancelamento, 'data não registrada');
+    return `- Contrato ${c.id} | NÃO ATIVO (status "${c.status}") | ativado em ${ativacao} | encerrado em ${cancelamento}`;
+  });
+
+  // Pós-ativação (porta 5009, ver posativacao.repository.ts): sinal direto de
+  // que o cliente já teve problema logo após instalar — evita que o C.A.I.O.
+  // precise de um humano apontando isso manualmente pra notar o padrão.
+  const pa = ctx.posAtivacao;
+  if (pa) {
+    linhas.push(
+      `- Pós-ativação: este cliente abriu ${pa.totalContatos} ticket(s) de suporte nos primeiros ` +
+      `30 dias após ativar (${pa.diasPrimeiro !== null ? `1º contato ${pa.diasPrimeiro} dia(s) depois` : 'data do 1º contato não disponível'}), ` +
+      `motivo(s): ${pa.motivos.join(', ') || 'não classificado'}.`
+    );
+  }
+
+  return linhas.join('\n');
 }
 
 function formatarEquipamentoAtual(ctx: ContextoClienteDiagnostico): string {
@@ -148,6 +191,20 @@ function formatarHistoricoSinal(ctx: ContextoClienteDiagnostico): string {
   return linhas.length ? linhas.join('\n') : 'Sem registros de degradação de sinal.';
 }
 
+/// Rótulo explícito de contrato pra cada O.S./atendimento — um cliente pode
+/// ter mais de um contrato ao longo do tempo (ex: contrato antigo cancelado +
+/// contrato novo vigente), e sem esse rótulo a IA já misturou dado de um
+/// contrato encerrado com o problema do contrato ativo (caso real, 2026-07-12:
+/// cliente com contrato novo recém-instalado teve uma O.S. financeira do
+/// contrato ANTIGO já cancelado citada como se fosse sobre a instalação
+/// atual, porque nada no contexto indicava que eram contratos diferentes).
+function rotuloContrato(idContrato: string | null, contratoAtivo: boolean | null): string {
+  if (idContrato === null) return 'contrato não identificado';
+  if (contratoAtivo === true) return `contrato ${idContrato} (ATIVO)`;
+  if (contratoAtivo === false) return `contrato ${idContrato} (NÃO ATIVO)`;
+  return `contrato ${idContrato}`;
+}
+
 function formatarOrdensServico(ctx: ContextoClienteDiagnostico): string {
   if (!ctx.ordensServico.length) return 'Sem ordens de serviço registradas.';
   return ctx.ordensServico.slice(0, 5).map((os) => {
@@ -162,7 +219,7 @@ function formatarOrdensServico(ctx: ContextoClienteDiagnostico): string {
       ? `    Anexos: ${arquivos.map((a) => a.descricao || a.nomeArquivo).join(', ')}`
       : '    Sem anexos.';
     return [
-      `- O.S. #${os.idOssChamado} | ${abertura} → ${fechamento} | status ${os.status}`,
+      `- O.S. #${os.idOssChamado} | ${abertura} → ${fechamento} | status ${os.status} | ${rotuloContrato(os.idContrato, os.contratoAtivo)}`,
       `  Técnico responsável: ${os.tecnicoNome ?? 'não definido'}`,
       `  Descrição: ${os.mensagem.slice(0, 300)}`,
       historicoResumo,
@@ -175,7 +232,7 @@ function formatarAtendimentos(ctx: ContextoClienteDiagnostico): string {
   if (!ctx.atendimentos.length) return 'Sem atendimentos (tickets) registrados.';
   return ctx.atendimentos.map((a) => {
     const data = fmtData(a.dataCriacao);
-    return `- Atendimento #${a.id} | ${data} | status ${a.status ?? '?'} | responsável: ${a.responsavelNome ?? 'não definido'} | ${a.titulo}`;
+    return `- Atendimento #${a.id} | ${data} | status ${a.status ?? '?'} | responsável: ${a.responsavelNome ?? 'não definido'} | ${rotuloContrato(a.idContrato, a.contratoAtivo)} | ${a.titulo}`;
   }).join('\n');
 }
 
@@ -215,6 +272,9 @@ export function montarContextoTextual(ctx: ContextoClienteDiagnostico): string {
   return [
     `=== REGRAS DE NEGOCIO (referencia) ===`,
     formatarRegrasNegocio(ctx.regrasNegocio),
+    '',
+    `=== CONTRATOS DO CLIENTE ${ctx.idCliente} ===`,
+    formatarContratos(ctx),
     '',
     `=== EQUIPAMENTO ATUAL EM COMODATO (cliente ${ctx.idCliente}) ===`,
     formatarEquipamentoAtual(ctx),

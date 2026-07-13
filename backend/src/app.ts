@@ -11,6 +11,8 @@ import agendaRoutes   from './modules/agenda/agenda.routes';
 import otdrRoutes     from './modules/otdr/otdr.routes';
 import diagnosticoRoutes from './modules/diagnostico/diagnostico.routes';
 import atendimentoRoutes from './modules/atendimento/atendimento.routes';
+import posativacaoRoutes from './modules/posativacao/posativacao.routes';
+import vistoriaPopRoutes from './modules/vistoriaPop/vistoriaPop.routes';
 import { errorHandler } from './middlewares/errorHandler';
 import logger from './config/logger';
 
@@ -57,6 +59,8 @@ app.use('/api/v1/agenda',  agendaRoutes);
 app.use('/api/v1/otdr',    otdrRoutes);
 app.use('/api/v1/diagnostico', diagnosticoRoutes);
 app.use('/api/v1/atendimento', atendimentoRoutes);
+app.use('/api/v1/posativacao', posativacaoRoutes);
+app.use('/api/v1/vistoria-pop', vistoriaPopRoutes);
 
 // Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

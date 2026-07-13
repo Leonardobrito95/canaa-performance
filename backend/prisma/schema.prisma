@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["bdr", "hub", "comissao", "diagnostico"]
+  schemas  = ["bdr", "hub", "comissao", "diagnostico", "infraestrutura"]
 }
 
 model Commission {
@@ -595,4 +595,36 @@ model AtendimentoAlertaOperacional {
   @@index([status])
   @@map("atendimento_alerta_operacional")
   @@schema("diagnostico")
+}
+
+/// Alertas do sistema de Vistoria de POP (porta 5002, incorporado via leitura
+/// direta de public.vistoria_pop/vistoria_pendencias — ver vistoriaPop.repository.ts).
+/// Schema PRÓPRIO ("infraestrutura"), diferente do schema `public` onde
+/// vistoria_pop/vistoria_pendencias vivem — essas tabelas pertencem ao
+/// sistema externo (só lidas via $queryRaw, nunca modeladas/migradas aqui);
+/// esse model é dado que o Canaã Performance CRIA e é dono, mesmo padrão já
+/// usado pro schema `diagnostico` vs a leitura raw do schema `otdr`.
+model VistoriaAlerta {
+  id           String    @id @default(uuid())
+  /// 'PENDENCIA_SEGURANCA' | 'POP_ATRASADO'
+  tipo         String
+  /// 'AVISO' | 'CRITICO'
+  severidade   String
+  titulo       String
+  descricao    String
+  pop_name     String    @default("")
+  /// id de public.vistoria_pendencias — só preenchido pra PENDENCIA_SEGURANCA
+  /// (POP_ATRASADO é por POP, sem pendência específica). String vazia (não
+  /// null) pelo mesmo motivo já documentado em AtendimentoAlertaOperacional
+  /// (NULL não deduplica em constraint unique do Postgres).
+  pendencia_id String    @default("")
+  /// 'ABERTO' | 'RESOLVIDO'
+  status       String    @default("ABERTO")
+  criado_em    DateTime  @default(now())
+  resolvido_em DateTime?
+
+  @@unique([tipo, pop_name, pendencia_id])
+  @@index([status])
+  @@map("vistoria_alerta")
+  @@schema("infraestrutura")
 }

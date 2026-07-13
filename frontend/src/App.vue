@@ -211,6 +211,14 @@
             <MinhasAvaliacoesView />
           </section>
 
+          <section v-else-if="tab === 'pos-ativacao'" key="pos-ativacao">
+            <PosAtivacaoView />
+          </section>
+
+          <section v-else-if="tab === 'vistoria-pop'" key="vistoria-pop">
+            <VistoriaPopView />
+          </section>
+
           <section v-else-if="tab === 'diagnostico'" key="diagnostico">
             <DiagnosticoView />
           </section>
@@ -249,6 +257,8 @@ import AtendimentoView       from './views/AtendimentoView.vue';
 import ComercialAtendimentoView from './views/ComercialAtendimentoView.vue';
 import MonitoriaQaView       from './views/MonitoriaQaView.vue';
 import MinhasAvaliacoesView  from './views/MinhasAvaliacoesView.vue';
+import PosAtivacaoView       from './views/PosAtivacaoView.vue';
+import VistoriaPopView       from './views/VistoriaPopView.vue';
 import DiagnosticoView       from './views/DiagnosticoView.vue';
 import HubView               from './views/hub/HubView.vue';
 import HubViewerView         from './views/hub/HubViewerView.vue';
@@ -304,6 +314,8 @@ const TAB_LOG_ACTION: Partial<Record<Tab, string>> = {
   atendimento: 'VIEW_ATENDIMENTO',
   'monitoria-qa': 'VIEW_MONITORIA_QA',
   'minhas-avaliacoes': 'VIEW_MINHAS_AVALIACOES',
+  'pos-ativacao': 'VIEW_POS_ATIVACAO',
+  'vistoria-pop': 'VIEW_VISTORIA_POP',
   diagnostico: 'VIEW_DIAGNOSTICO',
   hub: 'VIEW_HUB',
   'hub-admin': 'VIEW_HUB_ADMIN',

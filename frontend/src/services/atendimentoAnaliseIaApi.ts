@@ -62,6 +62,10 @@ export interface MotivoIaResumo {
 
 export interface FiltrosAnaliseIa {
   setor?:     string;
+  /// Grupo de setores (ex: SETORES_CENTRO_SOLUCAO de atendimentoApi.ts) — sem
+  /// isso, o dashboard/triagem mostra os 8 setores juntos, incluindo VENDAS/
+  /// POS_VENDAS (Comercial), mesmo numa tela que só cobre Centro de Solução.
+  setores?:   string[];
   dateFrom?:  string;
   dateTo?:    string;
   /// true = todos os lançamentos do período; omitido/false = só a fila de
@@ -71,10 +75,14 @@ export interface FiltrosAnaliseIa {
 
 // ── Chamadas ─────────────────────────────────────────────────────
 
+function serializar(params: FiltrosAnaliseIa) {
+  return { ...params, setores: params.setores?.join(',') };
+}
+
 export const atendimentoAnaliseIaApiClient = {
   getTriagem: (params: FiltrosAnaliseIa): Promise<{ itens: AtendimentoAnaliseIa[] }> =>
-    api.get('/triagem', { params }).then((r) => r.data),
+    api.get('/triagem', { params: serializar(params) }).then((r) => r.data),
 
   getDashboard: (params: FiltrosAnaliseIa): Promise<{ porSetor: SentimentoPorSetor[]; motivos: MotivoIaResumo[] }> =>
-    api.get('/dashboard', { params }).then((r) => r.data),
+    api.get('/dashboard', { params: serializar(params) }).then((r) => r.data),
 };

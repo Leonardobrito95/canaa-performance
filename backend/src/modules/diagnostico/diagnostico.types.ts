@@ -2,6 +2,8 @@
 // DIAGNOSTICO — Tipos do contexto coletado para a IA
 // ============================================================
 
+import { PosAtivacaoFatoCliente } from '../posativacao/posativacao.types';
+
 export interface HistoricoSinalEntry {
   snapshotData:   Date;
   pop:            string;
@@ -11,6 +13,27 @@ export interface HistoricoSinalEntry {
   nivelSinal:     string;
   diasDegradado:  number;
   scoreUrgencia:  number;
+}
+
+/// Resumo de UM contrato do cliente (cliente_contrato) — um cliente pode ter
+/// mais de um ao longo do tempo (reinstalação, mudança de endereço que gera
+/// contrato novo, etc.). Exposto como lista própria no contexto (ctx.contratos)
+/// pra que o C.A.I.O. sempre saiba quantos contratos o cliente tem e qual(is)
+/// estão ativos, em vez de precisar inferir isso indiretamente a partir de
+/// quais O.S./atendimentos aparecem na amostra mostrada a ele — foi exatamente
+/// essa inferência indireta que o fez responder "não há contrato cancelado"
+/// pra um cliente que tinha um (2026-07-12: a amostra de O.S. já filtrava/
+/// priorizava o contrato ativo, então o contrato cancelado simplesmente não
+/// aparecia mais em nenhum dado que chegava até ele).
+export interface ContratoResumo {
+  id:               string;
+  status:           string;
+  ativo:            boolean;
+  dataAtivacao:     Date | null;
+  /// Só preenchido quando `ativo` é false — o campo do IXC vem com um valor
+  /// sentinela (ex: 1899) em contratos nunca cancelados, não confiável pra
+  /// contrato ativo.
+  dataCancelamento: Date | null;
 }
 
 export interface OsEntry {
@@ -23,6 +46,15 @@ export interface OsEntry {
   tecnicoId:     number | null;
   tecnicoNome:   string | null;
   endereco:      string | null;
+  /// Contrato ao qual essa O.S. pertence (su_oss_chamado.id_contrato_kit) e se
+  /// esse contrato está ativo (status='A' em cliente_contrato) — um cliente
+  /// pode ter mais de um contrato ao longo do tempo (ex: contrato antigo
+  /// cancelado + contrato novo), então isso evita misturar O.S. de um
+  /// contrato já encerrado com o problema do contrato vigente. null quando o
+  /// IXC não vincula essa O.S. a nenhum contrato (comum em O.S. puramente
+  /// administrativas) — nesse caso não dá pra afirmar nem negar relevância.
+  idContrato:    string | null;
+  contratoAtivo: boolean | null;
 }
 
 /// "Atendimento" (su_ticket) é um conceito diferente de O.S. (su_oss_chamado)
@@ -35,6 +67,9 @@ export interface AtendimentoEntry {
   status:        string | null;
   dataCriacao:   Date | null;
   responsavelNome: string | null;
+  /// Mesma lógica de OsEntry.idContrato/contratoAtivo — su_ticket.id_contrato.
+  idContrato:    string | null;
+  contratoAtivo: boolean | null;
 }
 
 export interface OsMensagemEntry {
@@ -180,6 +215,12 @@ export interface StatusRedeAgora {
 
 export interface ContextoClienteDiagnostico {
   idCliente:       number;
+  contratos:       ContratoResumo[];
+  /// Contatou o suporte nos primeiros 30 dias após ativar o contrato vigente?
+  /// Portado do sistema Pós-Ativação (porta 5009, ver posativacao.repository.ts
+  /// e PosAtivacaoFatoCliente em posativacao.types.ts). null = não houve
+  /// contato pós-ativação (caso comum/esperado, não é erro).
+  posAtivacao:     PosAtivacaoFatoCliente | null;
   equipamentoAtual: EquipamentoAtual[];
   historicoSinal:  HistoricoSinalEntry[];
   oscilacaoRede:   OscilacaoRede | null;

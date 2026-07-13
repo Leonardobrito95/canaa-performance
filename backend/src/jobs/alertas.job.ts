@@ -18,6 +18,7 @@ import { rodarAuditoriaRetencao } from '../modules/retencao/retencao.auditoria';
 import { rodarRollupAtendimentoMensal, mesAnterior as mesAnteriorAtendimento } from '../modules/atendimento/atendimento.rollup';
 import { rodarAnaliseIaEmMassa } from '../modules/atendimento/atendimento.analise-ia';
 import { rodarDeteccaoAlertasOperacionais } from '../modules/atendimento/atendimento.alertas-operacionais';
+import { rodarDeteccaoAlertasVistoria } from '../modules/vistoriaPop/vistoria.alerta-detectores';
 
 const SOLICITANTE_CRON = { ixcUserId: 'cron-alertas', ixcUsername: 'cron-alertas' };
 const LIMITE_CAUSAS_RESUMO_DIARIO = 3;
@@ -202,4 +203,20 @@ export function iniciarJobs(): void {
   }, { timezone: 'America/Sao_Paulo' });
 
   logger.info('[JOBS] Alertas Operacionais de Atendimento agendados — execução a cada 2 minutos.');
+
+  // ── Vistoria de POP: pendência de segurança aberta há muito tempo (Extintor/
+  // Gerador/Banco de Baterias) e POP atrasado pra vistoria — diário, não a
+  // cada 2 min como Atendimento, porque vistoria muda no ritmo de inspeção
+  // (dias/semanas), não de conversa em tempo real. Feed interno (GET
+  // /vistoria-pop/alertas), ver vistoria.alerta-detectores.ts.
+  cron.schedule('0 6 * * *', async () => {
+    await runSafe('Alertas de Vistoria de POP', async () => {
+      const r = await rodarDeteccaoAlertasVistoria();
+      const criados = r.pendenciaSeguranca.criados + r.popAtrasado.criados;
+      const resolvidos = r.pendenciaSeguranca.resolvidos + r.popAtrasado.resolvidos;
+      logger.info(`[JOBS] Alertas de Vistoria de POP: ${criados} aberto(s)/mantido(s), ${resolvidos} resolvido(s) automaticamente.`);
+    });
+  }, { timezone: 'America/Sao_Paulo' });
+
+  logger.info('[JOBS] Alertas de Vistoria de POP agendados — execução diária às 06:00 (Brasília).');
 }

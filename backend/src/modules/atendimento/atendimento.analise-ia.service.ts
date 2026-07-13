@@ -7,13 +7,20 @@ import prisma from '../../config/prisma';
 
 export interface FiltrosAnaliseIa {
   setor?:     string;
+  /// Grupo de setores (ex: SETORES_CENTRO_SOLUCAO) — usado pela tela de
+  /// Monitoria de Qualidade pra não misturar setor de Comercial (VENDAS/
+  /// POS_VENDAS) no dashboard/triagem, que hoje só cobre Centro de Solução.
+  /// Sem isso, `atendimento_analise_ia` (que cobre os 8 setores) aparecia
+  /// inteiro ali, incluindo VENDAS — mesma classe de mistura já corrigida no
+  /// resumo de KPIs (ver atendimento.controller.ts).
+  setores?:   string[];
   dateFrom?:  Date;
   dateTo?:    Date;
 }
 
 function whereDeFiltros(filtros: FiltrosAnaliseIa) {
   return {
-    setor:            filtros.setor || undefined,
+    setor:            filtros.setores?.length ? { in: filtros.setores } : (filtros.setor || undefined),
     data_atendimento: (filtros.dateFrom || filtros.dateTo) ? {
       gte: filtros.dateFrom,
       lte: filtros.dateTo,

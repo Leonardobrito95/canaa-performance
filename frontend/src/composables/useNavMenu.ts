@@ -3,9 +3,10 @@ import { computed, type ComputedRef, type Ref } from 'vue';
 export type Tab =
   | 'form' | 'vendas' | 'comissao' | 'comissao-campo' | 'bdr-dash' | 'atendimento-comercial'
   | 'retencao' | 'atendimento' | 'monitoria-qa' | 'minhas-avaliacoes'
+  | 'pos-ativacao' | 'vistoria-pop'
   | 'diagnostico' | 'hub' | 'hub-viewer' | 'hub-admin' | 'sala-reuniao';
 
-export type NavGroupKey = 'comercial' | 'centro-solucao' | 'campo' | 'redes' | 'hub' | 'ferramentas';
+export type NavGroupKey = 'comercial' | 'centro-solucao' | 'campo' | 'redes' | 'infraestrutura' | 'hub' | 'ferramentas';
 
 export interface NavItem {
   tab?: Tab;
@@ -54,6 +55,8 @@ const ICON_RETENCAO = `<svg width="18" height="18" viewBox="0 0 15 15" fill="non
 const ICON_ATENDIMENTO = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M2 6.5a5.5 5.5 0 0 1 11 0v3.5a1.5 1.5 0 0 1-1.5 1.5H10M2 6.5v3a1.5 1.5 0 0 0 1.5 1.5h.5v-4h-2zM13 6.5v3a1.5 1.5 0 0 1-1.5 1.5H11v-4h2z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ICON_MONITORIA_QA = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M4 2h5l3 3v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5 7.5l1.5 1.5L10 5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ICON_OTDR = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M1 5.5a9 9 0 0 1 13 0M3.5 8a5.5 5.5 0 0 1 8 0M6 10.5a2 2 0 0 1 3 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7.5" cy="13" r="1" fill="currentColor"/></svg>`;
+const ICON_POS_ATIVACAO = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M1 8h2.5l1.3-3.5L7.5 12l1.7-7L10.5 8H14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_VISTORIA = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5v4.5M5 3l2.5-2 2.5 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 13.5h10M4.5 13.5V7.5M10.5 13.5V7.5M7.5 13.5V9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 const ICON_HUB = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>`;
 const ICON_ADMIN = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 1a6.5 6.5 0 1 0 0 13A6.5 6.5 0 0 0 7.5 1z" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4v3.5l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 const ICON_SALA_REUNIAO = `<svg width="18" height="18" viewBox="0 0 15 15" fill="none"><rect x="1" y="3" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 12v1.5M10 12v1.5M3.5 13.5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 6.5h7M4 8.5h4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".5"/></svg>`;
@@ -96,13 +99,17 @@ export function useNavMenu(deps: UseNavMenuDeps) {
       visible: !isEstoque.value,
       items: [
         { tab: 'comissao-campo', label: 'Campo', icon: ICON_CAMPO, visible: isCampo.value || isGestor.value },
+        // Dono é Campo (quem instala), mas Centro de Solução também consulta
+        // — é quem trata o ticket que o cliente abre depois (confirmado pelo
+        // usuário 2026-07-13).
+        { tab: 'pos-ativacao', label: 'Pós-Ativação', icon: ICON_POS_ATIVACAO, visible: isGestor.value || isCampo.value || isCS.value },
       ],
     },
     {
       // "Redes" (NOC/monitoramento de rede) é setor DIFERENTE de "Infraestrutura"
-      // (vistoria de POP — sistema à parte, ainda não incorporado ao Canaã
-      // Performance) — os dois precisam se comunicar no fluxo de trabalho, mas
-      // não são o mesmo grupo. OTDR é rede, não infraestrutura genérica.
+      // (vistoria de POP, incorporada 2026-07-13 — ver grupo abaixo) — os dois
+      // precisam se comunicar no fluxo de trabalho, mas não são o mesmo grupo.
+      // OTDR é rede, não infraestrutura genérica.
       key: 'redes', label: 'Redes', color: '#1976D2', icon: 'fa-network-wired',
       visible: !isEstoque.value,
       items: [
@@ -111,6 +118,19 @@ export function useNavMenu(deps: UseNavMenuDeps) {
           disabled: abrindoOtdr.value, action: abrirOtdr,
           dynamicLabel: () => (abrindoOtdr.value ? 'Abrindo...' : 'OTDR (Rede)'),
         },
+      ],
+    },
+    {
+      // Vistoria de POP (checklist de inspeção técnica, porta 5002) — sistema
+      // externo incorporado só por leitura de dado (mesmo padrão do OTDR),
+      // sem perfil novo. Pós-Ativação NÃO fica aqui — é do setor Campo (ver
+      // grupo 'campo' acima), mesmo sendo outro sistema externo incorporado
+      // do mesmo jeito — o critério de agrupamento é o dono do dado, não a
+      // origem técnica (confirmado pelo usuário 2026-07-13).
+      key: 'infraestrutura', label: 'Infraestrutura', color: '#6D4C41', icon: 'fa-tower-broadcast',
+      visible: !isEstoque.value,
+      items: [
+        { tab: 'vistoria-pop', label: 'Vistoria de POP', icon: ICON_VISTORIA, visible: isGestor.value || isCampo.value },
       ],
     },
     {
