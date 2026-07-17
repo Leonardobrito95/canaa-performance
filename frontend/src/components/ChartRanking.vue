@@ -18,7 +18,7 @@
         <span class="rank-pos">{{ i + 1 }}</span>
         <div class="rank-info">
           <div class="rank-name-row">
-            <span class="rank-name">{{ item.name }}</span>
+            <span class="rank-name">{{ item.name }}<span v-if="item.tag" class="rank-tag">{{ item.tag }}</span></span>
             <span class="rank-val">{{ item.displayValue ?? (metric === 'value' ? fmtR(item.value) : item.count) }}</span>
           </div>
           <div class="rank-bar-bg">
@@ -41,7 +41,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 
-interface RankItem { name: string; count: number; value: number; displayValue?: string; }
+interface RankItem { name: string; count: number; value: number; displayValue?: string; tag?: string; }
 
 const props = defineProps<{
   title: string;
@@ -202,4 +202,18 @@ const fmtR = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curre
 }
 .rank-highlight .rank-name { color: var(--accent); }
 .rank-highlight .rank-val  { color: var(--accent); }
+
+.rank-tag {
+  font-size: .6rem;
+  font-weight: 700;
+  color: var(--text-3);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 .4rem;
+  margin-left: .4rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  white-space: nowrap;
+}
 </style>

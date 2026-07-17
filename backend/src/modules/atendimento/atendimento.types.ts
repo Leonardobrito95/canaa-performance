@@ -113,6 +113,12 @@ export interface AtendimentoParaMonitoria {
   /// como chave de idempotência (ex: análise em massa por IA). protocolo
   /// não é confiável como chave única (ver AtendimentoMonitoriaQa.id_legado).
   opasuiteAtendimentoId?: string;
+  /// _id (string) de cada atendente HUMANO distinto (atendimentoHumano===true)
+  /// que tocou o atendimento — só populado por buscarAtendimentosParaAnaliseIa,
+  /// usado pelo resolver de identidade (resolverIdentidadesAgentes). Mais de 1
+  /// id distinto = transferência entre atendentes, tratado como identidade não
+  /// resolvida (não dá pra saber quem "conta mais" pra fins de nota de QA).
+  atendentesHumanoIds?: string[];
 }
 
 export interface OperadorAoVivo {

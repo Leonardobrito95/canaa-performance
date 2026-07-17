@@ -297,6 +297,9 @@
         </div>
 
         <div class="chat-input-shell">
+          <div class="chat-toolbar">
+            <button class="btn-trocar" @click="novaConversa" title="Limpar esta conversa e começar de novo">Novo chat</button>
+          </div>
           <div v-if="clienteAtivo" class="chat-cliente-ativo">
             <span>Analisando: <strong>{{ clienteAtivo.nome }}</strong></span>
             <button class="btn-trocar" @click="trocarCliente">Trocar cliente</button>
@@ -328,6 +331,16 @@
             <p v-if="turno.tipo === 'usuario'" class="turno-texto">{{ turno.texto }}</p>
             <div v-else class="turno-texto" v-html="renderizarMarkdown(turno.texto)"></div>
 
+            <button
+              v-if="turno.arquivo"
+              class="btn-baixar-arquivo"
+              :disabled="baixandoArquivo === turno.arquivo.nome"
+              @click="baixarArquivoGestao(turno.arquivo)"
+            >
+              <svg width="13" height="13" viewBox="0 0 15 15" fill="none"><path d="M7.5 2v8m0 0L4 6.5M7.5 10L11 6.5M2.5 12.5h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {{ baixandoArquivo === turno.arquivo.nome ? 'Baixando…' : `Baixar ${turno.arquivo.formato.toUpperCase()}` }}
+            </button>
+
             <div v-if="turno.consultaId" class="feedback-row">
               <template v-if="!turno.feedback">
                 <span class="feedback-pergunta">Essa resposta estava correta?</span>
@@ -352,6 +365,9 @@
         </div>
 
         <div class="chat-input-shell">
+          <div class="chat-toolbar">
+            <button class="btn-trocar" @click="novaConversaGestao" title="Limpar esta conversa e começar de novo">Novo chat</button>
+          </div>
           <div class="gestao-sugestoes">
             <button
               v-for="s in SUGESTOES_GESTAO"
@@ -482,6 +498,7 @@ import {
   buscarAgregados,
   buscarResumoGestao,
   consultarGestao,
+  exportarRelatorioGestao,
   enviarFeedback,
   listarRegras,
   criarRegra,
@@ -496,6 +513,7 @@ import {
   type TipoFeedback,
   type ResumoGestao,
   type PopStatusEntry,
+  type ArquivoGeradoGestao,
 } from '../services/diagnosticoApi';
 
 const { user, isGestor, isHubAdmin } = useAuth();
@@ -735,6 +753,15 @@ function trocarCliente() {
   adicionarTurno({ tipo: 'assistente', texto: 'Beleza. Qual o próximo cliente (nome ou ID)?' });
 }
 
+// Diferente de trocarCliente: apaga o histórico visível da conversa (não só troca
+// o cliente ativo). É o que falta pro usuário não precisar limpar o localStorage
+// na mão pelo DevTools quando quiser começar do zero.
+function novaConversa() {
+  turnos.value = [{ ...SAUDACAO_INICIAL, criadoEm: new Date().toISOString() }];
+  clienteAtivo.value = null;
+  historicoConversa.value = [];
+}
+
 const agregados = ref<DiagnosticoAgregadoItem[]>([]);
 const loadingAgregados = ref(false);
 
@@ -830,7 +857,7 @@ const redeResumo = computed(() => {
   };
 });
 
-interface TurnoGestao { tipo: 'usuario' | 'assistente'; texto: string; consultaId?: string; feedback?: TipoFeedback; criadoEm?: string }
+interface TurnoGestao { tipo: 'usuario' | 'assistente'; texto: string; consultaId?: string; feedback?: TipoFeedback; criadoEm?: string; arquivo?: ArquivoGeradoGestao }
 
 const SUGESTOES_GESTAO = ['Melhores vendedores', 'POPs críticos', 'Queda de sinal'];
 
@@ -871,8 +898,8 @@ async function enviarGestao(perguntaChip?: string) {
   rolarGestaoParaFinal();
   loadingGestao.value = true;
   try {
-    const { resposta, consultaId } = await consultarGestao(pergunta, historicoGestao.value);
-    turnosGestao.value.push({ tipo: 'assistente', texto: resposta, consultaId, criadoEm: new Date().toISOString() });
+    const { resposta, consultaId, arquivo } = await consultarGestao(pergunta, historicoGestao.value);
+    turnosGestao.value.push({ tipo: 'assistente', texto: resposta, consultaId, criadoEm: new Date().toISOString(), arquivo: arquivo ?? undefined });
     historicoGestao.value.push({ pergunta, resposta });
     if (historicoGestao.value.length > 6) historicoGestao.value.shift();
   } catch (e: any) {
@@ -886,6 +913,28 @@ async function enviarGestao(perguntaChip?: string) {
 
 function enviarSugestaoGestao(sugestao: string) {
   enviarGestao(sugestao);
+}
+
+function novaConversaGestao() {
+  turnosGestao.value = [{ ...SAUDACAO_GESTAO, criadoEm: new Date().toISOString() }];
+  historicoGestao.value = [];
+}
+
+const baixandoArquivo = ref<string | null>(null);
+
+async function baixarArquivoGestao(arquivo: ArquivoGeradoGestao) {
+  baixandoArquivo.value = arquivo.nome;
+  try {
+    const blob = await exportarRelatorioGestao(arquivo.chave, arquivo.formato);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = arquivo.nome;
+    a.click();
+    URL.revokeObjectURL(url);
+  } finally {
+    baixandoArquivo.value = null;
+  }
 }
 
 const CATEGORIAS: CategoriaRegra[] = ['VENDAS', 'RETENCAO', 'REDE', 'COMISSAO', 'ATENDIMENTO'];
@@ -1164,6 +1213,7 @@ onMounted(() => rolarParaFinal());
 /* ── Input do chat ── */
 .chat-input-shell { flex-shrink: 0; border-top: 1px solid var(--border); padding-top: .9rem; margin-top: .25rem; }
 .chat-shell-vazio .chat-input-shell { border-top: none; max-width: 640px; width: 100%; margin: 1.75rem auto 0; padding-top: 0; }
+.chat-toolbar { display: flex; justify-content: flex-end; padding: 0 .25rem .5rem; }
 .chat-cliente-ativo {
   display: flex; justify-content: space-between; align-items: center; padding: 0 .25rem .7rem;
   font-size: .78rem; color: var(--text-2);
@@ -1384,6 +1434,16 @@ onMounted(() => rolarParaFinal());
 }
 .icon-btn-perigo:hover { color: var(--error); border-color: var(--error); background: var(--error-bg); filter: brightness(1.2); }
 .icon-btn-confirm-label { font-size: .72rem; font-weight: 600; white-space: nowrap; }
+
+/* ── Baixar arquivo gerado (PDF/Excel) pelo CAIO ── */
+.btn-baixar-arquivo {
+  display: flex; align-items: center; gap: .4rem;
+  font-family: var(--font-body); font-size: .76rem; font-weight: 600; color: var(--accent);
+  background: var(--accent-dim); border: 1px solid var(--accent); border-radius: var(--radius-sm);
+  padding: .45rem .75rem; margin-top: .7rem; cursor: pointer; transition: var(--transition);
+}
+.btn-baixar-arquivo:hover:not(:disabled) { filter: brightness(1.15); }
+.btn-baixar-arquivo:disabled { opacity: .6; cursor: default; }
 
 /* ── Feedback (acertou/errou) — mesmo padrão em Consulta e Gestão ── */
 .feedback-row { display: flex; align-items: center; gap: .5rem; margin-top: .7rem; flex-wrap: wrap; }

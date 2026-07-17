@@ -119,6 +119,58 @@ export async function gerarDiagnosticoIndividual(
   return { ...resultado, consultaId: consulta.id };
 }
 
+/// Mesma janela temporal usada pelo chat de gestão e pela exportação de
+/// relatório (diagnostico.controller.ts::exportarRelatorioGestao) — um só
+/// lugar pra não desalinhar "mês em andamento"/"últimos 3 meses" entre os
+/// dois usos.
+export function criarJanelaAtual(): JanelaTemporalGestao {
+  const hoje = new Date();
+  return {
+    hoje,
+    inicioMes: new Date(hoje.getFullYear(), hoje.getMonth(), 1),
+    inicioUltimos3Meses: new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1),
+  };
+}
+
+/// Marcador estruturado que o CAIO pode colocar no INÍCIO da resposta pra
+/// pedir a geração de um relatório (ver regra no GESTAO_SYSTEM_PROMPT,
+/// diagnostico.prompt.ts) — mesmo padrão de marcador-em-texto-livre já usado
+/// em diagnostico.ia.ts (parseResposta, DIAGNOSTICO:/ERRO:/SUGESTAO:), só que
+/// aqui é opcional e nunca quebra a resposta se vier malformado: se `chave`
+/// não existir em FONTES_GESTAO, ou `formato` não for suportado por ela
+/// (xlsx exige paraExcel), o marcador é simplesmente ignorado — o texto
+/// visível fica sem o arquivo anexado, sem erro pro usuário.
+///
+/// No INÍCIO, não no final: bug real encontrado ao vivo (2026-07-14) — com o
+/// marcador no final, uma resposta comparativa longa (ex: variação de vendas
+/// entre 2 meses) cortava no meio da frase ao bater no teto de tokens antes
+/// de alcançar a linha EXPORTAR, e nenhum arquivo era oferecido mesmo sendo
+/// pedido explicitamente. No início, o marcador nunca é vítima de corte por
+/// tamanho do texto que vem depois.
+const REGEX_EXPORTAR = /^EXPORTAR:\s*chave=([a-zA-Z0-9_]+)\s+formato=(pdf|xlsx)\s*\n?/i;
+
+export interface ArquivoGerado {
+  chave:   string;
+  formato: 'pdf' | 'xlsx';
+  nome:    string;
+}
+
+function extrairPedidoExportacao(respostaBruta: string): { resposta: string; arquivo: ArquivoGerado | null } {
+  const match = respostaBruta.trimStart().match(REGEX_EXPORTAR);
+  if (!match) return { resposta: respostaBruta, arquivo: null };
+
+  const resposta = respostaBruta.trimStart().slice(match[0].length).trimStart();
+  const [, chave, formatoBruto] = match;
+  const formato = formatoBruto.toLowerCase() as 'pdf' | 'xlsx';
+
+  const fonte = FONTES_GESTAO.find((f) => f.chave === chave);
+  if (!fonte) return { resposta, arquivo: null };
+  if (formato === 'xlsx' && !fonte.paraExcel) return { resposta, arquivo: null };
+
+  const dataIso = new Date().toISOString().slice(0, 10);
+  return { resposta, arquivo: { chave, formato, nome: `${chave}-${dataIso}.${formato}` } };
+}
+
 /// Responde perguntas de gestão (ranking de vendedores, evolução de vendas,
 /// atendimento, retenção...) sem cliente específico — mesma auditoria de
 /// consultas do Diagnóstico. Busca cada fonte de FONTES_GESTAO em paralelo
@@ -128,13 +180,8 @@ export async function gerarRespostaGestaoIndividual(
   pergunta: string,
   solicitante: SolicitanteDiagnostico,
   historico?: { pergunta: string; resposta: string }[],
-): Promise<{ resposta: string; consultaId: string }> {
-  const hoje = new Date();
-  const janela: JanelaTemporalGestao = {
-    hoje,
-    inicioMes: new Date(hoje.getFullYear(), hoje.getMonth(), 1),
-    inicioUltimos3Meses: new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1),
-  };
+): Promise<{ resposta: string; consultaId: string; arquivo: ArquivoGerado | null }> {
+  const janela = criarJanelaAtual();
 
   const entradas = await Promise.all(FONTES_GESTAO.map(async (fonte) => {
     // ranking/evolução não são resilientes de propósito — uma falha nelas
@@ -151,7 +198,8 @@ export async function gerarRespostaGestaoIndividual(
   const dados = Object.fromEntries(entradas) as DadosGestao;
 
   const contextoTextual = montarContextoGestaoTextual(dados);
-  const { texto: resposta, metricas } = await gerarRespostaGestao(contextoTextual, pergunta, historico);
+  const { texto: respostaBruta, metricas } = await gerarRespostaGestao(contextoTextual, pergunta, historico);
+  const { resposta, arquivo } = extrairPedidoExportacao(respostaBruta);
 
   const consulta = await prisma.diagnosticoConsulta.create({
     data: {
@@ -169,5 +217,5 @@ export async function gerarRespostaGestaoIndividual(
     },
   });
 
-  return { resposta, consultaId: consulta.id };
+  return { resposta, consultaId: consulta.id, arquivo };
 }

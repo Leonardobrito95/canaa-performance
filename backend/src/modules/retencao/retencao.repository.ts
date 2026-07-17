@@ -385,6 +385,11 @@ async function buscarAtendimentosPorCliente(
 export interface FiltrosAuditoria {
   dataMinima?:   Date;
   apenasRetido?: boolean;
+  /// Restringe a UM chamado específico — usado pra reclassificação manual
+  /// (botão "Reclassificar" no modal de auditoria), sempre com
+  /// idsJaClassificados=[] e limite=1 pra ignorar o filtro de "ainda não
+  /// auditada" e reprocessar o mesmo chamado.
+  idChamado?:    string;
 }
 
 /// Busca até `limite` O.S. de retenção (id_assunto=348) ainda não auditadas
@@ -402,8 +407,9 @@ export async function buscarChamadosParaAuditar(
   const excluir = idsJaClassificados.length
     ? `AND c.id NOT IN (${idsJaClassificados.map(() => '?').join(',')})`
     : '';
-  const filtroData   = filtros.dataMinima ? 'AND c.data_abertura >= ?' : '';
-  const filtroRetido = filtros.apenasRetido ? `AND c.id_su_diagnostico IN (${retidoList})` : '';
+  const filtroData      = filtros.dataMinima ? 'AND c.data_abertura >= ?' : '';
+  const filtroRetido    = filtros.apenasRetido ? `AND c.id_su_diagnostico IN (${retidoList})` : '';
+  const filtroIdChamado = filtros.idChamado ? 'AND c.id = ?' : '';
 
   const [rows] = await pool.execute<RowDataPacket[]>(
     `SELECT
@@ -420,12 +426,14 @@ export async function buscarChamadosParaAuditar(
        ${excluir}
        ${filtroData}
        ${filtroRetido}
+       ${filtroIdChamado}
      ORDER BY c.data_abertura DESC
      LIMIT ?`,
     [
       ...OPERADORES_CS,
       ...idsJaClassificados,
       ...(filtros.dataMinima ? [filtros.dataMinima] : []),
+      ...(filtros.idChamado ? [filtros.idChamado] : []),
       limite,
     ],
   );

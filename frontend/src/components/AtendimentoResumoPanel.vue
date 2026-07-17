@@ -227,12 +227,19 @@ const volumeBarData = computed(() =>
   kpis.value.map((k) => ({ label: nomeSetor(k.setor), value: k.volume, color: CORES_SETOR[k.setor] })),
 );
 
+// Aprimorar é empresa terceirizada que reforça o Centro de Solução (não é
+// conta de teste) — marcada visualmente pra não confundir com quadro próprio.
+const REGEX_TERCEIRIZADO = /^aprimorar/i;
+function tagTerceirizado(nome: string): string | undefined {
+  return REGEX_TERCEIRIZADO.test(nome) ? 'Terceirizado' : undefined;
+}
+
 const rankingAtendentesData = computed(() =>
-  rankingAtendentes.value.map((r) => ({ name: r.nome, count: r.qtd, value: r.qtd, displayValue: String(r.qtd) }))
+  rankingAtendentes.value.map((r) => ({ name: r.nome, count: r.qtd, value: r.qtd, displayValue: String(r.qtd), tag: tagTerceirizado(r.nome) }))
 );
 
 const rankingAvaliacoesData = computed(() =>
-  rankingAvaliacoes.value.map((r) => ({ name: r.nome, count: r.notaMedia, value: r.notaMedia, displayValue: `${r.notaMedia}/5 (${r.qtdAvaliacoes})` }))
+  rankingAvaliacoes.value.map((r) => ({ name: r.nome, count: r.notaMedia, value: r.notaMedia, displayValue: `${r.notaMedia}/5 (${r.qtdAvaliacoes})`, tag: tagTerceirizado(r.nome) }))
 );
 
 const motivosData = computed(() =>

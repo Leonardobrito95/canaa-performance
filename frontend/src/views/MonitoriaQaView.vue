@@ -5,8 +5,9 @@
         <h1 class="mqa-title">Monitoria de Qualidade (QA)</h1>
         <p class="mqa-sub">
           Avaliação humana de 22 critérios, migrada do sistema legado — cobre hoje SAC, Suporte N2 e Retenção.
-          O C.A.I.O. sinaliza na aba Triagem IA quais atendimentos merecem olhar e por quê, mas o preenchimento
-          dos 22 critérios é sempre feito manualmente pelo QA humano.
+          Na aba Triagem IA, o C.A.I.O. já vem com os 22 critérios pré-preenchidos a partir da conversa real
+          (o QA sempre revisa e confirma antes de salvar) — exceto em ligações por telefone (sem transcrição)
+          ou quando o próprio QA marcar o item pra avaliar sem viés da sugestão da IA.
         </p>
       </div>
       <div class="header-actions">
@@ -183,7 +184,7 @@
                 <span v-else-if="m.pontuacao !== null" :class="['mqa-badge', badgeClasse(m.pontuacao)]">{{ m.pontuacao }}/10</span>
                 <span v-else class="mqa-badge mqa-badge-neutro">—</span>
               </td>
-              <td>{{ m.origem === 'legado' ? 'Legado' : 'Canaã Performance' }}</td>
+              <td>{{ m.origem === 'legado' ? 'Legado' : m.origem === 'caio_automatico' ? 'CAIO (automático)' : 'Canaã Performance' }}</td>
               <td class="td-acoes"><button class="btn-editar" @click.stop="abrirEdicao(m)">Editar</button></td>
             </tr>
             <tr v-if="expandido === m.id" class="row-expandida">
@@ -211,7 +212,8 @@
       {{ verTodosLancamentos
         ? 'Todos os atendimentos de texto já processados pela camada analítica de IA no período — não é avaliação de QA confirmada.'
         : 'Fila priorizada pela camada analítica de IA (pior sinal primeiro) — não é avaliação de QA confirmada, é só uma sugestão de onde olhar.' }}
-      Clique em "Avaliar" pra abrir a monitoria com o motivo já preenchido.
+      Clique em "Avaliar" pra abrir a monitoria já com os 22 critérios sugeridos pelo CAIO — revise
+      antes de salvar. Exceção: ligações por telefone e itens marcados como "Manual" abrem em branco.
     </p>
     <div class="mqa-tabs mqa-subtoggle">
       <button :class="['mqa-tab', { active: !verTodosLancamentos }]" @click="alternarVisaoTriagem(false)">Fila de Triagem</button>
@@ -231,12 +233,13 @@
             <th>Adesão ao Script</th>
             <th>Sentimento</th>
             <th v-if="verTodosLancamentos">Status</th>
+            <th>Sugestão do CAIO</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="triagem.length === 0">
-            <td :colspan="verTodosLancamentos ? 8 : 7" class="state-msg">
+            <td :colspan="verTodosLancamentos ? 9 : 8" class="state-msg">
               {{ verTodosLancamentos ? 'Nenhum atendimento processado nesse período ainda.' : 'Nenhum caso na fila de triagem nesse período — sinal bom, ou o job noturno ainda não rodou.' }}
             </td>
           </tr>
@@ -255,7 +258,18 @@
               <span v-else-if="t.confianca_insuficiente" class="mqa-badge mqa-badge-neutro">Sem confiança</span>
               <span v-else class="mqa-badge mqa-badge-otimo">OK</span>
             </td>
-            <td class="td-acoes"><button class="btn-editar" @click="abrirAvaliacaoDeTriagem(t)">Avaliar</button></td>
+            <td class="td-revisao-manual">
+              <span v-if="t.canal === 'pabx'" class="mqa-badge mqa-badge-neutro" title="Ligação por telefone — sem transcrição, o CAIO não tem base pra sugerir aqui de qualquer forma">📞 Ligação</span>
+              <label v-else class="revisao-manual-toggle" title="Avaliar esse item sem sugestão do CAIO">
+                <input type="checkbox" :checked="t.revisao_manual" :disabled="alternandoRevisaoId === t.id" @change="alternarRevisaoManual(t)" />
+                Manual
+              </label>
+            </td>
+            <td class="td-acoes">
+              <button class="btn-editar" :disabled="buscandoSugestaoId === t.id" @click="abrirAvaliacaoDeTriagem(t)">
+                {{ buscandoSugestaoId === t.id ? 'Buscando…' : 'Avaliar' }}
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -266,10 +280,15 @@
     <div v-if="modal.open" class="modal-overlay" @click.self="fecharModal">
       <div class="modal-content modal-monitoria">
         <h3 class="modal-title">{{ modal.isEdit ? 'Editar Monitoria' : 'Nova Monitoria' }}</h3>
-        <p class="modal-sub">{{ modal.isEdit ? `Registro #${modal.id}` : 'Preenchimento manual pelo QA' }}</p>
+        <p class="modal-sub">
+          {{ modal.isEdit ? `Registro #${modal.id}` : contextoTriagem ? 'Sugestão do CAIO — revise antes de salvar' : 'Preenchimento manual pelo QA' }}
+        </p>
 
         <p v-if="contextoTriagem" class="mqa-aviso mqa-aviso-triagem-contexto">
           <strong>Por que este atendimento está na triagem:</strong> {{ contextoTriagem }}
+        </p>
+        <p v-if="avisoCopiloto" class="mqa-aviso">
+          <strong>Sugestão do CAIO:</strong> {{ avisoCopiloto }}
         </p>
 
         <form @submit.prevent="salvar" class="modal-form">
@@ -338,7 +357,7 @@
 
           <div class="criterios-grid-form">
             <div v-for="c in CRITERIOS_QA" :key="c" class="criterio-form-item">
-              <label>{{ c }}</label>
+              <label :title="justificativasCopiloto[c] || ''">{{ c }}</label>
               <select v-model="form.criterios[c]">
                 <option value="">—</option>
                 <option value="Conforme">Conforme</option>
@@ -636,13 +655,14 @@ const motivosIaChartData = computed(() =>
 );
 
 // ── Modal Nova/Editar ───────────────────────────────────────────
-// O copiloto "Sugestão do CAIO" (preenchimento automático dos 22 critérios)
-// foi desabilitado por decisão do usuário (2026-07-11): a rotina agora é o
-// QA humano preencher manualmente, partindo da fila de Triagem IA (que já
-// diz O QUE olhar e POR QUÊ via `contextoTriagem`) em vez de pedir uma
-// segunda opinião automática da IA por cima. O endpoint
-// GET /atendimento/qa/sugestao/:protocolo continua existindo no backend,
-// só não é mais chamado por aqui.
+// Reativado (2026-07-16) integrado à fila de Triagem IA: ver
+// abrirAvaliacaoDeTriagem — chama GET /atendimento/qa/sugestao/:protocolo e
+// pré-preenche os 22 critérios, exceto quando o item é PABX (a própria API
+// já devolve `aviso` nesse caso, sem chamar Gemini) ou quando o QA marcou
+// `revisao_manual` na fila (decisão do próprio QA, sem round-trip). O QA
+// sempre revisa/edita/confirma antes de salvar — o copiloto nunca grava
+// nada sozinho (ver salvar(), abaixo). Fluxos fora da Triagem IA (Nova
+// Monitoria / Editar) continuam 100% manuais, sem chamar o copiloto.
 const modal = reactive({ open: false, isEdit: false, id: '' });
 const salvando = ref(false);
 const erroSalvar = ref('');
@@ -650,6 +670,18 @@ const erroSalvar = ref('');
 /// flagado) — só preenchido quando o modal é aberto via "Avaliar" na aba
 /// Triagem IA, null nos outros fluxos (Nova Monitoria / Editar).
 const contextoTriagem = ref<string | null>(null);
+/// Protocolo cuja sugestão do CAIO está sendo buscada — controla o loading
+/// só do botão "Avaliar" daquela linha da fila, não a tela toda.
+const buscandoSugestaoId = ref<string | null>(null);
+/// Item da fila cujo toggle de revisão manual está em voo.
+const alternandoRevisaoId = ref<string | null>(null);
+/// Aviso do copiloto quando não sugeriu nada (PABX, conversa curta, escolha
+/// de revisão manual do QA, ou falha na chamada) — null quando a sugestão
+/// foi aplicada normalmente ou o modal não veio da Triagem IA.
+const avisoCopiloto = ref<string | null>(null);
+/// Justificativa do CAIO por critério, mostrada como tooltip no label de
+/// cada select (mesmo padrão de :title já usado em RetencaoView.vue).
+const justificativasCopiloto = ref<Partial<Record<CriterioQa, string>>>({});
 
 function formVazio(): MonitoriaQaInput {
   return {
@@ -663,6 +695,8 @@ const form = reactive<MonitoriaQaInput>(formVazio());
 function resetModalState() {
   erroSalvar.value = '';
   contextoTriagem.value = null;
+  avisoCopiloto.value = null;
+  justificativasCopiloto.value = {};
 }
 
 function abrirNovaMonitoria() {
@@ -692,22 +726,65 @@ function abrirEdicao(m: MonitoriaQa) {
   modal.id = m.id;
 }
 
-/// Vindo da fila de Triagem IA: pré-preenche protocolo/data e mostra a
-/// justificativa da IA (por que esse caso foi flagado) como contexto pro
-/// QA, substituindo a necessidade de pedir uma sugestão separada. NÃO
-/// pré-preenche motivo (a lista de motivos do OpaSuite real, que alimenta a
-/// classificação da IA, não é a mesma lista fechada MOTIVOS_CONHECIDOS deste
-/// formulário, herdada do sistema legado — forçar um valor que não bate com
-/// as opções do select ficaria em branco silenciosamente).
-function abrirAvaliacaoDeTriagem(item: AtendimentoAnaliseIa) {
+/// Vindo da fila de Triagem IA: pré-preenche protocolo/data, mostra a
+/// justificativa da IA (por que esse caso foi flagado) como contexto pro QA
+/// e busca a sugestão do CAIO pros 22 critérios — exceto quando o QA já
+/// marcou esse item como `revisao_manual` na fila (não faz o round-trip,
+/// nem faz sentido: é escolha dele avaliar sem viés da IA). NÃO pré-preenche
+/// motivo (a lista de motivos do OpaSuite real, que alimenta a classificação
+/// da IA, não é a mesma lista fechada MOTIVOS_CONHECIDOS deste formulário,
+/// herdada do sistema legado — forçar um valor que não bate com as opções
+/// do select ficaria em branco silenciosamente). O modal só abre depois que
+/// a busca termina (sucesso, aviso ou erro) — evita abrir vazio e "piscar"
+/// preenchido logo em seguida.
+async function abrirAvaliacaoDeTriagem(item: AtendimentoAnaliseIa) {
+  if (buscandoSugestaoId.value) return;
   Object.assign(form, formVazio());
   form.protocolo = item.protocolo;
   form.dataAtendimento = item.data_atendimento.slice(0, 10);
   resetModalState();
   contextoTriagem.value = item.justificativa;
-  modal.open = true;
-  modal.isEdit = false;
-  modal.id = '';
+
+  if (item.revisao_manual) {
+    avisoCopiloto.value = 'Você marcou este item pra avaliar manualmente, sem sugestão do CAIO.';
+    modal.open = true;
+    modal.isEdit = false;
+    modal.id = '';
+    return;
+  }
+
+  buscandoSugestaoId.value = item.id;
+  try {
+    const { sugestao } = await atendimentoQaApiClient.sugestao(item.protocolo);
+    if (sugestao.aviso) {
+      avisoCopiloto.value = sugestao.aviso;
+    } else {
+      for (const c of sugestao.criterios) {
+        form.criterios[c.criterio] = c.sugestao;
+        justificativasCopiloto.value[c.criterio] = c.justificativa;
+      }
+      form.observacoes = sugestao.observacoes;
+    }
+  } catch {
+    avisoCopiloto.value = 'Não foi possível buscar a sugestão do CAIO agora — preencha manualmente.';
+  } finally {
+    buscandoSugestaoId.value = null;
+    modal.open = true;
+    modal.isEdit = false;
+    modal.id = '';
+  }
+}
+
+/// Alterna a marcação persistida de "quero avaliar sem sugestão do CAIO"
+/// pra um item da fila (ver marcarRevisaoManual no backend).
+async function alternarRevisaoManual(item: AtendimentoAnaliseIa) {
+  alternandoRevisaoId.value = item.id;
+  try {
+    const atualizado = await atendimentoAnaliseIaApiClient.marcarRevisaoManual(item.id, !item.revisao_manual);
+    item.revisao_manual = atualizado.revisao_manual;
+  } finally {
+    alternandoRevisaoId.value = null;
+  }
 }
 
 function fecharModal() {
@@ -831,6 +908,10 @@ async function salvar() {
 .td-acoes { text-align: right; }
 .btn-editar { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); border-radius: var(--radius-sm); padding: .3rem .7rem; font-size: .74rem; cursor: pointer; }
 .btn-editar:hover { color: var(--text); border-color: var(--border-2); }
+.btn-editar:disabled { opacity: .5; cursor: not-allowed; }
+.td-revisao-manual { white-space: nowrap; }
+.revisao-manual-toggle { display: flex; align-items: center; gap: .3rem; font-size: .72rem; color: var(--text-2); cursor: pointer; white-space: nowrap; }
+.revisao-manual-toggle input { cursor: pointer; }
 
 .row-expandida td { padding: 0 !important; background: var(--surface); }
 .expandido-conteudo { padding: .9rem 1.4rem 1.1rem; border-left: 2px solid var(--accent); }

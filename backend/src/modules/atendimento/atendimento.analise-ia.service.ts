@@ -1,9 +1,10 @@
 import prisma from '../../config/prisma';
 
-/// Consultas sobre a camada analítica de IA (atendimento_analise_ia) — leitura
-/// pro frontend. O processamento em si (chamar Gemini, gravar) fica em
-/// atendimento.analise-ia.ts, mesma separação já usada no módulo de QA
-/// (atendimento.qa.service.ts = consulta, atendimento.qa.ia.ts = IA).
+/// Consultas + escrita leve sobre a camada analítica de IA
+/// (atendimento_analise_ia) pro frontend. O processamento em si (chamar
+/// Gemini, gravar o resultado da análise) fica em atendimento.analise-ia.ts,
+/// mesma separação já usada no módulo de QA (atendimento.qa.service.ts =
+/// consulta + escrita leve, atendimento.qa.ia.ts = IA).
 
 export interface FiltrosAnaliseIa {
   setor?:     string;
@@ -109,4 +110,16 @@ export async function getRankingMotivosIa(filtros: FiltrosAnaliseIa, limite = 10
     .map(([motivo, qtd]) => ({ motivo, qtd }))
     .sort((a, b) => b.qtd - a.qtd)
     .slice(0, limite);
+}
+
+/// Alterna a flag de "revisão manual" — persistida (não é estado de sessão),
+/// setada explicitamente pelo QA na fila de Triagem IA quando ele quer
+/// avaliar sem viés da sugestão do CAIO (ver revisao_manual no
+/// schema.prisma). O frontend (abrirAvaliacaoDeTriagem, MonitoriaQaView.vue)
+/// respeita essa flag pra não chamar o copiloto.
+export async function marcarRevisaoManual(id: string, valor: boolean) {
+  return prisma.atendimentoAnaliseIa.update({
+    where: { id },
+    data: { revisao_manual: valor },
+  });
 }

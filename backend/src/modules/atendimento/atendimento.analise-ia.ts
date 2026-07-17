@@ -183,7 +183,9 @@ function calcularFlagTriagem(resultado: ResultadoAnaliseIa): boolean {
   return adesaoBaixa || sentimentoRuim;
 }
 
-const PAUSA_ENTRE_CHAMADAS_MS = 1200; // mesmo valor já validado em produção pela auditoria de retenção
+// mesmo valor já validado em produção pela auditoria de retenção — exportado pra
+// atendimento.monitoria-automatica.ts reaproveitar em vez de duplicar o número mágico.
+export const PAUSA_ENTRE_CHAMADAS_MS = 1200;
 
 export interface ResultadoLoteAnaliseIa {
   totalCandidatos: number;

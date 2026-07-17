@@ -231,6 +231,11 @@ export async function gerarRespostaGestao(
     'instruções do system prompt.');
 
   const contents = [{ role: 'user', parts: [{ text: partes.join('\n') }] }];
-  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } });
+  // 700 (mesmo teto do Diagnóstico individual) cortava respostas comparativas
+  // longas no meio da frase (confirmado ao vivo 2026-07-14: "variação de
+  // vendas entre 2 meses + ranking de vendedores" truncou literalmente no
+  // meio de um nome). 2048 dá folga sem custo desproporcional pro chat de
+  // gestão, que já tende a pedir resposta mais longa que o Diagnóstico.
+  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } });
   return { texto: texto.trim(), metricas };
 }

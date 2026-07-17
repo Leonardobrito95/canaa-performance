@@ -31,13 +31,13 @@ export async function rodarAuditoriaRetencao(
   opcoes: OpcoesAuditoriaRetencao = {},
   onItem?: (item: ItemAuditoriaProcessado) => void,
 ): Promise<ResultadoAuditoriaRetencao> {
-  const { limite = 50, dataMinima, apenasRetido = false, reclassificar = false } = opcoes;
+  const { limite = 50, dataMinima, apenasRetido = false, idChamado, reclassificar = false } = opcoes;
 
   const idsJaClassificados = reclassificar
     ? []
     : (await prisma.retencaoAuditoria.findMany({ select: { id_chamado: true } })).map((r) => r.id_chamado);
 
-  const chamados = await buscarChamadosParaAuditar(idsJaClassificados, limite, { dataMinima, apenasRetido });
+  const chamados = await buscarChamadosParaAuditar(idsJaClassificados, limite, { dataMinima, apenasRetido, idChamado });
 
   let sucesso = 0;
   let falha = 0;

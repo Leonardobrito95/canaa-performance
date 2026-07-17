@@ -550,6 +550,12 @@ model AtendimentoAnaliseIa {
   /// PERCENTIL sobre a distribuição real (calibrado na fase piloto), não um
   /// valor fixo cravado no código.
   flag_triagem            Boolean   @default(false)
+  /// true quando o QA marcou esse item na fila de Triagem IA como "quero
+  /// avaliar sem viés da sugestão da IA" — quando true, abrirAvaliacaoDeTriagem
+  /// (frontend) NÃO chama o copiloto do CAIO, abre o formulário em branco
+  /// (mesma UX do canal pabx, motivo diferente: aqui é escolha do QA).
+  /// Persistido — visível pra qualquer QA que reabrir a fila depois.
+  revisao_manual          Boolean   @default(false)
   modelo_usado            String?
   processado_em           DateTime  @default(now())
 

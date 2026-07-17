@@ -1,6 +1,7 @@
 import axios from 'axios';
 import transporter from '../../config/mailer';
 import logger from '../../config/logger';
+import { ENVIO_ALERTAS_ATIVO } from '../../config/notificacoes';
 
 const OTDR_BASE  = process.env.OTDR_API_URL ?? 'http://127.0.0.1:5008';
 const DASHBOARD  = `${process.env.BASE_URL ?? 'https://exemplo.com.br'}/bdr/`;
@@ -256,6 +257,10 @@ function htmlGovernanca(
 // ── Envio ─────────────────────────────────────────────────────────────────────
 
 export async function enviarRelatorioGovernanca(): Promise<void> {
+  if (!ENVIO_ALERTAS_ATIVO) {
+    logger.info('[OTDR-GOV] Envio desativado (sistema em desenvolvimento) — relatório de governança suprimido.');
+    return;
+  }
   const emails = parseEmails(process.env.OTDR_GOV_EMAIL);
   if (!emails.length) {
     logger.warn('[OTDR-GOV] OTDR_GOV_EMAIL não configurado — relatório não enviado.');

@@ -279,6 +279,15 @@
                   <button v-if="d.auditoria" class="btn-ver-conversa" @click="abrirModalConversa(d.id_chamado)">
                     Ver conversa do OpaSuite
                   </button>
+                  <button
+                    v-if="d.auditoria"
+                    class="btn-ver-conversa"
+                    :disabled="reclassificando === d.id_chamado"
+                    :title="'A IA julga; pode errar. Reprocessa esse mesmo chamado do zero.'"
+                    @click="reclassificar(d.id_chamado)"
+                  >
+                    {{ reclassificando === d.id_chamado ? 'Reclassificando…' : 'Reclassificar' }}
+                  </button>
                 </div>
               </td>
               <td class="ta-r td-mono">{{ d.valor_mensal > 0 ? fmt(d.valor_mensal) : '—' }}</td>
@@ -353,9 +362,12 @@
               gravação de áudio (não disponível aqui).
             </p>
             <div v-if="c.mensagens.length === 0" class="empty-conversa">Sem mensagens de texto legíveis.</div>
-            <div v-for="(m, i) in c.mensagens" :key="i" class="conversa-msg">
-              <span class="conversa-msg-hora">{{ m.data ? fmtDateTime(m.data) : '?' }}</span>
-              <span class="conversa-msg-texto">{{ m.texto }}</span>
+            <div v-for="(m, i) in c.mensagens" :key="i" :class="['conversa-msg', `conversa-msg--${m.remetente}`]">
+              <div class="conversa-msg-meta">
+                <span :class="['conversa-msg-badge', `badge-${m.remetente}`]">{{ rotuloRemetente(m) }}</span>
+                <span class="conversa-msg-hora">{{ m.data ? fmtDateTime(m.data) : '?' }}</span>
+              </div>
+              <span class="conversa-msg-texto" v-html="sanitizarTextoMensagem(m.texto)"></span>
             </div>
           </div>
         </div>
@@ -371,7 +383,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { retencaoApiClient, type RetencaoResult, type RetencaoKpis, type RetencaoDetalhe, type ConversaOpaSuite } from '../services/api';
+import { retencaoApiClient, type RetencaoResult, type RetencaoKpis, type RetencaoDetalhe, type ConversaOpaSuite, type MensagemOpaSuite } from '../services/api';
 import { useAuth } from '../composables/useAuth';
 import { type Period, getPeriodRange } from '../composables/useDateRange';
 import PeriodFilter  from '../components/PeriodFilter.vue';
@@ -632,6 +644,32 @@ const fmt         = (v: number) => (v ?? 0).toLocaleString('pt-BR', { style: 'cu
 const fmtDate     = (s: string) => new Date(s).toLocaleDateString('pt-BR');
 const fmtDateTime = (s: string) => new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
+/// Rótulo do remetente na conversa do OpaSuite — pedido pela gestão
+/// (2026-07-16): numa transcrição longa com transferência de setor, não dava
+/// pra saber quem é cliente/colaborador/IZA só lendo o texto corrido.
+function rotuloRemetente(m: MensagemOpaSuite): string {
+  if (m.remetente === 'cliente') return 'Cliente';
+  if (m.remetente === 'humano') return m.autor || 'Colaborador';
+  return 'IZA (automático)';
+}
+
+/// Escapa tudo primeiro (mensagem de cliente nunca é HTML confiável) e só
+/// depois reintroduz um conjunto fixo e seguro de tags do OpaSuite (<br>,
+/// <b>) — outras tags (<a href>, <div>, <p>) viram texto puro / quebra de
+/// linha, em vez de aparecer cruas na tela (ex: "Seja bem-vindo <b>Canaã
+/// Telecom</b>" mostrando o <b> literal) ou abrirem brecha de HTML livre.
+function sanitizarTextoMensagem(texto: string): string {
+  const escapado = texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return escapado
+    .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
+    .replace(/&lt;\/?p&gt;/gi, '<br>')
+    .replace(/&lt;\/?div&gt;/gi, '')
+    .replace(/&lt;b&gt;/gi, '<strong>')
+    .replace(/&lt;\/b&gt;/gi, '</strong>')
+    .replace(/&lt;a\s[^&]*?&gt;/gi, '')
+    .replace(/&lt;\/a&gt;/gi, '');
+}
+
 // ── Modal conversa OpaSuite (gestor) ──────────────────────────────────────
 const modalConversa = ref({
   open:      false,
@@ -654,6 +692,22 @@ async function abrirModalConversa(idChamado: string) {
 
 function fecharModalConversa() {
   modalConversa.value.open = false;
+}
+
+// ── Reclassificar manual (gestor corrige um veredito da IA que julgou errado) ──
+const reclassificando = ref<string | null>(null);
+
+async function reclassificar(idChamado: string) {
+  reclassificando.value = idChamado;
+  try {
+    const auditoriaAtualizada = await retencaoApiClient.reclassificar(idChamado);
+    const item = detalhe.value.find((d) => d.id_chamado === idChamado);
+    if (item) item.auditoria = auditoriaAtualizada;
+  } catch {
+    alert('Não foi possível reclassificar agora. Tente novamente em instantes.');
+  } finally {
+    reclassificando.value = null;
+  }
 }
 </script>
 
@@ -887,8 +941,23 @@ tfoot tr td { border-top:1px solid var(--border-2); padding-top:.6rem; }
   font-size: .78rem; line-height: 1.5; color: #f59e0b; background: rgba(245, 158, 11, .1);
   border: 1px solid rgba(245, 158, 11, .3); border-radius: var(--radius-sm); padding: .55rem .7rem;
 }
-.conversa-msg { display: flex; gap: .6rem; font-size: .82rem; line-height: 1.5; }
-.conversa-msg-hora { font-family: var(--font-mono); font-size: .68rem; color: var(--text-3); flex-shrink: 0; white-space: nowrap; padding-top: .1rem; }
+.conversa-msg {
+  display: flex; flex-direction: column; gap: .3rem; font-size: .82rem; line-height: 1.5;
+  padding: .55rem .75rem; border-left: 3px solid var(--border); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-2);
+}
+.conversa-msg--cliente { border-left-color: var(--accent); background: var(--accent-dim); }
+.conversa-msg--humano  { border-left-color: var(--success); background: var(--success-bg); }
+.conversa-msg--iza     { opacity: .8; }
+.conversa-msg-meta { display: flex; align-items: center; gap: .5rem; }
+.conversa-msg-badge {
+  font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: .1rem .5rem; border-radius: 20px; white-space: nowrap;
+}
+.badge-cliente { background: var(--accent-dim); color: var(--accent); }
+.badge-humano  { background: var(--success-bg); color: var(--success); }
+.badge-iza     { background: var(--surface-3); color: var(--text-3); }
+.conversa-msg-hora  { font-family: var(--font-mono); font-size: .66rem; color: var(--text-3); }
 .conversa-msg-texto { color: var(--text); word-break: break-word; }
 .empty-conversa { font-size: .85rem; color: var(--text-3); padding: 1rem 0; }
 .modal-form { display: flex; flex-direction: column; gap: 1rem; }

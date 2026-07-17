@@ -9,17 +9,20 @@ import {
   getResumoKpisAtendimento,
   getRankingsAtendimento,
   getKpisAtendimentoHistorico,
+  getIndicadoresJornada,
   RankingsAtendimento,
   KpiAtendimentoMensal,
 } from '../atendimento/atendimento.service';
 import { getResumoNaoConformesPorCriterio, getRankingAgentesPorQualidade } from '../atendimento/atendimento.qa.service';
 import { CriterioNaoConformeResumo, AgenteQaRanking } from '../atendimento/atendimento.qa.types';
 import { getResumoPorSetor, getRankingMotivosIa, SentimentoPorSetor, MotivoIaResumo } from '../atendimento/atendimento.analise-ia.service';
-import { KpisAtendimento } from '../atendimento/atendimento.types';
+import { KpisAtendimento, IndicadorJornadaOperador, SetorAtendimento } from '../atendimento/atendimento.types';
 import { getKpis as getPosAtivacaoKpis } from '../posativacao/posativacao.service';
 import { PosAtivacaoKpis } from '../posativacao/posativacao.types';
 import { buscarPendenciasAbertas } from '../vistoriaPop/vistoriaPop.repository';
 import { VistoriaPendencia } from '../vistoriaPop/vistoriaPop.types';
+import { listarAlertasHub } from '../alertasHub/alertasHub.service';
+import { AlertaHubItem } from '../alertasHub/alertasHub.types';
 import { RankingVendedorEntry, EvolucaoMensalEntry, PopStatusEntry, PiorSinalAgora } from './diagnostico.types';
 
 /// Registry de fontes de dados do chat de gestão (C.A.I.O.) — mesmo princípio
@@ -51,6 +54,8 @@ export interface DadosGestao {
   analiseIaAtendimento:    { porSetor: SentimentoPorSetor[]; motivos: MotivoIaResumo[] } | null;
   posAtivacaoKpis:         PosAtivacaoKpis | null;
   vistoriaPendencias:      VistoriaPendencia[];
+  indicadoresJornada:      IndicadorJornadaOperador[] | null;
+  alertasHub:              AlertaHubItem[] | null;
 }
 
 export interface FonteGestao<T = any> {
@@ -70,12 +75,35 @@ export interface FonteGestao<T = any> {
   /// entre fontes diferentes ficam de fora daqui (ver REGRA_* no
   /// diagnostico.prompt.ts), pra não perder a moldura "não confunda X com Y".
   regraPrompt?: string;
+  /// Extrai a parte tabular do dado dessa fonte pra virar planilha (ver
+  /// diagnostico.relatorios.ts) — ausente = fonte não exporta em Excel (só
+  /// PDF, que reaproveita `blocos` de graça pra qualquer fonte). Pra fontes
+  /// compostas (objeto com mais de uma lista), escolhe a lista mais
+  /// "relatório" das partes; pra objeto único de KPI, embrulha em array de
+  /// 1 linha.
+  paraExcel?:   (dados: T) => Record<string, any>[];
 }
 
 function fmtDuracao(ms: number | null): string {
   if (ms === null) return 'sem dado';
   if (ms < 60000) return `${Math.round(ms / 1000)}s`;
   return `${Math.round(ms / 60000)}min`;
+}
+
+/// Pra durações longas (jornada — pode passar de 1 dia), diferente de
+/// fmtDuracao (pensado pra TMA/TME/TMR, sempre minutos/segundos) — mesma
+/// lógica de formatarHoras em IndicadorJornadaTable.vue, duplicada aqui
+/// porque uma é componente Vue (frontend) e essa é usada na exportação
+/// (backend, Excel/PDF) — sem código compartilhável entre os dois hoje.
+function fmtHorasLongas(ms: number): string {
+  if (ms <= 0) return '—';
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h < 24) return `${h}h${m > 0 ? `${m}min` : ''}`;
+  const d = Math.floor(h / 24);
+  const hRestante = h % 24;
+  return `${d}d${hRestante > 0 ? ` ${hRestante}h` : ''}`;
 }
 
 function formatarRankingVendedores(ranking: RankingVendedorEntry[]): string {
@@ -118,12 +146,22 @@ function formatarPioresClientes(clientes: ClienteDegradadoHoje[]): string {
 /// Volume operacional do mês em andamento (dia 1 até hoje) — quantas O.S. de
 /// retenção foram tratadas/retidas, taxa de reversão, comissão gerada. Isso é
 /// bruto do IXC (id_su_diagnostico), diferente da auditoria de qualidade abaixo.
+///
+/// Tratadas != Retidas + Não retidas: existe um 3º grupo ("sem interação do
+/// cliente", diagnósticos tipo "FALTA DE INTERAÇÃO", ver NAO_RETIDO_IDS/
+/// RETIDO_IDS em retencao.repository.ts) que conta em tratadas mas não entra
+/// em nenhum dos dois — de propósito, já que não houve negociação real pra
+/// classificar. Sem deixar esse 3º número explícito aqui, a IA (ou quem lê o
+/// resumo) pode achar que os números "não fecham" (achado do usuário
+/// 2026-07-14, ao ver 134 tratadas vs 20+98=118 num resumo diário).
 function formatarRetencaoMes(kpis: RetencaoKpis | null): string {
   if (!kpis) return 'Sem dados de retenção disponíveis para o mês em andamento.';
   if (kpis.totalTratadas === 0) return 'Nenhuma O.S. de retenção tratada ainda neste mês.';
+  const semInteracao = kpis.totalTratadas - kpis.totalRetidas - kpis.totalNaoRetidas;
   return [
     `Tratadas: ${kpis.totalTratadas} | Retidas: ${kpis.totalRetidas} | Não retidas: ${kpis.totalNaoRetidas} | ` +
-    `Taxa de reversão: ${kpis.pctReversaoGeral}% | Comissão gerada: R$${kpis.totalComissoes.toFixed(2)} | ` +
+    `Sem interação do cliente (não conta pra taxa): ${semInteracao} | ` +
+    `Taxa de reversão: ${kpis.pctReversaoGeral}% (retidas ÷ tratadas) | Comissão gerada: R$${kpis.totalComissoes.toFixed(2)} | ` +
     `Operadoras que bateram meta: ${kpis.operadoresNaMeta}`,
   ].join('\n');
 }
@@ -275,12 +313,78 @@ function formatarHistoricoAtendimento(historico: KpiAtendimentoMensal[] | null):
   }).join('\n');
 }
 
+/// Jornada por operador (tempo produtivo/pausa/ausente + eficiência), mês em
+/// andamento, TODOS os setores. Resume por setor (senão a lista de dezenas de
+/// operadores estouraria o contexto) e destaca os 10 com maior % de ausência,
+/// que é o sinal mais acionável pra gestão saber com quem conversar. Cobre
+/// qualquer operador ativo no OpaSuite, inclusive equipe terceirizada.
+function formatarIndicadoresJornada(indicadores: IndicadorJornadaOperador[] | null): string {
+  if (!indicadores || !indicadores.length) {
+    return 'Sem dados de jornada disponíveis para o mês em andamento.';
+  }
+
+  const porSetor = new Map<SetorAtendimento, { volume: number; produtivoMs: number; logadoMs: number; ausenteMs: number }>();
+  for (const op of indicadores) {
+    if (!porSetor.has(op.setor)) porSetor.set(op.setor, { volume: 0, produtivoMs: 0, logadoMs: 0, ausenteMs: 0 });
+    const s = porSetor.get(op.setor)!;
+    s.volume += op.volumeAtendimentos;
+    s.produtivoMs += op.tempoProdutivoMs;
+    s.logadoMs += op.tempoLogadoMs;
+    s.ausenteMs += op.tempoAusenteMs;
+  }
+
+  const linhasSetor = Array.from(porSetor.entries()).map(([setor, s]) => {
+    const pctProdutivo = s.logadoMs > 0 ? Math.round((s.produtivoMs / s.logadoMs) * 1000) / 10 : null;
+    const pctAusente = s.logadoMs > 0 ? Math.round((s.ausenteMs / s.logadoMs) * 1000) / 10 : null;
+    const eficiencia = s.produtivoMs > 0 ? Math.round((s.volume / (s.produtivoMs / 3600000)) * 10) / 10 : null;
+    return `- ${setor} | ${s.volume} atendimentos | produtivo ${pctProdutivo ?? 'sem dado'}% | ` +
+      `ausente ${pctAusente ?? 'sem dado'}% | eficiência ${eficiencia ?? 'sem dado'}/h`;
+  });
+
+  const top10Ausentes = [...indicadores]
+    .filter((op) => op.pctAusente !== null && op.pctAusente > 0)
+    .sort((a, b) => (b.pctAusente ?? 0) - (a.pctAusente ?? 0))
+    .slice(0, 10)
+    .map((op) => `- ${op.nome} (${op.setor}) | ausente ${op.pctAusente}% | produtivo ${op.pctProdutivo}%`);
+
+  return [
+    'Resumo por setor:',
+    ...linhasSetor,
+    '',
+    'Operadores com maior % de tempo ausente no período (top 10, sinal mais direto de quem precisa de atenção):',
+    ...(top10Ausentes.length ? top10Ausentes : ['(nenhum registro de ausência no período)']),
+  ].join('\n');
+}
+
+/// Alertas operacionais abertos AGORA (Hub de Alertas: Atendimento + Vistoria
+/// de POP): feed em tempo real, não histórico. Lista os críticos
+/// individualmente porque é o que a gestão mais precisa saber na hora.
+function formatarAlertasHub(itens: AlertaHubItem[] | null): string {
+  if (!itens || !itens.length) return 'Nenhum alerta operacional aberto agora (Atendimento + Vistoria de POP).';
+
+  const criticos = itens.filter((i) => i.severidade === 'CRITICO');
+  const avisos = itens.filter((i) => i.severidade === 'AVISO');
+  const porAtendimento = itens.filter((i) => i.origem === 'atendimento').length;
+  const porVistoria = itens.filter((i) => i.origem === 'vistoria').length;
+
+  const linhas = [
+    `Total abertos: ${itens.length} (${criticos.length} crítico(s), ${avisos.length} aviso(s)) | ` +
+    `Atendimento: ${porAtendimento} | Vistoria de POP: ${porVistoria}`,
+  ];
+  if (criticos.length) {
+    linhas.push('', 'Críticos abertos agora:');
+    linhas.push(...criticos.map((a) => `- [${a.origem}] ${a.titulo}${a.contexto ? ` (${a.contexto})` : ''}`));
+  }
+  return linhas.join('\n');
+}
+
 export const FONTES_GESTAO: FonteGestao[] = [
   {
     chave: 'ranking',
     buscar: () => buscarRankingVendedores(),
     valorVazio: [] as RankingVendedorEntry[],
     blocos: [{ titulo: 'RANKING DE VENDEDORES POR MES (snapshots mensais)', formatar: formatarRankingVendedores }],
+    paraExcel: (r) => r,
     regraPrompt: `- Cada mês tem seu próprio líder de vendedores — isso NÃO é uma competição contínua entre
   pessoas. Nunca diga que o líder de um mês "superou", "ultrapassou" ou "supera" o líder de OUTRO
   mês — os números de meses diferentes não são comparáveis dessa forma (ex: não diga "Fulano
@@ -294,6 +398,7 @@ export const FONTES_GESTAO: FonteGestao[] = [
     buscar: () => buscarEvolucaoVendas(),
     valorVazio: [] as EvolucaoMensalEntry[],
     blocos: [{ titulo: 'EVOLUCAO DE VENDAS POR MES E SEGMENTO', formatar: formatarEvolucaoVendas }],
+    paraExcel: (e) => e,
   },
   {
     chave: 'statusRede',
@@ -304,6 +409,7 @@ export const FONTES_GESTAO: FonteGestao[] = [
       { titulo: 'STATUS DE POPS AGORA (ao vivo)', formatar: (d: { pops: PopStatusEntry[] }) => formatarStatusPops(d.pops) },
       { titulo: 'PIOR SINAL DA REDE AGORA (ao vivo, o cliente com a leitura mais fraca neste momento)', formatar: (d: { piorGeral: PiorSinalAgora | null }) => formatarPiorGeral(d.piorGeral) },
     ],
+    paraExcel: (d) => d.pops,
     regraPrompt: `- O status de POP é AO VIVO (consultado no momento da pergunta, não é histórico) — cada POP
   agrupa várias OLTs. Se perguntarem por um POP específico, procure pelo nome mesmo que não bata
   exatamente (ex: "aguas claras" deve encontrar "AGUAS CLARAS").
@@ -319,6 +425,7 @@ export const FONTES_GESTAO: FonteGestao[] = [
     valorVazio: [] as ClienteDegradadoHoje[],
     resiliente: { logErroMsg: 'Falha ao buscar piores sinais de hoje para o chat de gestão' },
     blocos: [{ titulo: 'CLIENTES QUE PIORARAM HOJE (eventos de degradação dia-a-dia, pode ficar defasado se a ingestão atrasar)', formatar: formatarPioresClientes }],
+    paraExcel: (c) => c,
   },
   {
     chave: 'retencaoMes',
@@ -329,6 +436,7 @@ export const FONTES_GESTAO: FonteGestao[] = [
     valorVazio: null as RetencaoKpis | null,
     resiliente: { logErroMsg: 'Falha ao buscar desempenho de retenção do mês para o chat de gestão' },
     blocos: [{ titulo: 'DESEMPENHO DE RETENÇÃO DO MES EM ANDAMENTO (volume bruto do IXC, dia 1 até hoje)', formatar: formatarRetencaoMes }],
+    paraExcel: (k) => (k ? [k] : []),
   },
   {
     chave: 'auditoriaRetencao',
@@ -336,6 +444,7 @@ export const FONTES_GESTAO: FonteGestao[] = [
     valorVazio: null as ResumoAuditoriaRetencao | null,
     resiliente: { logErroMsg: 'Falha ao buscar auditoria de retenção para o chat de gestão' },
     blocos: [{ titulo: 'AUDITORIA DE RETENÇÃO (negociação real vs. classificação genérica do IXC)', formatar: formatarAuditoriaRetencao }],
+    paraExcel: (a) => a?.porOperador ?? [],
     regraPrompt: `- A AUDITORIA DE RETENÇÃO é um relatório, não muda comissão: a classificação do IXC (RETIDO/
   NAO_RETIDO) só olha um campo genérico de diagnóstico, sem checar se o operador realmente
   negociou algo (desconto, isenção, novo plano) e o cliente aceitou por causa disso — a auditoria
@@ -357,6 +466,12 @@ export const FONTES_GESTAO: FonteGestao[] = [
     valorVazio: null as KpisAtendimento[] | null,
     resiliente: { logErroMsg: 'Falha ao buscar KPIs de atendimento para o chat de gestão' },
     blocos: [{ titulo: 'ATENDIMENTO — KPIS BRUTOS DO MES EM ANDAMENTO (SAC / SUPORTE N1 / SUPORTE N2 / COBRANÇA / VENDAS / RETENÇÃO / PÓS-VENDAS / BACKOFFICE)', formatar: formatarKpisAtendimento }],
+    paraExcel: (k: KpisAtendimento[] | null) => (k ?? []).map((x) => ({
+      setor: x.setor, volume: x.volume,
+      tmr: fmtDuracao(x.tmrMs), tme: fmtDuracao(x.tmeMs), tma: fmtDuracao(x.tmaMs),
+      escalonamentos: x.escalonamentos, pctEscalonamento: x.pctEscalonamento,
+      notaMediaSatisfacao: x.notaMediaSatisfacao, qtdAvaliados: x.qtdAvaliados,
+    })),
     regraPrompt: `- Os KPIs brutos de atendimento têm TRÊS métricas de tempo diferentes, não confunda. Todo
   atendimento (exceto ligação) passa primeiro pela URA/IZA (a IA de atendimento que faz a
   triagem inicial) antes de qualquer fila ou humano — NENHUMA das três métricas conta tempo
@@ -389,6 +504,7 @@ export const FONTES_GESTAO: FonteGestao[] = [
       { titulo: 'ATENDIMENTO — QA HUMANO: CRITÉRIOS MAIS REPROVADOS (últimos 3 meses)', formatar: (d) => formatarCriteriosNaoConformesQa(d.criterios) },
       { titulo: 'ATENDIMENTO — QA HUMANO: RANKING DE QUALIDADE POR AGENTE (últimos 3 meses)', formatar: (d) => formatarRankingQualidadeQa(d.ranking) },
     ],
+    paraExcel: (d) => d.ranking,
   },
   {
     chave: 'rankingsAtendimento',
@@ -396,6 +512,7 @@ export const FONTES_GESTAO: FonteGestao[] = [
     valorVazio: null as RankingsAtendimento | null,
     resiliente: { logErroMsg: 'Falha ao buscar ranking de atendentes para o chat de gestão' },
     blocos: [{ titulo: 'ATENDIMENTO — RANKING DE ATENDENTES E MOTIVOS (últimos 3 meses)', formatar: formatarRankingsAtendimento }],
+    paraExcel: (d) => d?.atendentes ?? [],
   },
   {
     chave: 'historicoAtendimento',
@@ -403,6 +520,12 @@ export const FONTES_GESTAO: FonteGestao[] = [
     valorVazio: null as KpiAtendimentoMensal[] | null,
     resiliente: { logErroMsg: 'Falha ao buscar histórico mensal de atendimento para o chat de gestão' },
     blocos: [{ titulo: 'ATENDIMENTO — HISTÓRICO MENSAL (meses fechados, snapshot pré-calculado)', formatar: formatarHistoricoAtendimento }],
+    paraExcel: (h: KpiAtendimentoMensal[] | null) => (h ?? []).map((x) => ({
+      mes: x.mesReferencia, setor: x.setor, volume: x.volume,
+      tmr: fmtDuracao(x.tmrMs), tme: fmtDuracao(x.tmeMs), tma: fmtDuracao(x.tmaMs),
+      escalonamentos: x.escalonamentos, pctEscalonamento: x.pctEscalonamento,
+      notaMediaSatisfacao: x.notaMediaSatisfacao, qtdAvaliados: x.qtdAvaliados,
+    })),
   },
   {
     chave: 'analiseIaAtendimento',
@@ -420,6 +543,36 @@ export const FONTES_GESTAO: FonteGestao[] = [
       { titulo: 'ATENDIMENTO — ANÁLISE DE IA EM MASSA: SENTIMENTO E ADESÃO POR SETOR (últimos 3 meses, sinal de triagem)', formatar: (d) => formatarAnaliseIaPorSetor(d.porSetor) },
       { titulo: 'ATENDIMENTO — ANÁLISE DE IA EM MASSA: MOTIVOS CLASSIFICADOS (últimos 3 meses)', formatar: (d) => formatarMotivosIa(d.motivos) },
     ],
+    paraExcel: (d) => d.porSetor,
+  },
+  {
+    chave: 'indicadoresJornada',
+    buscar: (janela) => getIndicadoresJornada(janela.inicioMes, janela.hoje),
+    valorVazio: null as IndicadorJornadaOperador[] | null,
+    resiliente: { logErroMsg: 'Falha ao buscar indicadores de jornada para o chat de gestão' },
+    blocos: [{ titulo: 'ATENDIMENTO — JORNADA E PRODUTIVIDADE DO MES EM ANDAMENTO (todos os setores, inclusive equipe terceirizada)', formatar: formatarIndicadoresJornada }],
+    paraExcel: (i: IndicadorJornadaOperador[] | null) => (i ?? []).map((op) => ({
+      nome: op.nome, setor: op.setor, atendimentos: op.volumeAtendimentos,
+      tempoLogado: fmtHorasLongas(op.tempoLogadoMs), tempoProdutivo: fmtHorasLongas(op.tempoProdutivoMs),
+      tempoPausa: fmtHorasLongas(op.tempoPausaMs), tempoAusente: fmtHorasLongas(op.tempoAusenteMs),
+      pctProdutivo: op.pctProdutivo, pctPausa: op.pctPausa, pctAusente: op.pctAusente,
+    })),
+    regraPrompt: `- "JORNADA E PRODUTIVIDADE" é sobre COMO o tempo do operador foi gasto (produtivo, pausa,
+  ausente) e eficiência (atendimentos por hora produtiva) — DIFERENTE dos "KPIS BRUTOS DO MES EM
+  ANDAMENTO" (fonte 1 de atendimento), que é sobre a CONVERSA (volume/TME/TMA/TMR), não sobre a
+  jornada do operador. "Ausente" é tempo fora do sistema durante o expediente sem ser pausa
+  formal — é o sinal mais direto de quem precisa de uma conversa da gestão. Eficiência varia MUITO
+  entre setores (TMA diferente por setor), nunca compare a eficiência de um operador de um setor
+  com a de outro de setor diferente. Cobre todo operador ativo no sistema de atendimento,
+  inclusive equipe terceirizada (ex: Aprimorar) — trate como qualquer colaborador, sem
+  distinção. LIMITAÇÃO CONHECIDA (confirmada pelo usuário 2026-07-13): atendimento por ligação
+  (telefone) ainda tem medição incompleta de volume, só TMA e TME são confiáveis para esse canal.
+  Volume e eficiência baixos podem refletir essa lacuna de medição, não necessariamente baixo
+  desempenho real — não afirme que um operador "trabalhou pouco" ou está com problema de
+  produtividade só por volume/eficiência baixos, mencione essa limitação como possível causa
+  alternativa. O setor mostrado já reflete o time real do operador: prioriza o roster curado de
+  RH/QA quando existe, e só usa inferência por volume de tickets pra quem não está nesse roster —
+  não é mais "o atendimento mais recente processado" (corrigido 2026-07-14).`,
   },
   {
     chave: 'posAtivacaoKpis',
@@ -427,6 +580,7 @@ export const FONTES_GESTAO: FonteGestao[] = [
     valorVazio: null as PosAtivacaoKpis | null,
     resiliente: { logErroMsg: 'Falha ao buscar KPIs de pós-ativação para o chat de gestão' },
     blocos: [{ titulo: 'PÓS-ATIVAÇÃO — CLIENTES QUE CONTATARAM O SUPORTE APÓS INSTALAR (janela de 30 dias)', formatar: formatarPosAtivacaoKpis }],
+    paraExcel: (k) => (k ? [k] : []),
     regraPrompt: `- "Pós-ativação" é sobre contato do cliente NOS PRIMEIROS 30 DIAS após ativar o contrato
   (instalação ou mudança de endereço) — é um indicador de qualidade de instalação/campo, DIFERENTE
   do volume geral de atendimento (que cobre todo mundo, não só quem acabou de ativar). Não misture
@@ -438,11 +592,25 @@ export const FONTES_GESTAO: FonteGestao[] = [
     valorVazio: [] as VistoriaPendencia[],
     resiliente: { logErroMsg: 'Falha ao buscar pendências de vistoria de POP para o chat de gestão' },
     blocos: [{ titulo: 'VISTORIA DE POP — PENDÊNCIAS ABERTAS (checklist de inspeção técnica: rack, gerador, baterias, ar-condicionado, extintor)', formatar: formatarVistoriaPendencias }],
+    paraExcel: (p) => p,
     regraPrompt: `- Pendências de Vistoria de POP são achados de checklist físico (ex: extintor ausente,
   gerador precisando de manutenção) — NÃO é a mesma coisa que "status de POP agora" (fonte
   STATUS DE POPS AGORA, que é sobre sinal/rede ao vivo). O nome do POP nas duas fontes pode não
   bater exatamente (convenções diferentes entre os dois sistemas) — não assuma que é o mesmo POP
   sem o nome corresponder claramente, e não cruze as duas fontes como se fossem uma coisa só.`,
+  },
+  {
+    chave: 'alertasHub',
+    buscar: () => listarAlertasHub(),
+    valorVazio: [] as AlertaHubItem[],
+    resiliente: { logErroMsg: 'Falha ao buscar alertas operacionais do Hub para o chat de gestão' },
+    blocos: [{ titulo: 'ALERTAS OPERACIONAIS ABERTOS AGORA (Hub de Alertas: Atendimento + Vistoria de POP)', formatar: formatarAlertasHub }],
+    paraExcel: (a) => a ?? [],
+    regraPrompt: `- "ALERTAS OPERACIONAIS ABERTOS AGORA" é feed em TEMPO REAL (o estado agora, não histórico) —
+  cobre só Atendimento (conversa parada, SLA de fila, agente ausente, fila acumulada) e Vistoria
+  de POP (checklist físico: extintor, gerador, baterias). NÃO inclui os alertas por e-mail
+  (assinatura pendente, fatura em aberto, metas de retenção), que são um sistema separado,
+  fire-and-forget, sem conceito de aberto/resolvido — não confunda os dois.`,
   },
 ];
 
@@ -473,8 +641,8 @@ export const REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA = `- "DESEMPENHO DE RETENÇ�
   desempenho do mês; se perguntarem sobre qualidade/veracidade da negociação, use a auditoria.
   O período do desempenho do mês é sempre do dia 1 até hoje (mês corrente em andamento).`;
 
-export const REGRA_ATENDIMENTO_SEIS_FONTES = `- Atendimento cobre 8 setores (SAC, Suporte N1, Suporte N2, Cobrança, Vendas, Retenção,
-  Pós-Vendas, Backoffice) e tem SEIS fontes diferentes, não confunda:
+export const REGRA_ATENDIMENTO_SETE_FONTES = `- Atendimento cobre 8 setores (SAC, Suporte N1, Suporte N2, Cobrança, Vendas, Retenção,
+  Pós-Vendas, Backoffice) e tem SETE fontes diferentes, não confunda:
   (1) "KPIS BRUTOS DO MES EM ANDAMENTO" é volume/tempo (TME/TMA/TMR)/satisfação cru do mês
   corrente, calculado AO VIVO, sem avaliação de qualidade — responde "quantos atendimentos
   tivemos ESTE MÊS", "qual o tempo de espera/atendimento/resolução agora".
@@ -519,6 +687,11 @@ export const REGRA_ATENDIMENTO_SEIS_FONTES = `- Atendimento cobre 8 setores (SAC
   atendimentos têm isso preenchido), a fonte (6) é inferida pela IA em cima da conversa; se
   perguntarem "quais os principais motivos de atendimento" prefira mencionar as duas se ambas
   tiverem dado, deixando claro qual é qual.
+  (7) "JORNADA E PRODUTIVIDADE" é sobre COMO o operador gastou o tempo (produtivo, pausa,
+  ausente) e sua eficiência (atendimentos por hora produtiva) — DIFERENTE da fonte (1), que é
+  sobre a CONVERSA em si (volume/TME/TMA/TMR), não sobre a jornada do operador. Um operador pode
+  ter TMA ótimo na fonte (1) e ainda assim passar boa parte do tempo ausente na fonte (7) — são
+  medidas independentes, não derive uma da outra.
   Escalonamento (N1->N2) só existe pro setor N1 — não invente esse número pros outros setores.
   ATENÇÃO: o setor de atendimento "Retenção" (KPIs/QA/ranking/análise de IA acima) é uma coisa
   DIFERENTE da "AUDITORIA DE RETENÇÃO" e "DESEMPENHO DE RETENÇÃO DO MÊS" (mais abaixo neste

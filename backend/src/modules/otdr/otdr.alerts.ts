@@ -1,6 +1,7 @@
 import axios from 'axios';
 import transporter from '../../config/mailer';
 import logger from '../../config/logger';
+import { ENVIO_ALERTAS_ATIVO } from '../../config/notificacoes';
 import { ResumoOlt, EstadoOlt } from './otdr.service';
 
 /// Causa provável levantada pelo Diagnóstico IA para um dos piores clientes do
@@ -84,6 +85,10 @@ export function htmlResumoDiario(resumos: ResumoOlt[], data: string, causas: Cau
 }
 
 export async function enviarResumoDiario(resumos: ResumoOlt[], causas: CausaCliente[] = []): Promise<void> {
+  if (!ENVIO_ALERTAS_ATIVO) {
+    logger.info('[OTDR] Envio desativado (sistema em desenvolvimento) — resumo diário suprimido.');
+    return;
+  }
   if (!resumos.length) {
     logger.info('[OTDR] Nenhuma piora registrada hoje — resumo não enviado.');
     return;
@@ -128,6 +133,10 @@ export async function enviarAlertaQueda(
   atual: EstadoOlt,
   delta: number,
 ): Promise<void> {
+  if (!ENVIO_ALERTAS_ATIVO) {
+    logger.info(`[OTDR] Envio desativado (sistema em desenvolvimento) — alerta de queda suprimido (${olt}).`);
+    return;
+  }
   const agora = Date.now();
   const ultimo = ultimoAlerta.get(olt) ?? 0;
   if (agora - ultimo < COOLDOWN_MS) return;

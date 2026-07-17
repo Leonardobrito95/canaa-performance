@@ -7,7 +7,7 @@ import {
   listarMonitoriaQa, dashboardQa, criarMonitoria, atualizarMonitoria, buscarMonitoria, sugestaoQa,
   minhasAvaliacoes, comunicarCiencia,
 } from './atendimento.qa.controller';
-import { triagemAnaliseIa, dashboardAnaliseIa } from './atendimento.analise-ia.controller';
+import { triagemAnaliseIa, dashboardAnaliseIa, revisaoManual } from './atendimento.analise-ia.controller';
 import { listarAlertasOperacionais, resolverAlertaOperacional } from './atendimento.alertas-operacionais.controller';
 
 const router = Router();
@@ -36,6 +36,7 @@ router.put('/qa/:id',                authenticate, requirePerfil(...PERFIS_MODUL
 // Camada analítica de IA em massa (sinal de triagem, não QA oficial) — mesmo RBAC.
 router.get('/analise-ia/triagem',   authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), triagemAnaliseIa);
 router.get('/analise-ia/dashboard', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), dashboardAnaliseIa);
+router.post('/analise-ia/:id/revisao-manual', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), revisaoManual);
 
 // Alertas operacionais em tempo real (conversa parada, SLA de fila, agente
 // ausente, fila acumulada) — feed interno, mesmo RBAC do módulo.

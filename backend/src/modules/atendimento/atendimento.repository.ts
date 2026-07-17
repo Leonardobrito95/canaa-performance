@@ -1,4 +1,4 @@
-import { ObjectId } from 'mongodb';
+import { ObjectId, Db } from 'mongodb';
 import { getOpaSuiteDb } from '../../config/opasuiteMongo';
 import { buscarMensagensAtendimento } from '../opasuite/opasuite.service';
 import prisma from '../../config/prisma';
@@ -6,6 +6,7 @@ import {
   SetorAtendimento, KpisAtendimento, AtendimentoParaMonitoria, RankingAtendenteEntry, MotivoAtendimentoEntry, RankingAvaliacaoEntry,
   SETORES_ATENDIMENTO, TODOS_SETORES, setorEscalonaPara, OperadorAoVivo, IndicadorJornadaOperador, ConfigJornada,
 } from './atendimento.types';
+import { AGENTES_QA_EXCLUIDOS_RANKING } from './atendimento.qa.types';
 
 /// ObjectId do departamento no OpaSuite pra cada setor — derivado da config
 /// central (SETORES_ATENDIMENTO em atendimento.types.ts), não hardcoded
@@ -13,6 +14,20 @@ import {
 export const DEPARTAMENTO_IDS: Record<SetorAtendimento, string> = Object.fromEntries(
   SETORES_ATENDIMENTO.map((s) => [s.codigo, s.departamentoId]),
 ) as Record<SetorAtendimento, string>;
+
+/// Conta de teste/treinamento do OpaSuite — não é atendente real, mas não
+/// some do roster de usuários, então precisa ser excluída explicitamente dos
+/// rankings. NÃO inclui "aprimorar": Aprimorar é uma empresa terceirizada
+/// contratada pra reforçar o atendimento do Centro de Solução — agente real,
+/// contando pra volume/eficiência/jornada como qualquer outro (confirmado
+/// pelo usuário 2026-07-14, corrigindo suposição errada de conta de teste).
+const NOME_CONTA_TESTE_REGEX = /teste/i;
+
+/// Abaixo disso, a média de satisfação de 1 agente é ruído estatístico, não
+/// sinal — 1-2 notas 5/5 não podem ranquear acima de alguém com dezenas de
+/// avaliações em 4.5/5. Mesmo valor usado no card de KPI
+/// (AtendimentoResumoPanel.vue, AMOSTRA_MINIMA).
+const AMOSTRA_MINIMA_AVALIACOES = 5;
 
 export function resolverSetorPorObjectId(id: unknown): SetorAtendimento | null {
   if (!id) return null;
@@ -244,6 +259,43 @@ async function buscarTemposRespostaEmLote(
   return amostras;
 }
 
+/// Um agente só "pertence" a um filtro de setor se a MAIORIA do volume dele
+/// no período está dentro dele — sem isso, quem ajudou pontualmente outro
+/// setor (ex: agente do SAC que pegou 1-2 tickets de Comercial na fila)
+/// aparece misturado no ranking de um setor que não é o dele. Não existe
+/// roster confiável de "setor de origem" pra todo mundo (o roster curado de
+/// QA, AtendimentoAgenteQa, cobre só 13 agentes de SAC/Retenção — nem de
+/// longe todo mundo, ver atendimento.alertas-operacionais.ts), então a
+/// atribuição é pelo próprio volume de trabalho: onde a pessoa realmente
+/// passa a maior parte do tempo no período. Confirmado com exemplos reais
+/// pelo usuário (2026-07-14): Sarah Couto é SAC mas aparecia no ranking de
+/// Comercial, Nathalia Melo/Sebastião T. são Comercial mas apareciam no
+/// Centro de Solução.
+async function idsQuePertencemAoFiltro(
+  db: Db,
+  idsCandidatos: ObjectId[],
+  deptIdsFiltro: ObjectId[],
+  dateFrom: Date,
+  dateTo: Date,
+): Promise<Set<string>> {
+  const todosDeptIds = TODOS_SETORES.map((s) => new ObjectId(DEPARTAMENTO_IDS[s]));
+  const totais = await db.collection('atendimentos').aggregate([
+    { $match: { setor: { $in: todosDeptIds }, date: { $gte: dateFrom, $lte: dateTo } } },
+    { $unwind: '$atendentes' },
+    { $match: { 'atendentes.atendimentoHumano': true, 'atendentes.atendente': { $in: idsCandidatos } } },
+    { $group: {
+        _id: '$atendentes.atendente',
+        total:  { $sum: 1 },
+        dentro: { $sum: { $cond: [{ $in: ['$setor', deptIdsFiltro] }, 1, 0] } },
+      }
+    },
+  ]).toArray();
+
+  const pertencem = new Set<string>();
+  for (const t of totais) if (t.dentro * 2 >= t.total) pertencem.add(t._id.toString());
+  return pertencem;
+}
+
 /// Ranking de atendentes humanos por volume (quantos atendimentos cada um
 /// cuidou) num período, somando os setores informados (todos os 8, se
 /// `setores` não for passado). Conta segmentos com atendimentoHumano=true em
@@ -260,27 +312,34 @@ export async function buscarRankingAtendentes(dateFrom: Date, dateTo: Date, seto
     { $unwind: '$atendentes' },
     { $match: { 'atendentes.atendimentoHumano': true } },
     { $group: { _id: '$atendentes.atendente', qtd: { $sum: 1 } } },
-    { $sort: { qtd: -1 } },
-    { $limit: limite },
   ]).toArray();
-
   if (!rows.length) return [];
-  const ids = rows.map((r) => r._id).filter(Boolean);
+
+  // Sem filtro explícito (todos os setores), todo mundo pertence trivialmente
+  // — não precisa da query extra de "onde a maioria do volume está".
+  const pertencem = setores
+    ? await idsQuePertencemAoFiltro(db, rows.map((r) => r._id), deptIds, dateFrom, dateTo)
+    : null;
+  const filtrados = pertencem ? rows.filter((r) => pertencem.has(r._id.toString())) : rows;
+  if (!filtrados.length) return [];
+
   const usuarios = await db.collection('usuarios').find(
-    { _id: { $in: ids } },
+    { _id: { $in: filtrados.map((r) => r._id) }, nome: { $not: NOME_CONTA_TESTE_REGEX } },
     { projection: { nome: 1 } },
   ).toArray();
   const nomesPorId = new Map(usuarios.map((u) => [u._id.toString(), u.nome as string]));
 
-  return rows
-    .map((r) => ({
-      nome: nomesPorId.get(r._id.toString()) ?? 'Desconhecido',
-      qtd:  r.qtd,
-    }));
+  return filtrados
+    .filter((r) => nomesPorId.has(r._id.toString()))
+    .map((r) => ({ nome: nomesPorId.get(r._id.toString())!, qtd: r.qtd }))
+    .sort((a, b) => b.qtd - a.qtd)
+    .slice(0, limite);
 }
 
 /// Ranking de atendentes por nota média de satisfação (CSAT).
-/// Apenas atendentes que tiveram pelo menos 1 avaliação.
+/// Apenas atendentes que tiveram pelo menos AMOSTRA_MINIMA_AVALIACOES
+/// avaliações E cujo setor filtrado é onde a maioria do volume deles está
+/// (ver idsQuePertencemAoFiltro).
 export async function buscarRankingAvaliacaoAtendentes(dateFrom: Date, dateTo: Date, setores?: SetorAtendimento[], limite = 10): Promise<RankingAvaliacaoEntry[]> {
   const db = await getOpaSuiteDb();
   const deptIds = (setores ?? TODOS_SETORES).map((s) => new ObjectId(DEPARTAMENTO_IDS[s]));
@@ -296,32 +355,41 @@ export async function buscarRankingAvaliacaoAtendentes(dateFrom: Date, dateTo: D
     { $match: { 'atendentes.atendimentoHumano': true } },
     { $unwind: '$evaluations' },
     { $match: { 'evaluations.metric': 'likert', 'evaluations.likert.rating': { $type: 'number' } } },
-    { $group: { 
-        _id: '$atendentes.atendente', 
+    { $group: {
+        _id: '$atendentes.atendente',
         notaMedia: { $avg: '$evaluations.likert.rating' },
         qtdAvaliacoes: { $sum: 1 }
-      } 
+      }
     },
-    // Desempate: quem tem mais avaliações fica na frente se a nota for igual
-    { $sort: { notaMedia: -1, qtdAvaliacoes: -1 } },
-    { $limit: limite },
+    // Amostra pequena (< AMOSTRA_MINIMA_AVALIACOES) é ruído, não sinal — fora
+    // antes do sort, senão alguém com 1 nota 5/5 desloca quem tem amostra de
+    // verdade pro fim da lista.
+    { $match: { qtdAvaliacoes: { $gte: AMOSTRA_MINIMA_AVALIACOES } } },
   ]).toArray();
-
   if (!rows.length) return [];
-  const ids = rows.map((r) => r._id).filter(Boolean);
+
+  const pertencem = setores
+    ? await idsQuePertencemAoFiltro(db, rows.map((r) => r._id), deptIds, dateFrom, dateTo)
+    : null;
+  const filtrados = pertencem ? rows.filter((r) => pertencem.has(r._id.toString())) : rows;
+  if (!filtrados.length) return [];
+
   const usuarios = await db.collection('usuarios').find(
-    { _id: { $in: ids } },
+    { _id: { $in: filtrados.map((r) => r._id) }, nome: { $not: NOME_CONTA_TESTE_REGEX } },
     { projection: { nome: 1 } },
   ).toArray();
   const nomesPorId = new Map(usuarios.map((u) => [u._id.toString(), u.nome as string]));
 
-  return rows
-    .filter((r) => r._id)
+  return filtrados
+    .filter((r) => nomesPorId.has(r._id.toString()))
     .map((r) => ({
-      nome: nomesPorId.get(r._id.toString()) ?? 'Desconhecido',
+      nome: nomesPorId.get(r._id.toString())!,
       notaMedia: Math.round(r.notaMedia * 100) / 100,
       qtdAvaliacoes: r.qtdAvaliacoes,
-    }));
+    }))
+    // Desempate: quem tem mais avaliações fica na frente se a nota for igual
+    .sort((a, b) => b.notaMedia - a.notaMedia || b.qtdAvaliacoes - a.qtdAvaliacoes)
+    .slice(0, limite);
 }
 
 /// Top motivos de atendimento (assunto/tipificação) num período, somando os
@@ -411,15 +479,66 @@ export async function buscarAtendimentosParaAnaliseIa(dateFrom: Date, dateTo: Da
   const candidatos: (Omit<AtendimentoParaMonitoria, 'mensagens'> | null)[] = docs.map((doc) => {
     const setor = resolverSetorPorObjectId(doc.setor);
     if (!setor) return null;
+    const atendentesHumanoIds = Array.from(new Set(
+      (doc.atendentes ?? [])
+        .filter((a: any) => a.atendimentoHumano === true && a.atendente)
+        .map((a: any) => a.atendente.toString()),
+    )) as string[];
     return {
       protocolo:             doc.protocolo,
       setor,
       canal:                 typeof doc.canal === 'string' ? doc.canal : 'desconhecido',
       dataAtendimento:       doc.date ? new Date(doc.date) : new Date(),
       opasuiteAtendimentoId: doc._id.toString(),
+      atendentesHumanoIds,
     };
   });
   return candidatos.filter((a): a is Omit<AtendimentoParaMonitoria, 'mensagens'> => a !== null);
+}
+
+export interface AgenteResolvido { nome: string; equipe: string; }
+
+/// Resolve, em lote, quem é o agente humano responsável por cada candidato —
+/// só com confiança total (decisão do usuário 2026-07-16, feature de
+/// monitoria automática do CAIO): exatamente 1 atendente humano distinto no
+/// atendimento (mais de 1 = transferência, não dá pra saber quem "conta
+/// mais" pra fins de nota individual, mais seguro escalar pra humano) E o
+/// nome resolvido bate EXATO contra um AtendimentoAgenteQa com status='Ativo',
+/// excluindo placeholders agregados (AGENTES_QA_EXCLUIDOS_RANKING —
+/// "APRIMORAR"/"TESTE" não são 1 pessoa). Retorna nome/equipe DO REGISTRO DO
+/// ROSTER (não o nome cru do Mongo), pra bater 1:1 com o que
+/// darCienciaMonitoria compara depois. Quem não resolve vira `null` no mapa
+/// (não omitido) — o chamador sabe distinguir "não processado" de "sem
+/// identidade confiável".
+export async function resolverIdentidadesAgentes(
+  candidatos: { opasuiteAtendimentoId?: string; atendentesHumanoIds?: string[] }[],
+): Promise<Map<string, AgenteResolvido | null>> {
+  const resultado = new Map<string, AgenteResolvido | null>();
+  const idsUnicos = new Set<string>();
+  for (const c of candidatos) (c.atendentesHumanoIds ?? []).forEach((id) => idsUnicos.add(id));
+  if (idsUnicos.size === 0) return resultado;
+
+  const db = await getOpaSuiteDb();
+  const usuarios = await db.collection('usuarios').find(
+    { _id: { $in: Array.from(idsUnicos).map((id) => new ObjectId(id)) } },
+    { projection: { nome: 1 } },
+  ).toArray();
+  const nomePorId = new Map(usuarios.map((u) => [u._id.toString(), (u.nome as string | undefined)?.trim()]));
+
+  const roster = await prisma.atendimentoAgenteQa.findMany({
+    where: { status: 'Ativo', nome: { notIn: AGENTES_QA_EXCLUIDOS_RANKING } },
+  });
+  const porNome = new Map(roster.map((a) => [a.nome, a]));
+
+  for (const c of candidatos) {
+    if (!c.opasuiteAtendimentoId) continue;
+    const ids = c.atendentesHumanoIds ?? [];
+    if (ids.length !== 1) { resultado.set(c.opasuiteAtendimentoId, null); continue; }
+    const nomeMongo = nomePorId.get(ids[0]);
+    const agente = nomeMongo ? porNome.get(nomeMongo) : undefined;
+    resultado.set(c.opasuiteAtendimentoId, agente ? { nome: agente.nome, equipe: agente.equipe } : null);
+  }
+  return resultado;
 }
 
 // AtendimentoAgenteQa.equipe guarda o nome do time em português, digitado
@@ -456,10 +575,14 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
   hojeFim.setHours(23, 59, 59, 999);
 
   // 1. Achar agentes do roster (QA) para os setores solicitados
-  const agentes = await prisma.atendimentoAgenteQa.findMany({
-    where: { status: 'Ativo', nome: { notIn: ['APRIMORAR', 'TESTE'] } },
+  const agentesBrutos = await prisma.atendimentoAgenteQa.findMany({
+    where: { status: 'Ativo' },
     select: { nome: true, equipe: true },
   });
+  // notIn: ['APRIMORAR','TESTE'] só pega o nome exato — não pega variantes
+  // reais do OpaSuite ("Aprimorar15", "Aprimorar17"), que aparecem no roster
+  // com 100% produtivo e dias de tempo logado (confirmado 2026-07-14).
+  const agentes = agentesBrutos.filter((a) => !NOME_CONTA_TESTE_REGEX.test(a.nome));
 
   const agentesRoster = setores
     ? agentes.filter((a) => {
@@ -506,24 +629,30 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
     return []; // Ninguém no roster e nenhum atendimento hoje
   }
 
+  // queryUsuarios já exclui conta de teste do lado do roster (agentes
+  // filtrado acima), mas quem entra pela outra porta (_id de quem tocou um
+  // atendimento no período, sem estar no roster) não passa por essa checagem
+  // — por isso o $and com o nome aqui também.
   const usuarios = await db.collection('usuarios').find(
-    queryUsuarios,
+    { $and: [queryUsuarios, { nome: { $not: NOME_CONTA_TESTE_REGEX } }] },
     { projection: { nome: 1 } }
   ).toArray();
 
   const opsMap = new Map<string, OperadorAoVivo & { _userId: string }>();
+  const idsSemRoster = new Set<string>();
 
   for (const u of usuarios) {
     const uid = u._id.toString();
     const nome = (u.nome as string) || 'Desconhecido';
-    
+
     // Descobrir o setor: prioriza o roster, senão usa o setor do atendimento
     const noRoster = agentesRoster.find(a => a.nome === nome);
     let setor = noRoster ? EQUIPE_ROSTER_PARA_CODIGO[noRoster.equipe] : setorPorIdOpaSuite.get(uid);
-    
+
     // Se ainda não tiver setor, pula
     if (!setor) continue;
-    
+    if (!noRoster) idsSemRoster.add(uid);
+
     opsMap.set(uid, {
       nome,
       setor,
@@ -535,6 +664,17 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
       tmrMs: null,
       _userId: uid
     });
+  }
+
+  // Mesmo critério de buscarIndicadoresJornada: quem não está no roster
+  // curado só "pertence" a um setor filtrado se a maioria do volume de HOJE
+  // dele está ali (senão o setor mostrado é só "último atendimento
+  // processado", arbitrário — confirmado 2026-07-14).
+  if (setores && idsSemRoster.size) {
+    const pertencem = await idsQuePertencemAoFiltro(
+      db, Array.from(idsSemRoster).map((id) => new ObjectId(id)), deptIds, hojeInicio, hojeFim,
+    );
+    for (const uid of idsSemRoster) if (!pertencem.has(uid)) opsMap.delete(uid);
   }
 
   if (opsMap.size === 0) return [];
@@ -680,10 +820,11 @@ export async function buscarIndicadoresJornada(
   const db = await getOpaSuiteDb();
 
   // 1. Roster QA ativo, filtrado pelos setores pedidos
-  const agentes = await prisma.atendimentoAgenteQa.findMany({
-    where: { status: 'Ativo', nome: { notIn: ['APRIMORAR', 'TESTE'] } },
+  const agentesBrutos = await prisma.atendimentoAgenteQa.findMany({
+    where: { status: 'Ativo' },
     select: { nome: true, equipe: true },
   });
+  const agentes = agentesBrutos.filter((a) => !NOME_CONTA_TESTE_REGEX.test(a.nome));
   const agentesRoster = setores
     ? agentes.filter((a) => {
         const codigo = EQUIPE_ROSTER_PARA_CODIGO[a.equipe];
@@ -730,16 +871,39 @@ export async function buscarIndicadoresJornada(
     return [];
   }
 
-  const usuarios = await db.collection('usuarios').find(queryUsuarios, { projection: { nome: 1 } }).toArray();
+  // Mesmo motivo do buscarKpisOperadoresAoVivo: quem entra só pelo _id (não
+  // pelo roster) não passa pela exclusão de conta de teste ainda.
+  const usuarios = await db.collection('usuarios').find(
+    { $and: [queryUsuarios, { nome: { $not: NOME_CONTA_TESTE_REGEX } }] },
+    { projection: { nome: 1 } },
+  ).toArray();
 
-  const candidatos = new Map<string, { nome: string; setor: SetorAtendimento }>();
+  const candidatos = new Map<string, { nome: string; setor: SetorAtendimento; noRoster: boolean }>();
   for (const u of usuarios) {
     const uid = u._id.toString();
     const nome = (u.nome as string) || 'Desconhecido';
     const noRoster = agentesRoster.find((a) => a.nome === nome);
     const setor = noRoster ? EQUIPE_ROSTER_PARA_CODIGO[noRoster.equipe] : setorPorIdOpaSuite.get(uid);
     if (!setor) continue;
-    candidatos.set(uid, { nome, setor });
+    candidatos.set(uid, { nome, setor, noRoster: !!noRoster });
+  }
+
+  // Pra quem NÃO está no roster curado (Comercial e qualquer setor sem
+  // roster), `setor` acima vem de "setor do último atendimento processado" —
+  // arbitrário, não o setor real. Só entra na lista de um setor filtrado se a
+  // maioria do volume dele no período está ali (mesmo critério de
+  // idsQuePertencemAoFiltro, já usado nos rankings — quem está no roster é
+  // sempre confiável, a origem é curadoria humana, não precisa dessa checagem).
+  if (setores) {
+    const idsNaoRoster = Array.from(candidatos.entries())
+      .filter(([, c]) => !c.noRoster)
+      .map(([uid]) => new ObjectId(uid));
+    if (idsNaoRoster.length) {
+      const pertencem = await idsQuePertencemAoFiltro(db, idsNaoRoster, deptIds, dateFrom, dateTo);
+      for (const [uid, c] of Array.from(candidatos.entries())) {
+        if (!c.noRoster && !pertencem.has(uid)) candidatos.delete(uid);
+      }
+    }
   }
 
   if (candidatos.size === 0) return [];

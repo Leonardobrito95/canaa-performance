@@ -264,6 +264,8 @@ export interface RetencaoDetalhe {
 export interface MensagemOpaSuite {
   data:  string | null;
   texto: string;
+  remetente: 'cliente' | 'humano' | 'iza';
+  autor?: string;
 }
 
 export interface ConversaOpaSuite {
@@ -289,4 +291,7 @@ export const retencaoApiClient = {
 
   getConversaOpaSuite: (id_chamado: string): Promise<{ conversas: ConversaOpaSuite[] }> =>
     retencaoApi.get(`/auditoria/${id_chamado}/conversa`).then((r) => r.data),
+
+  reclassificar: (id_chamado: string): Promise<AuditoriaData> =>
+    retencaoApi.post(`/auditoria/${id_chamado}/reclassificar`).then((r) => r.data),
 };

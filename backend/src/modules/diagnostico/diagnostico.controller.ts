@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthPayload } from '../auth/auth.service';
 import prisma from '../../config/prisma';
-import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual, intervaloMesAtual } from './diagnostico.service';
+import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual, intervaloMesAtual, criarJanelaAtual } from './diagnostico.service';
 import {
   buscarClientePorNome,
   buscarRankingVendedores,
@@ -12,6 +12,8 @@ import { buscarPioresClientesHoje } from '../otdr/otdr.service';
 import { getResumoAuditoriaRetencao, getRetencao } from '../retencao/retencao.service';
 import { obterMetricasIxc } from '../../config/ixcSession';
 import { obterMetricasAgregadasGemini } from './diagnostico.ia';
+import { FONTES_GESTAO } from './diagnostico.gestao-fontes';
+import { gerarPdfFonte, gerarExcelFonte } from './diagnostico.relatorios';
 
 type AuthRequest = Request & { user: AuthPayload };
 
@@ -74,6 +76,33 @@ export async function criarConsultaGestao(req: Request, res: Response, next: Nex
     );
 
     res.json(resultado);
+  } catch (err) { next(err); }
+}
+
+const NOMES_FORMATO: Record<string, string> = { pdf: 'application/pdf', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+
+/// Gera o arquivo pedido pelo CAIO no chat (ver EXPORTAR: em
+/// diagnostico.service.ts::gerarRespostaGestaoIndividual) — recalcula o dado
+/// na hora do download (não fica nada em cache/disco), então "chave" e
+/// "formato" já vêm validados contra FONTES_GESTAO desde o momento em que a
+/// resposta do chat foi montada; aqui só confere de novo por segurança
+/// (a URL podia ser adulterada manualmente).
+export async function exportarRelatorioGestao(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { chave, formato } = req.query as { chave?: string; formato?: string };
+    const fonte = FONTES_GESTAO.find((f) => f.chave === chave);
+    if (!fonte) { res.status(400).json({ message: 'Fonte de relatório desconhecida.' }); return; }
+    if (formato !== 'pdf' && formato !== 'xlsx') { res.status(400).json({ message: 'Formato deve ser pdf ou xlsx.' }); return; }
+    if (formato === 'xlsx' && !fonte.paraExcel) { res.status(400).json({ message: 'Essa fonte não está disponível em Excel.' }); return; }
+
+    const dados = await fonte.buscar(criarJanelaAtual());
+    const buffer = formato === 'pdf' ? await gerarPdfFonte(fonte, dados) : await gerarExcelFonte(fonte, dados);
+    if (!buffer) { res.status(400).json({ message: 'Não foi possível gerar o arquivo para essa fonte.' }); return; }
+
+    const nomeArquivo = `${chave}-${new Date().toISOString().slice(0, 10)}.${formato}`;
+    res.setHeader('Content-Type', NOMES_FORMATO[formato]);
+    res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);
+    res.send(buffer);
   } catch (err) { next(err); }
 }
 

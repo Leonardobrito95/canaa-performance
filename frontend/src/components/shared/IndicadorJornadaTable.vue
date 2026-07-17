@@ -1,5 +1,12 @@
 <template>
   <div class="jornada-wrap">
+    <p v-if="indicadores.length" class="jornada-aviso-ligacao">
+      Atendimento por ligação (telefone) ainda tem medição limitada: TMA e TME são as fontes
+      confiáveis hoje, mas volume e eficiência aqui podem sair mais baixos que o real pra quem
+      atende muito por ligação. O setor mostrado também pode não refletir o time real do operador
+      quando ele atende fora do próprio departamento.
+    </p>
+
     <!-- KPIs agregados do período/filtro atual -->
     <div v-if="indicadores.length" class="jornada-kpis">
       <div class="jornada-kpi">
@@ -62,7 +69,7 @@
         </thead>
         <tbody>
           <tr v-for="op in indicadoresOrdenados" :key="op.nome">
-            <td class="font-bold">{{ op.nome }}</td>
+            <td class="font-bold">{{ op.nome }}<span v-if="ehTerceirizado(op.nome)" class="tag-terceirizado">Terceirizado</span></td>
             <td><span class="setor-badge-jornada" :style="{ backgroundColor: CORES_SETOR[op.setor] }">{{ NOMES_SETOR[op.setor] ?? op.setor }}</span></td>
             <td class="num font-mono">{{ op.volumeAtendimentos }}</td>
             <td class="num font-mono">{{ formatarHoras(op.tempoLogadoMs) }}</td>
@@ -88,6 +95,12 @@ import { atendimentoApiClient, NOMES_SETOR, CORES_SETOR, type IndicadorJornadaOp
 const props = defineProps<{
   indicadores: IndicadorJornadaOperador[];
 }>();
+
+// Aprimorar é empresa terceirizada que reforça o Centro de Solução (não é
+// conta de teste) — marcada visualmente pra não confundir com quadro próprio.
+function ehTerceirizado(nome: string): boolean {
+  return /^aprimorar/i.test(nome);
+}
 
 function formatarHoras(ms: number): string {
   if (ms <= 0) return '—';
@@ -229,6 +242,12 @@ const indicadoresOrdenados = computed(() => {
 <style scoped>
 .jornada-wrap { display: flex; flex-direction: column; gap: 1rem; }
 
+.jornada-aviso-ligacao {
+  font-size: .78rem; color: var(--text-2); line-height: 1.5; margin: 0;
+  padding: .6rem .9rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
 .jornada-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8rem; }
 @media (max-width: 900px) { .jornada-kpis { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 500px) { .jornada-kpis { grid-template-columns: 1fr; } }
@@ -293,6 +312,20 @@ const indicadoresOrdenados = computed(() => {
 
 .jornada-table .valor-alerta { color: var(--error); }
 .jornada-table .valor-ok { color: var(--success); }
+
+.tag-terceirizado {
+  font-size: .6rem;
+  font-weight: 700;
+  color: var(--text-3);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 .4rem;
+  margin-left: .5rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  white-space: nowrap;
+}
 
 .setor-badge-jornada {
   padding: .2rem .6rem;

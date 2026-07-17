@@ -29,6 +29,7 @@ import {
   statusGemini,
   registrarFeedback,
   resumoGestao,
+  exportarRelatorioGestao,
 } from './diagnostico.controller';
 
 const router = Router();
@@ -66,6 +67,9 @@ router.post(
   validate('body', gestaoConsultaBodySchema),
   criarConsultaGestao,
 );
+// Gera o PDF/Excel pedido pelo CAIO no chat (ver EXPORTAR: no marcador de
+// diagnostico.service.ts) — mesmo RBAC do chat de gestão.
+router.get('/gestao/exportar', authenticate, requirePerfil(...PERFIS_MODULO.diagnosticoGestao), exportarRelatorioGestao);
 
 // Regras de negócio (referência lida pelo prompt da IA) — só admin do hub
 // (mesmo acesso do módulo Administração), não qualquer gestor.

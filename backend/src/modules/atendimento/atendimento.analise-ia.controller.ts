@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { getFilaDeTriagem, getLancamentosAnaliseIa, getResumoPorSetor, getRankingMotivosIa } from './atendimento.analise-ia.service';
+import { getFilaDeTriagem, getLancamentosAnaliseIa, getResumoPorSetor, getRankingMotivosIa, marcarRevisaoManual } from './atendimento.analise-ia.service';
 
 function parseData(valor: unknown, fallback: Date): Date {
   if (typeof valor !== 'string' || !valor) return fallback;
@@ -35,5 +35,14 @@ export async function dashboardAnaliseIa(req: Request, res: Response, next: Next
       getRankingMotivosIa(filtros),
     ]);
     res.json({ porSetor, motivos });
+  } catch (err) { next(err); }
+}
+
+export async function revisaoManual(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const valor = req.body?.valor === true;
+    const atualizado = await marcarRevisaoManual(id, valor);
+    res.json(atualizado);
   } catch (err) { next(err); }
 }

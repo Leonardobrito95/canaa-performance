@@ -7,6 +7,7 @@ import {
   alertaRetencaoFimMes,
   alertaAtendimentoVolumeAlto,
   alertaAtendimentoEscalonamentoAlto,
+  alertaResumoDiarioCaio,
 } from '../modules/alertas/alertas.service';
 import { enviarRelatorioComercial } from '../modules/vendas/comissao-envio.service';
 import { gerarSnapshot } from '../modules/vendas/snapshot.service';
@@ -17,6 +18,7 @@ import { gerarDiagnosticoIndividual } from '../modules/diagnostico/diagnostico.s
 import { rodarAuditoriaRetencao } from '../modules/retencao/retencao.auditoria';
 import { rodarRollupAtendimentoMensal, mesAnterior as mesAnteriorAtendimento } from '../modules/atendimento/atendimento.rollup';
 import { rodarAnaliseIaEmMassa } from '../modules/atendimento/atendimento.analise-ia';
+import { rodarMonitoriaAutomaticaEmMassa } from '../modules/atendimento/atendimento.monitoria-automatica';
 import { rodarDeteccaoAlertasOperacionais } from '../modules/atendimento/atendimento.alertas-operacionais';
 import { rodarDeteccaoAlertasVistoria } from '../modules/vistoriaPop/vistoria.alerta-detectores';
 
@@ -51,6 +53,9 @@ const LIMITE_AUDITORIA_RETENCAO = 200; // volume diário de O.S. de retenção �
 // ~543 atendimentos de texto/dia medidos em produção (2026-07-11) — folga de
 // segurança sobre isso, não é uma amostra, é um teto de proteção contra pico.
 const LIMITE_ANALISE_IA_DIARIO = parseInt(process.env.LIMITE_ANALISE_IA_DIARIO ?? '700', 10);
+// Só conta candidatos com identidade de agente resolvida com confiança, não o
+// volume bruto do dia — bem menor que LIMITE_ANALISE_IA_DIARIO na prática.
+const LIMITE_MONITORIA_AUTOMATICA_DIARIO = parseInt(process.env.LIMITE_MONITORIA_AUTOMATICA_DIARIO ?? '300', 10);
 
 async function runSafe(nome: string, fn: () => Promise<void>): Promise<void> {
   try {
@@ -78,6 +83,7 @@ export function iniciarJobs(): void {
 
     await runSafe('Retenção Meta',       alertaRetencaoMeta);
     await runSafe('Retenção Fim de Mês', alertaRetencaoFimMes);
+    await runSafe('Resumo Diário C.A.I.O.', alertaResumoDiarioCaio);
 
     if (diaAtual === DIA_COMISSAO) {
       const mes = mesAnterior();
@@ -186,6 +192,30 @@ export function iniciarJobs(): void {
   }, { timezone: 'America/Sao_Paulo' });
 
   logger.info('[JOBS] Análise IA em Massa de Atendimento agendada — execução diária às 05:00 (Brasília).');
+
+  // ── Atendimento: monitoria de QA automática do CAIO (22 critérios) — 1h
+  // depois da análise leve, pra ler flag_triagem já definitivo do dia e não
+  // competir por rate-limit do Gemini na mesma janela. Cria a monitoria
+  // OFICIAL sozinho só pra casos de baixo risco (identidade do agente
+  // resolvida com confiança E sinais não indicam necessidade de olhar
+  // humano) — todo o resto escala pra fila de Triagem IA. Protegido por
+  // MONITORIA_AUTOMATICA_ATIVA (config/notificacoes.ts): com a flag off, só
+  // loga o que teria acontecido, sem gravar nada.
+  cron.schedule('0 6 * * *', async () => {
+    await runSafe('Monitoria Automática do CAIO (22 critérios)', async () => {
+      const hoje = new Date();
+      const inicioOntem = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 1);
+      const fimOntem = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 1, 23, 59, 59, 999);
+      const r = await rodarMonitoriaAutomaticaEmMassa(inicioOntem, fimOntem, LIMITE_MONITORIA_AUTOMATICA_DIARIO);
+      logger.info(
+        `[JOBS] Monitoria Automática do CAIO: ${r.autoSalvos} auto-salvos, ${r.escaladosAposAvaliacao} escalados após avaliação, ` +
+        `${r.identidadeNaoResolvida} escalados por identidade não resolvida, ${r.jaMonitorados} já monitorados, ${r.falhas} falhas ` +
+        `(${r.avaliadosPelaIa} avaliados pela IA pesada de ${r.totalElegiveis} elegíveis, ${r.totalCandidatos} candidatos do dia).`
+      );
+    });
+  }, { timezone: 'America/Sao_Paulo' });
+
+  logger.info('[JOBS] Monitoria Automática do CAIO agendada — execução diária às 06:00 (Brasília).');
 
   // ── Atendimento: alertas operacionais em tempo real (conversa parada, SLA
   // de fila, agente ausente, fila acumulada) — a cada 2 min. Feed interno

@@ -110,7 +110,9 @@ export interface MonitoriaQa {
   observacoes:            string | null;
   ofensa_verbal_legado:   string | null;
   criterios:              Partial<Record<CriterioQa, RespostaCriterio>>;
-  origem:                 'legado' | 'canaa_performance';
+  /// 'caio_automatico' = criada sozinha pelo copiloto, sem revisão humana (só pra casos de
+  /// baixo risco — ver atendimento.monitoria-automatica.ts no backend).
+  origem:                 'legado' | 'canaa_performance' | 'caio_automatico';
   avaliado_por:           string | null;
   /// "Ciência" do agente avaliado — null enquanto ele não confirmou ter visto a nota.
   comunicado_em:          string | null;

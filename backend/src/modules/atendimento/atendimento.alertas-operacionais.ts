@@ -164,11 +164,18 @@ export async function detectarSlaFila(): Promise<ResultadoDeteccao> {
   return { criados, resolvidos };
 }
 
-/// Agente do roster curado de QA (AtendimentoAgenteQa, status Ativo) com
-/// status 'au' (ausente) ou 'pause' há mais de LIMIAR_AGENTE_AUSENTE_MIN no
-/// user_status do OpaSuite (histórico real de status, confirmado 1,1M
-/// registros). Só olha pros agentes do roster, não todo mundo com login no
-/// OpaSuite — evita alerta de gente que não é atendente de call center.
+/// Agente do roster curado de QA (AtendimentoAgenteQa, status Ativo) OU da
+/// Aprimorar (empresa terceirizada que reforça o Centro de Solução, sem
+/// roster próprio — identificada pelo nome de usuário no OpaSuite, confirmado
+/// pelo usuário 2026-07-14) com status 'au' (ausente) ou 'pause' há mais de
+/// LIMIAR_AGENTE_AUSENTE_MIN no user_status do OpaSuite.
+///
+/// BUG CORRIGIDO 2026-07-14: a busca em user_status comparava
+/// `userId: u._id.toString()` (string) contra um campo que no Mongo é
+/// ObjectId — nunca dava match, então esse alerta nunca disparou desde que
+/// foi criado (confirmado ao vivo: 0 resultados com string, 1 com ObjectId
+/// pro mesmo usuário/status). Mesma classe de bug já corrigida em
+/// buscarKpisOperadoresAoVivo (atendimento.repository.ts).
 export async function detectarAgenteAusente(): Promise<ResultadoDeteccao> {
   const db = await getOpaSuiteDb();
   const limite = new Date(Date.now() - LIMIAR_AGENTE_AUSENTE_MIN * 60000);
@@ -177,29 +184,38 @@ export async function detectarAgenteAusente(): Promise<ResultadoDeteccao> {
     where: { status: 'Ativo', nome: { notIn: ['APRIMORAR', 'TESTE'] } },
     select: { nome: true, equipe: true },
   });
-  if (!agentes.length) return { criados: 0, resolvidos: 0 };
 
-  const usuarios = await db.collection('usuarios').find(
-    { nome: { $in: agentes.map((a) => a.nome) } },
+  const usuariosRoster = agentes.length
+    ? await db.collection('usuarios').find(
+        { nome: { $in: agentes.map((a) => a.nome) } },
+        { projection: { nome: 1 } },
+      ).toArray()
+    : [];
+  const usuariosAprimorar = await db.collection('usuarios').find(
+    { nome: { $regex: /^aprimorar/i } },
     { projection: { nome: 1 } },
   ).toArray();
+
+  const candidatos = [
+    ...usuariosRoster.map((u) => ({ id: u._id, nome: u.nome as string, setor: agentes.find((a) => a.nome === u.nome)?.equipe ?? '—' })),
+    ...usuariosAprimorar.map((u) => ({ id: u._id, nome: u.nome as string, setor: 'Aprimorar (terceirizado)' })),
+  ];
+  if (!candidatos.length) return { criados: 0, resolvidos: 0 };
 
   const nomesAtivos: string[] = [];
   let criados = 0;
 
-  for (const u of usuarios) {
+  for (const c of candidatos) {
     const ultimoStatus = await db.collection('user_status')
-      .find({ userId: u._id.toString() }).sort({ startAt: -1 }).limit(1).toArray();
+      .find({ userId: c.id }).sort({ startAt: -1 }).limit(1).toArray();
     if (!ultimoStatus.length) continue;
     const [status] = ultimoStatus;
     if (!['au', 'pause'].includes(status.status) || !status.startAt || new Date(status.startAt) > limite) continue;
 
-    const agente = agentes.find((a) => a.nome === u.nome);
-    const setor = agente?.equipe ?? '—';
-    nomesAtivos.push(u.nome as string);
+    nomesAtivos.push(c.nome);
     await upsertAlerta({
-      tipo: 'AGENTE_AUSENTE', severidade: 'AVISO', setor, agenteNome: u.nome as string,
-      titulo: `${u.nome} ausente/pausado há muito tempo`,
+      tipo: 'AGENTE_AUSENTE', severidade: 'AVISO', setor: c.setor, agenteNome: c.nome,
+      titulo: `${c.nome} ausente/pausado há muito tempo`,
       descricao: `Status "${status.status === 'au' ? 'ausente' : 'pausa'}" desde ${new Date(status.startAt).toLocaleString('pt-BR')}, mais de ${LIMIAR_AGENTE_AUSENTE_MIN} min.`,
     });
     criados++;

@@ -2,7 +2,8 @@ import prisma from '../../config/prisma';
 import {
   CRITERIOS_QA, PENALIZACOES_QA, CRITERIO_ERRO_CRITICO, classificarPontuacaoMedia,
   RespostaCriterio, CriterioQa, ResultadoPontuacaoQa, MonitoriaQaInput, FiltrosMonitoriaQa,
-  CriterioNaoConformeResumo, MotivoQaResumo, AgenteQaRanking,
+  CriterioNaoConformeResumo, MotivoQaResumo, AgenteQaRanking, OrigemMonitoriaQa,
+  ORIGENS_MONITORIA_OFICIAL, AGENTES_QA_EXCLUIDOS_RANKING,
 } from './atendimento.qa.types';
 
 /// Calcula a pontuação de uma monitoria a partir das respostas dos 22
@@ -43,13 +44,16 @@ const httpError = (msg: string, status: number) =>
 /// Réplica do `verificar_protocolo_duplicado` do legado — só que agora é
 /// checagem em código, não constraint de banco (protocolo não é mais unique,
 /// ver comentário do model no schema.prisma: existem 2 colisões reais nos
-/// dados históricos migrados). Só verifica contra registros de origem
-/// 'canaa_performance' — não bloqueia por causa de dado antigo migrado.
+/// dados históricos migrados). Verifica contra qualquer origem OFICIAL
+/// vigente (humana ou automática do CAIO) — não bloqueia por causa de dado
+/// antigo migrado ('legado'). Cobre duplicidade nos dois sentidos: CAIO não
+/// sobrescreve uma monitoria que um humano já fez, humano não duplica uma
+/// que o CAIO já criou sozinho.
 export async function protocoloJaMonitorado(protocolo: string, excludeId?: string): Promise<boolean> {
   const existente = await prisma.atendimentoMonitoriaQa.findFirst({
     where: {
       protocolo,
-      origem: 'canaa_performance',
+      origem: { in: ORIGENS_MONITORIA_OFICIAL },
       ...(excludeId ? { id: { not: excludeId } } : {}),
     },
     select: { id: true },
@@ -75,12 +79,16 @@ function paraDadosPersistencia(input: MonitoriaQaInput, resultado: ResultadoPont
   };
 }
 
-export async function criarMonitoriaQa(input: MonitoriaQaInput, solicitante: SolicitanteQa) {
+export async function criarMonitoriaQa(
+  input: MonitoriaQaInput,
+  solicitante: SolicitanteQa,
+  origem: OrigemMonitoriaQa = 'canaa_performance',
+) {
   const resultado = calcularPontuacaoQa(input.criterios);
   return prisma.atendimentoMonitoriaQa.create({
     data: {
       ...paraDadosPersistencia(input, resultado),
-      origem:        'canaa_performance',
+      origem,
       avaliado_por:  solicitante.ixcUserId,
     },
   });
@@ -184,7 +192,7 @@ export async function getRankingAgentesPorQualidade(filtros: FiltrosMonitoriaQa,
   const registros = await prisma.atendimentoMonitoriaQa.findMany({
     where: {
       ...whereDeFiltros(filtros),
-      nome_agente: { notIn: ['APRIMORAR', 'TESTE'] },
+      nome_agente: { notIn: AGENTES_QA_EXCLUIDOS_RANKING },
       pontuacao: { not: null },
     },
     select: { nome_agente: true, equipe: true, pontuacao: true },

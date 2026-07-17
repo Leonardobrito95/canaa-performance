@@ -181,8 +181,20 @@ export const buscarAgregados = (dimensao?: string) =>
 export const buscarResumoGestao = () =>
   api.get<ResumoGestao>('/gestao/resumo').then((r) => r.data);
 
+export interface ArquivoGeradoGestao {
+  chave:   string;
+  formato: 'pdf' | 'xlsx';
+  nome:    string;
+}
+
 export const consultarGestao = (pergunta: string, historico?: HistoricoTurnoConversa[]) =>
-  api.post<{ resposta: string; consultaId: string }>('/gestao/consulta', { pergunta, historico }).then((r) => r.data);
+  api.post<{ resposta: string; consultaId: string; arquivo: ArquivoGeradoGestao | null }>('/gestao/consulta', { pergunta, historico }).then((r) => r.data);
+
+/// Rota exige o header Authorization (autenticada) — por isso busca como
+/// blob via axios em vez de um <a href> direto, mesmo padrão de
+/// posativacaoApi.ts::exportarClientesCsv.
+export const exportarRelatorioGestao = (chave: string, formato: 'pdf' | 'xlsx') =>
+  api.get('/gestao/exportar', { params: { chave, formato }, responseType: 'blob' }).then((r) => r.data as Blob);
 
 export const enviarFeedback = (consultaId: string, feedback: TipoFeedback, comentario?: string) =>
   api.post<{ success: boolean }>(`/consulta/${consultaId}/feedback`, { feedback, comentario }).then((r) => r.data);

@@ -44,6 +44,10 @@ export interface AtendimentoAnaliseIa {
   justificativa:            string | null;
   confianca_insuficiente:   boolean;
   flag_triagem:             boolean;
+  /// Marcado pelo QA na fila pra pedir avaliação manual, sem sugestão do
+  /// CAIO (ver marcarRevisaoManual no backend) — persistido, não é estado
+  /// de sessão local.
+  revisao_manual:           boolean;
   modelo_usado:             string | null;
   processado_em:            string;
 }
@@ -85,4 +89,7 @@ export const atendimentoAnaliseIaApiClient = {
 
   getDashboard: (params: FiltrosAnaliseIa): Promise<{ porSetor: SentimentoPorSetor[]; motivos: MotivoIaResumo[] }> =>
     api.get('/dashboard', { params: serializar(params) }).then((r) => r.data),
+
+  marcarRevisaoManual: (id: string, valor: boolean): Promise<AtendimentoAnaliseIa> =>
+    api.post(`/${id}/revisao-manual`, { valor }).then((r) => r.data),
 };
