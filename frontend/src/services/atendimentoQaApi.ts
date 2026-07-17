@@ -188,6 +188,9 @@ export interface FiltrosQa {
   equipe?:    string;
   dateFrom?:  string;
   dateTo?:    string;
+  /// Filtra por quem avaliou — usado pra separar a lista de "Monitorados
+  /// pelo Agente" (origem='caio_automatico') das demais.
+  origem?:    'legado' | 'canaa_performance' | 'caio_automatico';
 }
 
 // ── Chamadas ─────────────────────────────────────────────────────

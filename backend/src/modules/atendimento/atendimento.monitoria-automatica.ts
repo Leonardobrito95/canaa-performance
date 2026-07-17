@@ -87,17 +87,22 @@ export async function rodarMonitoriaAutomaticaEmMassa(
     r.identidadeNaoResolvida++;
     await prisma.atendimentoAnaliseIa.update({
       where: { opasuite_atendimento_id: c.opasuiteAtendimentoId! },
-      data:  { flag_triagem: true },
+      data:  { flag_triagem: true, motivo_triagem: 'identidade_nao_resolvida' },
     }).catch((err: any) => logger.error('[MONITORIA-AUTO] falha ao escalar por identidade não resolvida', { protocolo: c.protocolo, error: err.message }));
     onItem?.(c.protocolo, 'escalado: identidade não resolvida');
   }
 
-  // 4. Só quem tem identidade resolvida disputa o teto diário da IA pesada —
-  //    mais antigo primeiro, determinístico.
-  const paraAvaliar = elegiveis
-    .filter((c) => identidades.get(c.opasuiteAtendimentoId!))
-    .sort((a, b) => a.dataAtendimento.getTime() - b.dataAtendimento.getTime())
-    .slice(0, limite);
+  // 4. Só quem tem identidade resolvida disputa o teto diário da IA pesada.
+  //    Amostragem ALEATÓRIA (Fisher-Yates) sobre quem sobrou, não os N mais
+  //    antigos — pedido explícito do usuário 2026-07-17 ("de 500 atendimentos,
+  //    pegar 150 de forma sortida"), já que rodar em TODOS custaria caro
+  //    demais em chamadas de Gemini.
+  const elegiveisParaSorteio = elegiveis.filter((c) => identidades.get(c.opasuiteAtendimentoId!));
+  for (let i = elegiveisParaSorteio.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [elegiveisParaSorteio[i], elegiveisParaSorteio[j]] = [elegiveisParaSorteio[j], elegiveisParaSorteio[i]];
+  }
+  const paraAvaliar = elegiveisParaSorteio.slice(0, limite);
 
   for (const c of paraAvaliar) {
     const agente = identidades.get(c.opasuiteAtendimentoId!)!;
@@ -115,7 +120,15 @@ export async function rodarMonitoriaAutomaticaEmMassa(
       r.avaliadosPelaIa++;
 
       if (sugestao.aviso) {
-        await prisma.atendimentoAnaliseIa.update({ where: { opasuite_atendimento_id: c.opasuiteAtendimentoId! }, data: { flag_triagem: true } });
+        await prisma.atendimentoAnaliseIa.update({
+          where: { opasuite_atendimento_id: c.opasuiteAtendimentoId! },
+          data: {
+            flag_triagem: true,
+            motivo_triagem: 'conversa_curta',
+            qa_ia_observacoes: sugestao.observacoes,
+            qa_ia_criterios_sugeridos: sugestao.criterios as unknown as object,
+          },
+        });
         r.escaladosAposAvaliacao++;
         onItem?.(c.protocolo, `escalado: ${sugestao.aviso}`);
         continue;
@@ -127,7 +140,16 @@ export async function rodarMonitoriaAutomaticaEmMassa(
       const pont = calcularPontuacaoQa(criterios);
 
       if (deveEscalarAposAvaliacao(pont)) {
-        await prisma.atendimentoAnaliseIa.update({ where: { opasuite_atendimento_id: c.opasuiteAtendimentoId! }, data: { flag_triagem: true } });
+        await prisma.atendimentoAnaliseIa.update({
+          where: { opasuite_atendimento_id: c.opasuiteAtendimentoId! },
+          data: {
+            flag_triagem: true,
+            motivo_triagem: pont.erroCritico ? 'erro_critico' : 'nota_baixa',
+            qa_ia_pontuacao_sugerida: pont.pontuacao,
+            qa_ia_observacoes: sugestao.observacoes,
+            qa_ia_criterios_sugeridos: sugestao.criterios as unknown as object,
+          },
+        });
         r.escaladosAposAvaliacao++;
         onItem?.(c.protocolo, `escalado: pontuação ${pont.pontuacao}${pont.erroCritico ? ' (erro crítico)' : ''}`);
         continue;

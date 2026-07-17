@@ -412,10 +412,10 @@ model AtendimentoKpiMensal {
 
 /// Monitoria de qualidade do atendimento feita por QA HUMANO — incorporada do
 /// sistema legado (Flask + SQLite, "Monitoria_Server.py") que rodava numa VM
-/// separada. É a fonte de verdade de qualidade (não a monitoria por IA, que
-/// foi aposentada) — o C.A.I.O. atua como copiloto sugerindo preenchimento,
-/// nunca decidindo sozinho. `criterios` guarda os 22 campos Conforme/Não
-/// Conforme/Não se aplica como JSON (em vez de 22 colunas) — ver
+/// separada. Desde 2026-07-17 o C.A.I.O. também grava aqui sozinho para os
+/// casos de baixo risco (origem='caio_automatico', ver
+/// atendimento.monitoria-automatica.ts) — deixou de ser só copiloto.
+/// `criterios` guarda os 22 campos Conforme/Não Conforme/Não se aplica como JSON (em vez de 22 colunas) — ver
 /// `atendimento.qa.types.ts` pras chaves e o algoritmo de pontuação.
 model AtendimentoMonitoriaQa {
   id                  String    @id @default(uuid())
@@ -550,6 +550,22 @@ model AtendimentoAnaliseIa {
   /// PERCENTIL sobre a distribuição real (calibrado na fase piloto), não um
   /// valor fixo cravado no código.
   flag_triagem            Boolean   @default(false)
+  /// Por que foi pra triagem — antes só existia o boolean acima, sem dizer o
+  /// motivo. 'analise_leve' = sinalizado pela análise leve original (baixa
+  /// adesão/sentimento ruim), comportamento default/pré-existente. Os demais
+  /// só existem quando a Monitoria Automática pesada (CAIO, ver
+  /// atendimento.monitoria-automatica.ts) escalou: 'identidade_nao_resolvida'
+  /// | 'conversa_curta' | 'erro_critico' | 'nota_baixa'.
+  motivo_triagem           String?   @default("analise_leve")
+  /// Preenchidos só quando a Monitoria Automática pesada avaliou e escalou —
+  /// é o raciocínio completo do Gemini (os 22 critérios sugeridos com
+  /// justificativa individual + observação geral) que antes era descartado no
+  /// mesmo request. Ver SugestaoMonitoriaQa em atendimento.qa.types.ts. É
+  /// exatamente isso que vira "descrição do agente" e "sugestão do que
+  /// avaliar" na fila de Triagem IA do frontend.
+  qa_ia_pontuacao_sugerida Float?
+  qa_ia_criterios_sugeridos Json?
+  qa_ia_observacoes        String?
   /// true quando o QA marcou esse item na fila de Triagem IA como "quero
   /// avaliar sem viés da sugestão da IA" — quando true, abrirAvaliacaoDeTriagem
   /// (frontend) NÃO chama o copiloto do CAIO, abre o formulário em branco

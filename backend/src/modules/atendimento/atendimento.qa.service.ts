@@ -110,6 +110,7 @@ function whereDeFiltros(filtros: FiltrosMonitoriaQa) {
   return {
     nome_agente:      filtros.agente || undefined,
     equipe:           filtros.equipe || undefined,
+    origem:           filtros.origem || undefined,
     data_atendimento: (filtros.dateFrom || filtros.dateTo) ? {
       gte: filtros.dateFrom,
       lte: filtros.dateTo,

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { getFilaDeTriagem, getLancamentosAnaliseIa, getResumoPorSetor, getRankingMotivosIa, marcarRevisaoManual } from './atendimento.analise-ia.service';
+import { getFilaDeTriagem, getResumoPorSetor, getRankingMotivosIa, marcarRevisaoManual } from './atendimento.analise-ia.service';
 
 function parseData(valor: unknown, fallback: Date): Date {
   if (typeof valor !== 'string' || !valor) return fallback;
@@ -19,10 +19,7 @@ function parseFiltros(req: Request) {
 
 export async function triagemAnaliseIa(req: Request, res: Response, next: NextFunction) {
   try {
-    const todos = req.query.todos === 'true';
-    const itens = todos
-      ? await getLancamentosAnaliseIa(parseFiltros(req))
-      : await getFilaDeTriagem(parseFiltros(req));
+    const itens = await getFilaDeTriagem(parseFiltros(req));
     res.json({ itens });
   } catch (err) { next(err); }
 }

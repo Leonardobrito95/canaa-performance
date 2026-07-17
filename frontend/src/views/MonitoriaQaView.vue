@@ -144,7 +144,13 @@
 
     <!-- Lançamentos -->
     <template v-if="aba === 'lancamentos'">
-    <h2 class="mqa-secao-titulo">Lançamentos</h2>
+    <div class="mqa-secao-header">
+      <h2 class="mqa-secao-titulo">Lançamentos</h2>
+      <div class="mqa-tabs mqa-subtoggle">
+        <button :class="['mqa-tab', { active: !filtroOrigemAgente }]" @click="alternarFiltroOrigemAgente(false)">Todos</button>
+        <button :class="['mqa-tab', { active: filtroOrigemAgente }]" @click="alternarFiltroOrigemAgente(true)">Monitorados pelo Agente</button>
+      </div>
+    </div>
     <div v-if="loadingLista" class="state-msg">
       <span class="loading-dots"><span/><span/><span/></span> Carregando…
     </div>
@@ -209,16 +215,10 @@
     <!-- Triagem IA -->
     <template v-if="aba === 'triagem'">
     <p class="mqa-aviso mqa-aviso-triagem">
-      {{ verTodosLancamentos
-        ? 'Todos os atendimentos de texto já processados pela camada analítica de IA no período — não é avaliação de QA confirmada.'
-        : 'Fila priorizada pela camada analítica de IA (pior sinal primeiro) — não é avaliação de QA confirmada, é só uma sugestão de onde olhar.' }}
+      Fila priorizada pela camada analítica de IA (pior sinal primeiro) — não é avaliação de QA confirmada, é só uma sugestão de onde olhar.
       Clique em "Avaliar" pra abrir a monitoria já com os 22 critérios sugeridos pelo CAIO — revise
       antes de salvar. Exceção: ligações por telefone e itens marcados como "Manual" abrem em branco.
     </p>
-    <div class="mqa-tabs mqa-subtoggle">
-      <button :class="['mqa-tab', { active: !verTodosLancamentos }]" @click="alternarVisaoTriagem(false)">Fila de Triagem</button>
-      <button :class="['mqa-tab', { active: verTodosLancamentos }]" @click="alternarVisaoTriagem(true)">Todos os Lançamentos</button>
-    </div>
     <div v-if="loadingTriagem" class="state-msg">
       <span class="loading-dots"><span/><span/><span/></span> Carregando…
     </div>
@@ -226,51 +226,73 @@
       <table>
         <thead>
           <tr>
+            <th></th>
             <th>Protocolo</th>
             <th>Setor</th>
             <th>Data</th>
             <th>Motivo (IA)</th>
+            <th>Origem da Triagem</th>
             <th>Adesão ao Script</th>
             <th>Sentimento</th>
-            <th v-if="verTodosLancamentos">Status</th>
             <th>Sugestão do CAIO</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="triagem.length === 0">
-            <td :colspan="verTodosLancamentos ? 9 : 8" class="state-msg">
-              {{ verTodosLancamentos ? 'Nenhum atendimento processado nesse período ainda.' : 'Nenhum caso na fila de triagem nesse período — sinal bom, ou o job noturno ainda não rodou.' }}
+            <td colspan="10" class="state-msg">
+              Nenhum caso na fila de triagem nesse período — sinal bom, ou o job noturno ainda não rodou.
             </td>
           </tr>
-          <tr v-for="t in triagem" :key="t.id">
+          <template v-for="t in triagem" :key="t.id">
+          <tr :class="{ 'row-clicavel': !!t.qa_ia_observacoes }" @click="t.qa_ia_observacoes && toggleExpandirTriagem(t.id)">
+            <td class="td-expandir">
+              <svg v-if="t.qa_ia_observacoes" :class="['chevron', { open: expandidoTriagem === t.id }]" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </td>
             <td class="td-mono">{{ t.protocolo }}</td>
             <td>{{ nomeSetorLocal(t.setor) }}</td>
             <td class="td-date">{{ fmtDate(t.data_atendimento) }}</td>
             <td>{{ t.motivo_classificado || '—' }}</td>
+            <td>
+              <span :class="['mqa-badge', badgeClasseMotivoTriagem(t.motivo_triagem)]">{{ labelMotivoTriagem(t.motivo_triagem) }}</span>
+              <span v-if="t.qa_ia_pontuacao_sugerida !== null" class="mqa-nota-sugerida">{{ t.qa_ia_pontuacao_sugerida }}/10</span>
+            </td>
             <td class="td-mono">{{ t.adesao_script !== null ? `${t.adesao_script}/10` : '—' }}</td>
             <td>
               <span v-if="t.sentimento_categoria" :class="['mqa-badge', badgeClasseSentimento(t.sentimento_categoria)]">{{ t.sentimento_categoria.replace('_', ' ') }}</span>
               <span v-else class="mqa-badge mqa-badge-neutro">—</span>
             </td>
-            <td v-if="verTodosLancamentos">
-              <span v-if="t.flag_triagem" class="mqa-badge mqa-badge-naoconforme">Triagem</span>
-              <span v-else-if="t.confianca_insuficiente" class="mqa-badge mqa-badge-neutro">Sem confiança</span>
-              <span v-else class="mqa-badge mqa-badge-otimo">OK</span>
-            </td>
             <td class="td-revisao-manual">
               <span v-if="t.canal === 'pabx'" class="mqa-badge mqa-badge-neutro" title="Ligação por telefone — sem transcrição, o CAIO não tem base pra sugerir aqui de qualquer forma">📞 Ligação</span>
-              <label v-else class="revisao-manual-toggle" title="Avaliar esse item sem sugestão do CAIO">
+              <label v-else class="revisao-manual-toggle" title="Avaliar esse item sem sugestão do CAIO" @click.stop>
                 <input type="checkbox" :checked="t.revisao_manual" :disabled="alternandoRevisaoId === t.id" @change="alternarRevisaoManual(t)" />
                 Manual
               </label>
             </td>
             <td class="td-acoes">
-              <button class="btn-editar" :disabled="buscandoSugestaoId === t.id" @click="abrirAvaliacaoDeTriagem(t)">
+              <button class="btn-editar" :disabled="buscandoSugestaoId === t.id" @click.stop="abrirAvaliacaoDeTriagem(t)">
                 {{ buscandoSugestaoId === t.id ? 'Buscando…' : 'Avaliar' }}
               </button>
             </td>
           </tr>
+          <tr v-if="expandidoTriagem === t.id && t.qa_ia_observacoes" class="row-expandida">
+            <td colspan="10">
+              <div class="expandido-conteudo">
+                <p class="mqa-observacoes"><strong>Descrição do agente:</strong> {{ t.qa_ia_observacoes }}</p>
+                <template v-if="t.qa_ia_criterios_sugeridos?.some((c) => c.sugestao === 'Não Conforme')">
+                  <p class="mqa-observacoes"><strong>O que avaliar:</strong></p>
+                  <ul class="mqa-lista-criterios-triagem">
+                    <li v-for="c in t.qa_ia_criterios_sugeridos.filter((c) => c.sugestao === 'Não Conforme')" :key="c.criterio">
+                      <strong>{{ c.criterio }}:</strong> {{ c.justificativa }}
+                    </li>
+                  </ul>
+                </template>
+              </div>
+            </td>
+          </tr>
+          </template>
         </tbody>
       </table>
     </div>
@@ -464,6 +486,24 @@ function badgeClasseSentimento(categoria: SentimentoCategoria): string {
   return 'mqa-badge-neutro';
 }
 
+/// Por que o item foi pra triagem — 'analise_leve' é o sinal original (baixa
+/// adesão/sentimento ruim); os outros 4 só existem quando a Monitoria
+/// Automática pesada do Agente CAIO já avaliou os 22 critérios e escalou.
+const LABELS_MOTIVO_TRIAGEM: Record<string, string> = {
+  analise_leve:              'Sinal da análise leve',
+  identidade_nao_resolvida:  'Agente CAIO: identidade não resolvida',
+  conversa_curta:            'Agente CAIO: conversa curta/ambígua',
+  erro_critico:              'Agente CAIO: erro crítico',
+  nota_baixa:                'Agente CAIO: nota abaixo de 7,0',
+};
+function labelMotivoTriagem(motivo: string | null): string {
+  return LABELS_MOTIVO_TRIAGEM[motivo || 'analise_leve'] ?? 'Sinal da análise leve';
+}
+function badgeClasseMotivoTriagem(motivo: string | null): string {
+  if (motivo === 'erro_critico' || motivo === 'nota_baixa') return 'mqa-badge-naoconforme';
+  return 'mqa-badge-neutro';
+}
+
 // ── Filtros e período ──────────────────────────────────────────
 const aba         = ref<Aba>('dashboard');
 const period      = ref<Period>('last_3months');
@@ -482,6 +522,9 @@ const monitorias       = ref<MonitoriaQa[]>([]);
 const loadingDashboard = ref(false);
 const loadingLista     = ref(false);
 const expandido         = ref<string | null>(null);
+/// true = só o que o Agente CAIO monitorou e confirmou sozinho
+/// (origem='caio_automatico'); false = todos (legado + humano + agente).
+const filtroOrigemAgente = ref(false);
 
 // ── Camada analítica de IA em massa (sinal de triagem) ─────────
 const sentimentoPorSetor = ref<SentimentoPorSetor[]>([]);
@@ -490,10 +533,10 @@ const kpisAtendimento      = ref<KpisAtendimento[]>([]);
 const triagem              = ref<AtendimentoAnaliseIa[]>([]);
 const loadingAnaliseIa    = ref(false);
 const loadingTriagem      = ref(false);
-/// false = só a fila de triagem (flagados, pior sinal primeiro); true =
-/// todos os lançamentos do período — onde gestão/QA audita o que a IA
-/// processou de forma geral, não só o que foi sinalizado.
-const verTodosLancamentos = ref(false);
+const expandidoTriagem    = ref<string | null>(null);
+function toggleExpandirTriagem(id: string) {
+  expandidoTriagem.value = expandidoTriagem.value === id ? null : id;
+}
 
 function toggleExpandir(id: string) {
   expandido.value = expandido.value === id ? null : id;
@@ -531,11 +574,19 @@ async function carregarLista() {
   loadingLista.value = true;
   expandido.value = null;
   try {
-    const r = await atendimentoQaApiClient.listar(filtrosAtuais());
+    const r = await atendimentoQaApiClient.listar({
+      ...filtrosAtuais(),
+      origem: filtroOrigemAgente.value ? 'caio_automatico' : undefined,
+    });
     monitorias.value = r.monitorias;
   } finally {
     loadingLista.value = false;
   }
+}
+
+function alternarFiltroOrigemAgente(soAgente: boolean) {
+  filtroOrigemAgente.value = soAgente;
+  carregarLista();
 }
 
 async function carregarAnaliseIaDashboard() {
@@ -557,16 +608,11 @@ async function carregarAnaliseIaDashboard() {
 async function carregarTriagem() {
   loadingTriagem.value = true;
   try {
-    const r = await atendimentoAnaliseIaApiClient.getTriagem({ ...filtrosAnaliseIa(), todos: verTodosLancamentos.value });
+    const r = await atendimentoAnaliseIaApiClient.getTriagem(filtrosAnaliseIa());
     triagem.value = r.itens;
   } finally {
     loadingTriagem.value = false;
   }
-}
-
-function alternarVisaoTriagem(todos: boolean) {
-  verTodosLancamentos.value = todos;
-  carregarTriagem();
 }
 
 function carregarTudo() {
@@ -753,6 +799,22 @@ async function abrirAvaliacaoDeTriagem(item: AtendimentoAnaliseIa) {
     return;
   }
 
+  // Se o Agente CAIO já avaliou pesado esse item antes de escalar (Monitoria
+  // Automática, ver atendimento.monitoria-automatica.ts), o raciocínio já
+  // está persistido — reaproveita em vez de chamar o Gemini de novo (mesmo
+  // atendimento pagaria a chamada 2x à toa).
+  if (item.qa_ia_criterios_sugeridos?.length) {
+    for (const c of item.qa_ia_criterios_sugeridos) {
+      form.criterios[c.criterio as CriterioQa] = c.sugestao as RespostaCriterio;
+      justificativasCopiloto.value[c.criterio as CriterioQa] = c.justificativa;
+    }
+    form.observacoes = item.qa_ia_observacoes || '';
+    modal.open = true;
+    modal.isEdit = false;
+    modal.id = '';
+    return;
+  }
+
   buscandoSugestaoId.value = item.id;
   try {
     const { sugestao } = await atendimentoQaApiClient.sugestao(item.protocolo);
@@ -882,6 +944,9 @@ async function salvar() {
 .sort-icon { font-size: .6rem; color: var(--accent); display: inline-block; width: .8rem; }
 
 .mqa-secao-titulo { font-family: var(--font-mono); font-size: .85rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text); margin: 1.75rem 0 .8rem; }
+.mqa-secao-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; }
+.mqa-secao-header .mqa-secao-titulo { margin: 1.75rem 0 0; }
+.mqa-secao-header .mqa-subtoggle { margin-bottom: 0; }
 
 /* Ranking de qualidade custom (não usa ChartRanking — nota não é Qtd/Valor) */
 .chart-ranking-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .7rem; }
@@ -930,6 +995,9 @@ async function salvar() {
 .mqa-badge-bom { background: var(--accent-dim); color: var(--accent); }
 .mqa-badge-naoconforme { background: var(--error-bg); color: var(--error); }
 .mqa-badge-neutro { background: var(--surface-3); color: var(--text-2); }
+.mqa-nota-sugerida { margin-left: .4rem; font-family: var(--font-mono); font-size: .74rem; color: var(--text-3); }
+.mqa-lista-criterios-triagem { margin: .4rem 0 0; padding-left: 1.1rem; font-size: .82rem; color: var(--text-2); line-height: 1.6; }
+.mqa-lista-criterios-triagem strong { color: var(--text); }
 
 .loading-dots { display: inline-flex; gap: 3px; vertical-align: middle; }
 .loading-dots span { width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); animation: dot-pulse 1.1s ease-in-out infinite; }

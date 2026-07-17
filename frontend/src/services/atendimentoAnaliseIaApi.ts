@@ -44,6 +44,17 @@ export interface AtendimentoAnaliseIa {
   justificativa:            string | null;
   confianca_insuficiente:   boolean;
   flag_triagem:             boolean;
+  /// Por que foi pra triagem. 'analise_leve' = sinal original (baixa adesão/
+  /// sentimento ruim). Os demais só existem quando a Monitoria Automática
+  /// pesada do CAIO escalou depois de já ter avaliado os 22 critérios.
+  motivo_triagem:           'analise_leve' | 'identidade_nao_resolvida' | 'conversa_curta' | 'erro_critico' | 'nota_baixa' | null;
+  /// Raciocínio completo do CAIO quando a Monitoria Automática pesada
+  /// avaliou e escalou — os 22 critérios sugeridos com justificativa
+  /// individual (mesmo formato de SugestaoCriterioQa em atendimentoQaApi.ts)
+  /// e a observação geral. null quando a triagem veio só da análise leve.
+  qa_ia_pontuacao_sugerida: number | null;
+  qa_ia_criterios_sugeridos: { criterio: string; sugestao: string; justificativa: string }[] | null;
+  qa_ia_observacoes:        string | null;
   /// Marcado pelo QA na fila pra pedir avaliação manual, sem sugestão do
   /// CAIO (ver marcarRevisaoManual no backend) — persistido, não é estado
   /// de sessão local.
@@ -72,9 +83,6 @@ export interface FiltrosAnaliseIa {
   setores?:   string[];
   dateFrom?:  string;
   dateTo?:    string;
-  /// true = todos os lançamentos do período; omitido/false = só a fila de
-  /// triagem (flag_triagem=true, ordenada por pior sinal).
-  todos?:     boolean;
 }
 
 // ── Chamadas ─────────────────────────────────────────────────────

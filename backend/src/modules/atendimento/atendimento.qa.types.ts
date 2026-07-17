@@ -114,6 +114,9 @@ export interface FiltrosMonitoriaQa {
   equipe?:    string;
   dateFrom?:  Date;
   dateTo?:    Date;
+  /// Filtra por quem fez a avaliação — usado pra tela "Monitorados pelo
+  /// Agente" (origem='caio_automatico') sem misturar com humano/legado.
+  origem?:    OrigemMonitoriaQa;
 }
 
 export interface CriterioNaoConformeResumo {

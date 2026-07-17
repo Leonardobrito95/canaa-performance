@@ -40,17 +40,6 @@ export async function getFilaDeTriagem(filtros: FiltrosAnaliseIa, limite = 50) {
   });
 }
 
-/// Todos os lançamentos da IA no período (flagados ou não) — pra gestão/QA
-/// conseguir auditar o que a IA processou de forma geral, não só a fila
-/// filtrada. Ordenado por mais recente primeiro (aqui não faz sentido
-/// ordenar por "pior sinal" já que não é uma fila de ação, é uma consulta).
-export async function getLancamentosAnaliseIa(filtros: FiltrosAnaliseIa, limite = 200) {
-  return prisma.atendimentoAnaliseIa.findMany({
-    where: whereDeFiltros(filtros),
-    orderBy: { data_atendimento: 'desc' },
-    take: limite,
-  });
-}
 
 export interface SentimentoPorSetor {
   setor:            string;

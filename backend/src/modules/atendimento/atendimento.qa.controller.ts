@@ -8,7 +8,7 @@ import {
 } from './atendimento.qa.service';
 import { sugerirPreenchimentoQa } from './atendimento.qa.ia';
 import { buscarAtendimentoPorProtocolo } from './atendimento.repository';
-import { MonitoriaQaInput } from './atendimento.qa.types';
+import { MonitoriaQaInput, FiltrosMonitoriaQa } from './atendimento.qa.types';
 
 type AuthRequest = Request & { user: AuthPayload };
 
@@ -20,9 +20,10 @@ function parseData(valor: unknown, fallback: Date): Date {
 
 export async function listarMonitoriaQa(req: Request, res: Response, next: NextFunction) {
   try {
-    const { agente, equipe, dateFrom, dateTo } = req.query as Record<string, string>;
+    const { agente, equipe, dateFrom, dateTo, origem } = req.query as Record<string, string>;
     const monitorias = await listarMonitoriasQa({
       agente, equipe,
+      origem: origem as FiltrosMonitoriaQa['origem'],
       dateFrom: dateFrom ? parseData(dateFrom, new Date(0)) : undefined,
       dateTo:   dateTo ? parseData(dateTo, new Date()) : undefined,
     });
