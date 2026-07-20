@@ -23,6 +23,14 @@ const LIMIAR_FILA_BACKLOG        = parseInt(process.env.LIMIAR_FILA_BACKLOG ?? '
 /// dias/semanas de idade). Não resolve o problema de ticket zumbi — só evita
 /// tratá-lo como se fosse urgência de agora.
 const LIMIAR_CONVERSA_PARADA_JANELA_MAX_HORAS = parseInt(process.env.LIMIAR_CONVERSA_PARADA_JANELA_MAX_HORAS ?? '24', 10);
+/// Acima desse tempo de fila, SLA_FILA deixa de contar como CRITICO e passa
+/// pra AVISO — validado ao vivo (2026-07-20): sem esse teto, uma fila de 6min
+/// e uma de 9h apareciam como CRITICO igual, diluindo o sinal. Diferente do
+/// teto do CONVERSA_PARADA (que EXCLUI o alerta), aqui o item continua
+/// visível — só perde a severidade máxima, porque o backlog do setor já é
+/// coberto pelo FILA_ACUMULADA (que é o alerta certo pra "essa fila é um
+/// problema estrutural, não um pico de 5 minutos").
+const LIMIAR_SLA_FILA_CRITICO_MAX_HORAS = parseFloat(process.env.LIMIAR_SLA_FILA_CRITICO_MAX_HORAS ?? '1');
 
 interface DadosAlerta {
   tipo:                    string;
@@ -59,7 +67,7 @@ async function upsertAlerta(d: DadosAlerta): Promise<void> {
       tipo: d.tipo, severidade: d.severidade, setor: d.setor, titulo: d.titulo, descricao: d.descricao,
       opasuite_atendimento_id: d.opasuiteAtendimentoId ?? '', agente_nome: d.agenteNome ?? '',
     },
-    update: { status: 'ABERTO', resolvido_em: null, titulo: d.titulo, descricao: d.descricao, severidade: d.severidade },
+    update: { status: 'ABERTO', resolvido_em: null, resolvido_por: null, titulo: d.titulo, descricao: d.descricao, severidade: d.severidade },
   });
 }
 
@@ -150,12 +158,18 @@ export async function detectarSlaFila(): Promise<ResultadoDeteccao> {
     const abertura = doc.operacoes?.[0]?.date ? new Date(doc.operacoes[0].date) : null;
     if (!abertura || abertura > limite) continue;
 
+    const idadeHoras = (Date.now() - abertura.getTime()) / 3600000;
+    const severidade = idadeHoras <= LIMIAR_SLA_FILA_CRITICO_MAX_HORAS ? 'CRITICO' : 'AVISO';
+    const descricaoIdade = idadeHoras >= 1
+      ? `há mais de ${idadeHoras.toFixed(1)}h`
+      : `há mais de ${LIMIAR_SLA_FILA_MIN} min`;
+
     const id = doc._id.toString();
     idsAtivos.push(id);
     await upsertAlerta({
-      tipo: 'SLA_FILA', severidade: 'CRITICO', setor, opasuiteAtendimentoId: id,
+      tipo: 'SLA_FILA', severidade, setor, opasuiteAtendimentoId: id,
       titulo: `Fila sem 1ª resposta protocolo ${doc.protocolo}`,
-      descricao: `Aguardando atendimento humano há mais de ${LIMIAR_SLA_FILA_MIN} min.`,
+      descricao: `Aguardando atendimento humano ${descricaoIdade}.`,
     });
     criados++;
   }

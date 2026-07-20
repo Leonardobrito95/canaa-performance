@@ -610,6 +610,21 @@ model AtendimentoAlertaOperacional {
   status                  String    @default("ABERTO")
   criado_em               DateTime  @default(now())
   resolvido_em            DateTime?
+  /// Nome de quem clicou "Resolver" — null enquanto aberto, e volta a null
+  /// se o alerta reabrir (ver upsertAlerta em atendimento.alertas-
+  /// operacionais.ts: se a pendência ainda existe no OpaSuite, o alerta
+  /// reabre a cada ciclo de 2 min, então a resolução manual anterior deixa
+  /// de valer — isso é comportamento esperado, não bug).
+  resolvido_por           String?
+
+  /// Quando o alerta foi notificado por WhatsApp pra gestora (1ª notificação,
+  /// só acontece uma vez por alerta CRITICO — null enquanto não notificado).
+  /// Reabrir o alerta (ver upsertAlerta) NÃO reseta esses dois campos, pra
+  /// evitar reenvio repetido a cada ciclo de 2 min pro mesmo incidente.
+  notificado_whatsapp_em  DateTime?
+  /// Quando escalou por WhatsApp pra governança/diretoria (depois de
+  /// LIMIAR_ESCALONAMENTO_DIRETORIA_MIN sem resolução desde a 1ª notificação).
+  escalado_whatsapp_em    DateTime?
 
   /// Dedup — nunca duplica o mesmo alerta aberto pro mesmo alvo (conversa,
   /// agente, ou setor no caso de FILA_ACUMULADA).
@@ -644,6 +659,9 @@ model VistoriaAlerta {
   status       String    @default("ABERTO")
   criado_em    DateTime  @default(now())
   resolvido_em DateTime?
+  /// Nome de quem clicou "Resolver" — mesma lógica de reabertura de
+  /// AtendimentoAlertaOperacional.resolvido_por.
+  resolvido_por String?
 
   @@unique([tipo, pop_name, pendencia_id])
   @@index([status])

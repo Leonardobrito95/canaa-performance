@@ -20,6 +20,7 @@ import { rodarRollupAtendimentoMensal, mesAnterior as mesAnteriorAtendimento } f
 import { rodarAnaliseIaEmMassa } from '../modules/atendimento/atendimento.analise-ia';
 import { rodarMonitoriaAutomaticaEmMassa } from '../modules/atendimento/atendimento.monitoria-automatica';
 import { rodarDeteccaoAlertasOperacionais } from '../modules/atendimento/atendimento.alertas-operacionais';
+import { verificarEscalonamentoAlertas } from '../modules/atendimento/atendimento.alertas-escalonamento';
 import { rodarDeteccaoAlertasVistoria } from '../modules/vistoriaPop/vistoria.alerta-detectores';
 
 const SOLICITANTE_CRON = { ixcUserId: 'cron-alertas', ixcUsername: 'cron-alertas' };
@@ -219,8 +220,10 @@ export function iniciarJobs(): void {
 
   // ── Atendimento: alertas operacionais em tempo real (conversa parada, SLA
   // de fila, agente ausente, fila acumulada) — a cada 2 min. Feed interno
-  // (GET /atendimento/alertas-operacionais), NÃO manda e-mail/WhatsApp — ver
-  // atendimento.alertas-operacionais.ts.
+  // (GET /atendimento/alertas-operacionais). Alertas CRITICO (hoje só
+  // SLA_FILA recente) escalam por WhatsApp pra gestora e depois diretoria —
+  // ver atendimento.alertas-escalonamento.ts (fica off até
+  // ESCALONAMENTO_WHATSAPP_ATIVO=true no .env).
   cron.schedule('*/2 * * * *', async () => {
     await runSafe('Alertas Operacionais de Atendimento', async () => {
       const r = await rodarDeteccaoAlertasOperacionais();
@@ -228,6 +231,12 @@ export function iniciarJobs(): void {
       const resolvidos = r.conversasParadas.resolvidos + r.slaFila.resolvidos + r.agenteAusente.resolvidos + r.filaAcumulada.resolvidos;
       if (criados || resolvidos) {
         logger.info(`[JOBS] Alertas Operacionais: ${criados} aberto(s)/mantido(s), ${resolvidos} resolvido(s) automaticamente.`);
+      }
+    });
+    await runSafe('Escalonamento WhatsApp de Alertas', async () => {
+      const e = await verificarEscalonamentoAlertas();
+      if (e.notificados || e.escalados) {
+        logger.info(`[JOBS] Escalonamento WhatsApp: ${e.notificados} notificado(s) à gestora, ${e.escalados} escalado(s) à diretoria.`);
       }
     });
   }, { timezone: 'America/Sao_Paulo' });

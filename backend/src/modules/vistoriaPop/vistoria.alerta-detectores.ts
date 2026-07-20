@@ -40,7 +40,7 @@ async function upsertAlerta(d: DadosAlertaVistoria): Promise<void> {
       tipo: d.tipo, severidade: d.severidade, titulo: d.titulo, descricao: d.descricao,
       pop_name: d.popName, pendencia_id: d.pendenciaId ?? '',
     },
-    update: { status: 'ABERTO', resolvido_em: null, titulo: d.titulo, descricao: d.descricao, severidade: d.severidade },
+    update: { status: 'ABERTO', resolvido_em: null, resolvido_por: null, titulo: d.titulo, descricao: d.descricao, severidade: d.severidade },
   });
 }
 

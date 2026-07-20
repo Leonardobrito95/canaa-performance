@@ -16,3 +16,11 @@ export const ENVIO_ALERTAS_ATIVO = process.env.ENVIO_ALERTAS_ATIVO === 'true';
 /// dá pra observar o comportamento real por alguns dias antes de confiar de verdade.
 /// Flip pra 'true' no .env quando o usuário validar a qualidade das notas automáticas.
 export const MONITORIA_AUTOMATICA_ATIVA = process.env.MONITORIA_AUTOMATICA_ATIVA === 'true';
+
+/// Kill-switch do escalonamento por WhatsApp dos alertas operacionais de Atendimento
+/// (atendimento.alertas-escalonamento.ts) — canal NOVO, não é o mesmo público do
+/// ENVIO_ALERTAS_ATIVO acima (aquele é sobre não duplicar o que o modelo antigo já manda
+/// pra Comercial/Retenção; este aqui é sobre um público que HOJE não recebe nada — gestora
+/// do Atendimento e diretoria). Fica off até o usuário confirmar webhook + números reais no
+/// n8n e validar o texto das mensagens.
+export const ESCALONAMENTO_WHATSAPP_ATIVO = process.env.ESCALONAMENTO_WHATSAPP_ATIVO === 'true';

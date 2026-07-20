@@ -42,16 +42,16 @@ export async function listarAlertasHub(): Promise<AlertaHubItem[]> {
   });
 }
 
-export async function resolverAlertaHub(origem: 'atendimento' | 'vistoria', id: string) {
+export async function resolverAlertaHub(origem: 'atendimento' | 'vistoria', id: string, resolvidoPor: string) {
   if (origem === 'atendimento') {
     return await prisma.atendimentoAlertaOperacional.update({
       where: { id },
-      data: { status: 'RESOLVIDO', resolvido_em: new Date() }
+      data: { status: 'RESOLVIDO', resolvido_em: new Date(), resolvido_por: resolvidoPor }
     });
   } else if (origem === 'vistoria') {
     return await prisma.vistoriaAlerta.update({
       where: { id },
-      data: { status: 'RESOLVIDO', resolvido_em: new Date() }
+      data: { status: 'RESOLVIDO', resolvido_em: new Date(), resolvido_por: resolvidoPor }
     });
   }
   throw new Error('Origem de alerta desconhecida.');

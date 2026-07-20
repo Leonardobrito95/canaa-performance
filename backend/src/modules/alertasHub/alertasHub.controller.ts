@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
+import { AuthPayload } from '../auth/auth.service';
 import { listarAlertasHub, resolverAlertaHub } from './alertasHub.service';
+
+type AuthRequest = Request & { user: AuthPayload };
 
 export async function resumo(req: Request, res: Response) {
   try {
@@ -25,7 +28,8 @@ export async function resolver(req: Request, res: Response) {
     if (origem !== 'atendimento' && origem !== 'vistoria') {
       return res.status(400).json({ error: 'Origem inválida' });
     }
-    const resolvido = await resolverAlertaHub(origem, id);
+    const resolvidoPor = (req as AuthRequest).user?.nome ?? 'desconhecido';
+    const resolvido = await resolverAlertaHub(origem, id, resolvidoPor);
     res.json(resolvido);
   } catch (error) {
     console.error('Erro ao resolver Alerta Hub:', error);
