@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthPayload } from '../auth/auth.service';
 import prisma from '../../config/prisma';
-import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual, intervaloMesAtual, criarJanelaAtual } from './diagnostico.service';
+import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual, intervaloMesAtual, criarJanelaAtual, gastoCaioHojeUsd, LIMITE_CAIO_USD_DIA } from './diagnostico.service';
 import {
   buscarClientePorNome,
   buscarRankingVendedores,
@@ -132,7 +132,11 @@ export async function statusIxc(req: Request, res: Response, next: NextFunction)
 
 export async function statusGemini(req: Request, res: Response, next: NextFunction) {
   try {
-    res.json(obterMetricasAgregadasGemini());
+    const [agregado, gastoCaioHoje] = await Promise.all([
+      obterMetricasAgregadasGemini(),
+      gastoCaioHojeUsd(),
+    ]);
+    res.json({ ...agregado, caio: { gastoHojeUsd: gastoCaioHoje, limiteUsd: LIMITE_CAIO_USD_DIA } });
   } catch (err) { next(err); }
 }
 

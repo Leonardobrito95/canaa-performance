@@ -19,7 +19,51 @@ import { buscarFatoPosAtivacaoCliente } from '../posativacao/posativacao.reposit
 import { ContextoClienteDiagnostico } from './diagnostico.types';
 import { montarContextoTextual, montarContextoGestaoTextual } from './diagnostico.prompt';
 import { FONTES_GESTAO, DadosGestao, JanelaTemporalGestao } from './diagnostico.gestao-fontes';
-import { gerarDiagnostico, gerarRespostaGestao, DiagnosticoIaResultado } from './diagnostico.ia';
+import { gerarDiagnostico, gerarRespostaGestao, DiagnosticoIaResultado, custoEstimadoChamada } from './diagnostico.ia';
+
+/// Teto diário de custo do chat do CAIO (Consulta individual + Painel de
+/// Gestão), calibrado nos dados reais de uso (2026-07-09 a 2026-07-20, 384
+/// consultas): custo médio ~US$0,018/consulta (~10.700 tokens de entrada,
+/// ~230 de saída), maior dia histórico (incluindo teste intensivo de
+/// desenvolvimento) foi de 201 consultas por ~US$1,76, e o dia "normal" de
+/// uso real fica entre US$0,35 e US$0,40. US$10/dia dá margem de ~6-25x
+/// sobre qualquer padrão já observado (equivale a ~550 consultas médias/dia)
+/// sem deixar o gasto sem teto — no pior caso (excedido todo santo dia) o
+/// mês fecha em ~US$300, bem abaixo de "conta exorbitante"; o uso esperado
+/// de fato fica em torno de US$10-15/mês. Ajustável via env sem redeploy de
+/// código, caso o padrão de uso mude (ex: acesso reaberto a mais gestores).
+export const LIMITE_CAIO_USD_DIA = Number(process.env.LIMITE_CAIO_USD_DIA ?? '10');
+
+export class LimiteCaioExcedidoError extends Error {
+  statusCode = 429;
+  constructor(public gastoHojeUsd: number, public limiteUsd: number) {
+    super(`Limite diário de custo do CAIO atingido (US$ ${gastoHojeUsd.toFixed(2)} de US$ ${limiteUsd.toFixed(2)}). Tente novamente amanhã.`);
+    this.name = 'LimiteCaioExcedidoError';
+  }
+}
+
+/// Soma o custo estimado de todas as consultas do CAIO já registradas hoje
+/// (fuso do servidor) — persistido, então sobrevive a restart do processo,
+/// diferente do agregado em memória de diagnostico.ia.ts.
+export async function gastoCaioHojeUsd(): Promise<number> {
+  const inicioHoje = new Date();
+  inicioHoje.setHours(0, 0, 0, 0);
+  const consultas = await prisma.diagnosticoConsulta.findMany({
+    where: { criado_em: { gte: inicioHoje } },
+    select: { tokens_entrada: true, tokens_saida: true, modelo_usado: true },
+  });
+  return consultas.reduce(
+    (total, c) => total + (custoEstimadoChamada(c.tokens_entrada ?? 0, c.tokens_saida ?? 0, c.modelo_usado ?? '') ?? 0),
+    0,
+  );
+}
+
+async function garantirLimiteCaio(): Promise<void> {
+  const gasto = await gastoCaioHojeUsd();
+  if (gasto >= LIMITE_CAIO_USD_DIA) {
+    throw new LimiteCaioExcedidoError(gasto, LIMITE_CAIO_USD_DIA);
+  }
+}
 
 /// Monta o contexto completo de um cliente (rede + O.S. + comercial) para a IA.
 /// Cada fonte é buscada fresca a cada chamada — nada fica em cache permanente.
@@ -88,6 +132,7 @@ export async function gerarDiagnosticoIndividual(
   pergunta?: string,
   historico?: { pergunta: string; resposta: string }[],
 ): Promise<DiagnosticoIaResultado & { consultaId: string }> {
+  await garantirLimiteCaio();
   const contexto = await montarContextoCliente(idCliente);
   const contextoTextual = montarContextoTextual(contexto);
   // Fotos só são buscadas/reenviadas na PRIMEIRA pergunta de uma conversa (sem
@@ -181,6 +226,7 @@ export async function gerarRespostaGestaoIndividual(
   solicitante: SolicitanteDiagnostico,
   historico?: { pergunta: string; resposta: string }[],
 ): Promise<{ resposta: string; consultaId: string; arquivo: ArquivoGerado | null }> {
+  await garantirLimiteCaio();
   const janela = criarJanelaAtual();
 
   const entradas = await Promise.all(FONTES_GESTAO.map(async (fonte) => {

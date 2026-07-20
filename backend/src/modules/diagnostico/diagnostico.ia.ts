@@ -45,9 +45,33 @@ export interface MetricasGemini {
   modeloUsado:   string;
 }
 
-// ── Observabilidade de custo/latência (desde o início do processo) ───────────
-// Preço opcional via env — sem ele, o agregado mostra só tokens/latência, sem
-// inventar um valor em R$/US$ sem taxa real configurada.
+// ── Custo por chamada ──────────────────────────────────────────────────────
+// Preço oficial (ai.google.dev/gemini-api/docs/pricing, tier pago Standard),
+// confirmado em 2026-07-19 via chamada real inspecionando o campo
+// `modelVersion` da resposta — os aliases "latest" podem passar a apontar
+// pra outra versão no futuro sem aviso, então vale reconferir se o custo
+// medido destoar muito do esperado. Chave é o alias (o que fica salvo em
+// `modelo_usado`), não o nome de versão resolvido.
+const PRECOS_GEMINI_USD_POR_1M: Record<string, { input: number; output: number }> = {
+  'gemini-flash-latest':      { input: 1.50, output: 9.00 }, // hoje resolve pra gemini-3.5-flash
+  'gemini-flash-lite-latest': { input: 0.25, output: 1.50 }, // hoje resolve pra gemini-3.1-flash-lite
+};
+
+/// Custo real de UMA chamada, usando o preço do modelo que efetivamente
+/// respondeu (não uma média entre tiers) — corrige o problema de estimar
+/// custo agregado com um preço único quando chamadas passam a vir de
+/// modelos com preços bem diferentes entre si (padrão vs alto_volume).
+/// Retorna null se o modelo não está na tabela (evita custo errado calado).
+export function custoEstimadoChamada(tokensEntrada: number, tokensSaida: number, modeloUsado: string): number | null {
+  const preco = PRECOS_GEMINI_USD_POR_1M[modeloUsado];
+  if (!preco) return null;
+  return (tokensEntrada / 1_000_000) * preco.input + (tokensSaida / 1_000_000) * preco.output;
+}
+
+// ── Observabilidade agregada (desde o início do processo — reseta a cada
+// restart; para gasto diário confiável do CAIO, ver gastoCaioHojeUsd em
+// diagnostico.service.ts, que soma o histórico persistido em vez desse
+// contador em memória) ────────────────────────────────────────────────────
 const agregado = {
   chamadas: 0,
   falhas: 0,
@@ -55,17 +79,11 @@ const agregado = {
   tokensEntradaTotal: 0,
   tokensSaidaTotal: 0,
   latenciaTotalMs: 0,
+  custoTotalUsd: 0,
 };
 
-function calcularCustoEstimado(tokensEntrada: number, tokensSaida: number): number | null {
-  const precoInput = process.env.GEMINI_PRECO_INPUT_POR_1M_USD;
-  const precoOutput = process.env.GEMINI_PRECO_OUTPUT_POR_1M_USD;
-  if (!precoInput || !precoOutput) return null;
-  return (tokensEntrada / 1_000_000) * Number(precoInput) + (tokensSaida / 1_000_000) * Number(precoOutput);
-}
-
 export function obterMetricasAgregadasGemini() {
-  const { chamadas, falhas, usosFallback, tokensEntradaTotal, tokensSaidaTotal, latenciaTotalMs } = agregado;
+  const { chamadas, falhas, usosFallback, tokensEntradaTotal, tokensSaidaTotal, latenciaTotalMs, custoTotalUsd } = agregado;
   return {
     chamadas,
     falhas,
@@ -73,8 +91,7 @@ export function obterMetricasAgregadasGemini() {
     tokensEntradaTotal,
     tokensSaidaTotal,
     latenciaMediaMs: chamadas ? Math.round(latenciaTotalMs / chamadas) : 0,
-    custoEstimadoUsd: calcularCustoEstimado(tokensEntradaTotal, tokensSaidaTotal),
-    custoConfigurado: Boolean(process.env.GEMINI_PRECO_INPUT_POR_1M_USD && process.env.GEMINI_PRECO_OUTPUT_POR_1M_USD),
+    custoEstimadoUsd: custoTotalUsd,
   };
 }
 
@@ -112,6 +129,7 @@ export async function chamarGemini(
       agregado.tokensEntradaTotal += tokensEntrada;
       agregado.tokensSaidaTotal += tokensSaida;
       agregado.latenciaTotalMs += latenciaMs;
+      agregado.custoTotalUsd += custoEstimadoChamada(tokensEntrada, tokensSaida, model) ?? 0;
 
       if (model !== principal) {
         agregado.usosFallback++;
