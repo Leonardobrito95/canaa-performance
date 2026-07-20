@@ -126,6 +126,6 @@ export async function classificarNegociacao(chamado: ChamadoParaAuditar): Promis
     role: 'user' as const,
     parts: [{ text: `${AUDITORIA_SYSTEM_PROMPT}\n\n${formatarEvidencia(chamado)}` }],
   }];
-  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 300, thinkingConfig: { thinkingBudget: 0 } });
+  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 300, thinkingConfig: { thinkingBudget: 0 } }, 'alto_volume');
   return parseClassificacao(texto, metricas.modeloUsado);
 }

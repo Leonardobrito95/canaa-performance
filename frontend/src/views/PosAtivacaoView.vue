@@ -72,6 +72,20 @@
             <option v-for="m in motivos" :key="m.assunto" :value="m.assunto">{{ m.assunto }}</option>
           </select>
           <label class="pa-checkbox"><input type="checkbox" v-model="soContato" @change="recarregarClientes" /> Só com contato</label>
+          <select v-model="modoFiltroAtivacao" class="pa-input" title="Filtrar a tabela por um período absoluto de ativação, além dos 'N dias' do topo" @change="recarregarClientes">
+            <option value="nenhum">Ativação: qualquer data</option>
+            <option value="mes">Ativação: mês…</option>
+            <option value="dia">Ativação: dia…</option>
+          </select>
+          <template v-if="modoFiltroAtivacao === 'mes'">
+            <select v-model.number="filtroMes" class="pa-input" @change="recarregarClientes">
+              <option v-for="(nome, i) in NOMES_MES" :key="i" :value="i">{{ nome }}</option>
+            </select>
+            <select v-model.number="filtroAno" class="pa-input" @change="recarregarClientes">
+              <option v-for="a in anosDisponiveis" :key="a" :value="a">{{ a }}</option>
+            </select>
+          </template>
+          <input v-else-if="modoFiltroAtivacao === 'dia'" type="date" v-model="filtroDia" class="pa-input" @change="recarregarClientes" />
           <span class="pa-contador">{{ clientesPagina?.total ?? 0 }} registros</span>
           <button class="btn-refresh" @click="exportarCsv" :disabled="exportando">{{ exportando ? '…' : '↓ CSV' }}</button>
         </div>
@@ -215,6 +229,7 @@
 import { ref, computed, onMounted } from 'vue';
 import ChartRanking from '../components/ChartRanking.vue';
 import ChartBars from '../components/ChartBars.vue';
+import { getPeriodRange } from '../composables/useDateRange';
 import {
   posativacaoApiClient,
   type Janela, type PosAtivacaoKpis, type PosAtivacaoMotivo, type PosAtivacaoDistribuicaoFaixa,
@@ -325,6 +340,33 @@ const busca = ref('');
 const assuntoFiltro = ref('');
 const soContato = ref(false);
 const page = ref(1);
+
+// ── Filtro de data de ATIVAÇÃO (mês ou dia específico) ───────────────────
+// Complementar ao seletor "30/60/90 dias" do topo (janela rolante presa a
+// "hoje") — este filtro é um período ABSOLUTO, pra achar quem ativou num mês
+// passado qualquer, fora do alcance da janela. Só afeta a tabela/export de
+// clientes desta aba, não os KPIs/gráficos do topo (que continuam na janela).
+type ModoFiltroAtivacao = 'nenhum' | 'mes' | 'dia';
+const modoFiltroAtivacao = ref<ModoFiltroAtivacao>('nenhum');
+const NOMES_MES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const anoAtual = new Date().getFullYear();
+const anosDisponiveis = Array.from({ length: 5 }, (_, i) => anoAtual - i); // ano atual + 4 anteriores
+const filtroMes = ref(new Date().getMonth()); // 0-based
+const filtroAno = ref(anoAtual);
+const filtroDia = ref('');
+
+/// {} quando "nenhum" ou quando "dia" ainda não foi escolhido — nesses casos
+/// o backend cai de volta pra janela rolante normal.
+const rangeAtivacao = computed<{ dataAtivacaoInicio?: string; dataAtivacaoFim?: string }>(() => {
+  if (modoFiltroAtivacao.value === 'mes') {
+    const { dateFrom, dateTo } = getPeriodRange('custom_month', filtroAno.value, filtroMes.value);
+    return { dataAtivacaoInicio: dateFrom, dataAtivacaoFim: dateTo };
+  }
+  if (modoFiltroAtivacao.value === 'dia' && filtroDia.value) {
+    return { dataAtivacaoInicio: filtroDia.value, dataAtivacaoFim: filtroDia.value };
+  }
+  return {};
+});
 const expandido = ref<number | null>(null);
 const contatosCliente = ref<PosAtivacaoContato[]>([]);
 const loadingContatos = ref(false);
@@ -338,6 +380,7 @@ async function recarregarClientes() {
     clientesPagina.value = await posativacaoApiClient.getClientes({
       janela: janela.value, page: page.value, busca: busca.value || undefined,
       assunto: assuntoFiltro.value || undefined, soContato: soContato.value,
+      ...rangeAtivacao.value,
     });
   } finally {
     loadingClientes.value = false;
@@ -352,6 +395,7 @@ async function mudarPagina(p: number) {
     clientesPagina.value = await posativacaoApiClient.getClientes({
       janela: janela.value, page: page.value, busca: busca.value || undefined,
       assunto: assuntoFiltro.value || undefined, soContato: soContato.value,
+      ...rangeAtivacao.value,
     });
   } finally {
     loadingClientes.value = false;
@@ -374,6 +418,7 @@ async function exportarCsv() {
   try {
     const blob = await posativacaoApiClient.exportarClientesCsv({
       janela: janela.value, busca: busca.value || undefined, soContato: soContato.value,
+      ...rangeAtivacao.value,
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

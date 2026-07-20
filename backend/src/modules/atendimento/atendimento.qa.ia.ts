@@ -131,7 +131,7 @@ export async function sugerirPreenchimentoQa(
     role: 'user' as const,
     parts: [{ text: `${COPILOTO_QA_SYSTEM_PROMPT}\n\n${formatarConversaParaCopiloto(protocolo, canal, mensagens)}` }],
   }];
-  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 1500, thinkingConfig: { thinkingBudget: 0 } });
+  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 1500, thinkingConfig: { thinkingBudget: 0 } }, 'alto_volume');
 
   return { sugestao: parseSugestao(texto), metricas };
 }

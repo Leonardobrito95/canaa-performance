@@ -82,6 +82,8 @@ function parseFiltrosClientes(req: Request) {
     busca:      q.busca,
     assunto:    q.assunto,
     minTickets: q.min_tickets ? Number(q.min_tickets) : undefined,
+    dataAtivacaoInicio: q.data_ativacao_inicio || undefined,
+    dataAtivacaoFim:    q.data_ativacao_fim || undefined,
   };
 }
 

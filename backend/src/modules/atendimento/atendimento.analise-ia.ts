@@ -146,7 +146,7 @@ export async function analisarAtendimento(
     responseSchema: RESPONSE_SCHEMA,
     maxOutputTokens: 400,
     thinkingConfig: { thinkingBudget: 0 },
-  });
+  }, 'alto_volume');
 
   const bruto = JSON.parse(texto) as { motivo: string; adesaoScript: number; indiceSentimento: number; justificativa: string };
   const motivo = motivosConhecidos.includes(bruto.motivo) ? bruto.motivo : 'Outro';

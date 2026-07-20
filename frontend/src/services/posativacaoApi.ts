@@ -38,6 +38,10 @@ export interface FiltrosClientesPosAtivacao extends FiltrosPosAtivacao {
   busca?:      string;
   assunto?:    string;
   minTickets?: number;
+  /// Período absoluto de ativação ('YYYY-MM-DD') — quando preenchido,
+  /// substitui a janela rolante só na listagem/export de clientes.
+  dataAtivacaoInicio?: string;
+  dataAtivacaoFim?:    string;
 }
 
 export interface PosAtivacaoKpis {
@@ -150,6 +154,8 @@ function toParams(f: FiltrosClientesPosAtivacao) {
     busca:       f.busca || undefined,
     assunto:     f.assunto || undefined,
     min_tickets: f.minTickets || undefined,
+    data_ativacao_inicio: f.dataAtivacaoInicio || undefined,
+    data_ativacao_fim:    f.dataAtivacaoFim || undefined,
   };
 }
 

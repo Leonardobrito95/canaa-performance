@@ -15,6 +15,13 @@ export interface FiltrosClientesPosAtivacao extends FiltrosPosAtivacao {
   busca?:      string;
   assunto?:    string;
   minTickets?: number;
+  /// Período ABSOLUTO de ativação ('YYYY-MM-DD'), independente de "hoje" —
+  /// complementar à janela rolante (30/60/90): quando os dois vierem
+  /// preenchidos, substitui a janela por completo só na consulta de
+  /// clientes/export (não afeta KPIs/gráficos do topo, que continuam presos
+  /// à janela). Pra filtrar um dia específico, inicio === fim.
+  dataAtivacaoInicio?: string;
+  dataAtivacaoFim?:    string;
 }
 
 export interface PosAtivacaoKpis {

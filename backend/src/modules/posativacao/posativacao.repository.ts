@@ -73,6 +73,31 @@ const EXCLUSOES_ASSUNTO = `
   AND a2.assunto NOT LIKE '%ATRASO%ROTA%'
 `;
 
+/// Condição de ativação usada só por buscarClientes/buscarClientesExport —
+/// normalmente a janela rolante (BASE_WHERE, preso a "hoje"), mas quando o
+/// gestor escolhe um período ABSOLUTO de ativação (mês ou dia específico,
+/// ex: "quero ver quem ativou em maio", fora do alcance de qualquer janela
+/// de 90 dias a partir de hoje), essa condição substitui a janela por
+/// inteiro pra essa consulta. KPIs/gráficos do topo da aba (compartilhados
+/// com a aba Governança) continuam sempre presos à janela — não fazem parte
+/// desse filtro.
+function whereAtivacao(filtros: FiltrosClientesPosAtivacao): { sql: string; params: (string | number)[] } {
+  if (filtros.dataAtivacaoInicio && filtros.dataAtivacaoFim) {
+    return {
+      sql: `
+        cc.motivo_inclusao IN ('I','M')
+        AND cc.data_ativacao >= ?
+        AND cc.data_ativacao <= ?
+        AND cc.status <> 'P'
+        AND cc.data_ativacao IS NOT NULL
+        AND c.razao NOT LIKE '%TESTE%'
+      `,
+      params: [`${filtros.dataAtivacaoInicio} 00:00:00`, `${filtros.dataAtivacaoFim} 23:59:59`],
+    };
+  }
+  return { sql: BASE_WHERE, params: [normalizarJanela(filtros.janela)] };
+}
+
 /// Monta o LEFT JOIN de su_ticket dentro da janela de 30 dias pós-ativação,
 /// já excluindo ruído logístico — mesma função build_ticket_join() do
 /// sistema original.
@@ -357,7 +382,6 @@ function mapearLinhaCliente(r: any): PosAtivacaoClienteResumo {
 }
 
 export async function buscarClientes(filtros: FiltrosClientesPosAtivacao): Promise<PosAtivacaoClientesPagina> {
-  const janela   = normalizarJanela(filtros.janela);
   const page     = Math.max(1, filtros.page ?? 1);
   const perPage  = 25;
   const offset   = (page - 1) * perPage;
@@ -366,6 +390,7 @@ export async function buscarClientes(filtros: FiltrosClientesPosAtivacao): Promi
   const minTickets  = Math.max(0, filtros.minTickets ?? 0);
 
   const { sql: tj, params: jp } = joinTicket(filtros.assunto);
+  const { sql: whereAtiv, params: wp } = whereAtivacao(filtros);
   let extraWhere = '';
   const extraParams: string[] = [];
   if (busca) {
@@ -377,7 +402,7 @@ export async function buscarClientes(filtros: FiltrosClientesPosAtivacao): Promi
   if (minTickets > 0) having = `HAVING COUNT(t.id) >= ${minTickets}`;
   else if (soContato) having = 'HAVING COUNT(t.id) > 0';
 
-  const baseParams = [...jp, janela, ...extraParams];
+  const baseParams = [...jp, ...wp, ...extraParams];
 
   const [rows]: any = await mysqlPool.query(
     `SELECT cc.id AS contrato_id, cc.id_cliente,
@@ -389,7 +414,7 @@ export async function buscarClientes(filtros: FiltrosClientesPosAtivacao): Promi
      FROM cliente_contrato cc
      JOIN cliente c ON c.id = cc.id_cliente
      ${tj}
-     WHERE ${BASE_WHERE}
+     WHERE ${whereAtiv}
      ${extraWhere}
      GROUP BY cc.id, cc.id_cliente, c.razao, c.telefone_celular,
               c.fone, cc.data_ativacao, cc.motivo_inclusao
@@ -405,7 +430,7 @@ export async function buscarClientes(filtros: FiltrosClientesPosAtivacao): Promi
         FROM cliente_contrato cc
         JOIN cliente c ON c.id = cc.id_cliente
         ${tj}
-        WHERE ${BASE_WHERE}
+        WHERE ${whereAtiv}
         ${extraWhere}
         GROUP BY cc.id
         ${having}
@@ -422,12 +447,12 @@ export async function buscarClientes(filtros: FiltrosClientesPosAtivacao): Promi
 /// Mesma consulta de buscarClientes, sem paginação — usado só pelo export
 /// CSV (mesmo comportamento do endpoint /api/clientes/export original).
 export async function buscarClientesExport(filtros: FiltrosClientesPosAtivacao): Promise<PosAtivacaoClienteResumo[]> {
-  const janela      = normalizarJanela(filtros.janela);
   const soContato    = !!filtros.soContato;
   const busca        = (filtros.busca ?? '').trim();
   const minTickets   = Math.max(0, filtros.minTickets ?? 0);
 
   const { sql: tj, params: jp } = joinTicket(filtros.assunto);
+  const { sql: whereAtiv, params: wp } = whereAtivacao(filtros);
   let extraWhere = '';
   const extraParams: string[] = [];
   if (busca) {
@@ -449,13 +474,13 @@ export async function buscarClientesExport(filtros: FiltrosClientesPosAtivacao):
      FROM cliente_contrato cc
      JOIN cliente c ON c.id = cc.id_cliente
      ${tj}
-     WHERE ${BASE_WHERE}
+     WHERE ${whereAtiv}
      ${extraWhere}
      GROUP BY cc.id, cc.id_cliente, c.razao, c.telefone_celular,
               c.fone, cc.data_ativacao, cc.motivo_inclusao
      ${having}
      ORDER BY total_contatos DESC, cc.data_ativacao DESC`,
-    [...jp, janela, ...extraParams],
+    [...jp, ...wp, ...extraParams],
   );
   return rows.map(mapearLinhaCliente);
 }

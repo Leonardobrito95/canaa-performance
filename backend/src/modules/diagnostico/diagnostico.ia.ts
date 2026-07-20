@@ -7,11 +7,26 @@ import { ImagemAnexo } from './diagnostico.types';
 // models.list() mas generateContent retorna 404). Usa o alias "latest" em vez
 // de fixar uma versão — a Google atualiza o que ele aponta, evitando esse
 // mesmo tipo de quebra silenciosa de novo.
+//
+// Tier 'padrao': gemini-flash-latest (hoje gemini-3.5-flash, ~$1.50/$9.00 por
+// 1M tokens in/out) — usado pra fluxos interativos/de baixo volume onde
+// qualidade de raciocínio importa mais que custo (chat do CAIO, auditoria
+// pontual sob demanda de um gestor).
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 // Modelo de fallback, usado só se o principal falhar em todas as tentativas —
 // alias diferente (não apenas outra versão do mesmo), pra não compartilhar a
 // mesma causa de falha (ex: descontinuação, outage específico daquele modelo).
 const GEMINI_MODEL_FALLBACK = process.env.GEMINI_MODEL_FALLBACK || 'gemini-flash-lite-latest';
+// Tier 'alto_volume': gemini-flash-lite-latest (hoje gemini-3.1-flash-lite,
+// ~$0.25/$1.50 por 1M — 4-6x mais barato que o padrão) — usado pros jobs em
+// massa/cron (triagem automática, QA de 22 critérios, auditoria de
+// retenção), onde o volume diário é alto e o custo por chamada pesa mais
+// que ganhar o último ponto de qualidade. Se o barato falhar, sobe pro
+// modelo mais caro como fallback (raro o suficiente pra não pesar no custo).
+const GEMINI_MODEL_ALTO_VOLUME = process.env.GEMINI_MODEL_ALTO_VOLUME || 'gemini-flash-lite-latest';
+const GEMINI_MODEL_ALTO_VOLUME_FALLBACK = process.env.GEMINI_MODEL_ALTO_VOLUME_FALLBACK || 'gemini-flash-latest';
+
+export type TierGemini = 'padrao' | 'alto_volume';
 
 let _client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
@@ -69,9 +84,16 @@ export function obterMetricasAgregadasGemini() {
 /// principal (já aconteceu uma vez nesta mesma base de código). Também
 /// acumula latência/tokens no agregado em memória e devolve as métricas
 /// dessa chamada específica, pra persistir por consulta.
-export async function chamarGemini(contents: any[], config: Record<string, unknown>): Promise<{ texto: string; metricas: MetricasGemini }> {
+export async function chamarGemini(
+  contents: any[],
+  config: Record<string, unknown>,
+  tier: TierGemini = 'padrao',
+): Promise<{ texto: string; metricas: MetricasGemini }> {
   const client = getClient();
-  const tentativas = [GEMINI_MODEL, GEMINI_MODEL, GEMINI_MODEL_FALLBACK];
+  const [principal, fallback] = tier === 'alto_volume'
+    ? [GEMINI_MODEL_ALTO_VOLUME, GEMINI_MODEL_ALTO_VOLUME_FALLBACK]
+    : [GEMINI_MODEL, GEMINI_MODEL_FALLBACK];
+  const tentativas = [principal, principal, fallback];
 
   let ultimoErro: unknown;
   for (let i = 0; i < tentativas.length; i++) {
@@ -91,10 +113,10 @@ export async function chamarGemini(contents: any[], config: Record<string, unkno
       agregado.tokensSaidaTotal += tokensSaida;
       agregado.latenciaTotalMs += latenciaMs;
 
-      if (model !== GEMINI_MODEL) {
+      if (model !== principal) {
         agregado.usosFallback++;
         logger.warn('[GEMINI] Modelo principal falhou em todas as tentativas — resposta veio do fallback', {
-          modeloFallback: model, modeloPrincipal: GEMINI_MODEL,
+          modeloFallback: model, modeloPrincipal: principal,
         });
       }
 
