@@ -12,6 +12,7 @@ function makeContexto(overrides: Partial<ContextoClienteDiagnostico> = {}): Cont
     historicoSinal: [],
     oscilacaoRede: null,
     statusSmartOlt: null,
+    statusSmartOltCompleto: null,
     ordensServico: [],
     osMensagens: {},
     osArquivos: {},

@@ -38,6 +38,14 @@ cliente, trate como desconhecido e não atribua a causa a interferência de Wi-F
 equipamento perto de um móvel ou aparelho não prova que aquele aparelho está conectado sem
 fio. Não invente fontes de interferência fora da lista acima (proximidade de TV, por exemplo,
 não é um critério listado nem uma causa real de interferência eletromagnética em Wi-Fi).
+Quando o contexto trouxer "Portas Ethernet da ONU" (dado ao vivo do SmartOLT, só disponível
+às vezes): o número de desconexões por porta é um contador acumulado ao longo do tempo, não
+temos um limiar oficial validado pra "quantas é demais". Trate um número alto (dezenas ou
+mais) como indício real de cabo/conector com problema físico na porta específica, não como
+prova definitiva sozinha, e não invente um limiar numérico oficial que não foi te dado. Se a
+causa do último evento vier reportada DIRETO PELA OLT (rótulo explícito no contexto, ex:
+"Power Fail" ou "LOS"), priorize essa informação sobre qualquer suposição sua baseada só no
+nível de sinal, ela não é inferência, é o que o próprio equipamento registrou.
 Itens do manual de instalação que dependem do painel administrativo do equipamento, não da
 posição física: login/senha de administrador trocados do padrão de fábrica, nome (SSID) e senha
 do Wi-Fi personalizados, configuração das bandas 2.4GHz/5GHz (dual-band), tipo de criptografia
@@ -222,6 +230,27 @@ function formatarHistoricoSinal(ctx: ContextoClienteDiagnostico): string {
       (smartolt.diasDegradado !== null ? ` | ${smartolt.diasDegradado} dias degradado` : '') +
       ` | desde ${dataStatus}`
     );
+  }
+
+  const completo = ctx.statusSmartOltCompleto;
+  if (completo) {
+    if (completo.ultimaCausaReportada) {
+      // Causa vinda DIRETO da OLT (não é inferência nossa), priorizar essa
+      // sobre qualquer suposição de causa a partir só do nível de sinal.
+      linhas.push(
+        `Causa do último evento reportada PELA PRÓPRIA OLT (fonte confiável, não é inferência): "${completo.ultimaCausaReportada}"` +
+        (completo.ultimaCausaData ? ` em ${fmtData(completo.ultimaCausaData)}` : '')
+      );
+    }
+    if (completo.macWan) {
+      linhas.push(`MAC do equipamento conectado na ONU: ${completo.macWan}`);
+    }
+    if (completo.portas.length) {
+      const resumoPortas = completo.portas
+        .map((p) => `${p.porta} (${p.speed}${p.statusChanges !== null ? `, ${p.statusChanges} desconexões` : ''})`)
+        .join(', ');
+      linhas.push(`Portas Ethernet da ONU: ${resumoPortas}`);
+    }
   }
 
   return linhas.length ? linhas.join('\n') : 'Sem registros de degradação de sinal.';

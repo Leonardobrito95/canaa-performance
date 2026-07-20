@@ -164,6 +164,30 @@ export interface StatusSmartOlt {
   snapshotData:        Date | null;
 }
 
+export interface PortaEthernetOnu {
+  porta:         string;
+  speed:         string;
+  statusChanges: number | null;
+}
+
+/// Detalhe AO VIVO da ONU direto na OLT via SmartOLT (get_onu_full_status_info),
+/// diferente de StatusSmartOlt (que vem do snapshot diário em Postgres).
+/// Confirmado 2026-07-20, chamada real de teste: traz MAC do equipamento
+/// conectado e o contador de desconexão por porta Ethernet (Status changes),
+/// que não existem no snapshot diário. Também traz a causa REPORTADA PELA
+/// OLT (ex: "Power Fail") do último evento de queda, mais confiável que
+/// inferir causa só pelo nível de sinal. Chamada "resource-intensive" (a
+/// própria doc do SmartOLT recomenda), então só sob demanda por cliente
+/// específico, nunca em massa. Ver diagnostico.smartolt-live.ts pro
+/// cache/lock que garante isso.
+export interface StatusSmartOltCompleto {
+  sn:                    string;
+  macWan:                string | null;
+  portas:                PortaEthernetOnu[];
+  ultimaCausaReportada:  string | null;
+  ultimaCausaData:       Date | null;
+}
+
 // ============================================================
 // PAINEL DE GESTÃO — agregados sem cliente específico
 // ============================================================
@@ -225,6 +249,7 @@ export interface ContextoClienteDiagnostico {
   historicoSinal:  HistoricoSinalEntry[];
   oscilacaoRede:   OscilacaoRede | null;
   statusSmartOlt:  StatusSmartOlt | null;
+  statusSmartOltCompleto: StatusSmartOltCompleto | null;
   ordensServico:   OsEntry[];
   osMensagens:     Record<number, OsMensagemEntry[]>; // por idOssChamado
   osArquivos:      Record<number, OsArquivoEntry[]>;  // por idOssChamado

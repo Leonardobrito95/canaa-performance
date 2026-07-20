@@ -14,7 +14,9 @@ import {
   buscarRetencaoNegociacoes,
   buscarRegrasNegocio,
   buscarFotosRelevantes,
+  resolverSnOnu,
 } from './diagnostico.repository';
+import { buscarStatusSmartOltCompleto } from './diagnostico.smartolt-live';
 import { buscarFatoPosAtivacaoCliente } from '../posativacao/posativacao.repository';
 import { ContextoClienteDiagnostico } from './diagnostico.types';
 import { montarContextoTextual, montarContextoGestaoTextual } from './diagnostico.prompt';
@@ -73,10 +75,11 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
   const idsContratoAtivos = new Set(contratos.filter((c) => c.ativo).map((c) => c.id));
   const equipamentoAtual = await buscarEquipamentoAtual(idCliente);
 
-  const [historicoSinal, oscilacaoRede, statusSmartOlt, ordensServico, atendimentos, comercial, regrasNegocio, posAtivacao] = await Promise.all([
+  const [historicoSinal, oscilacaoRede, statusSmartOlt, statusSmartOltCompleto, ordensServico, atendimentos, comercial, regrasNegocio, posAtivacao] = await Promise.all([
     buscarHistoricoSinal(idCliente),
     buscarOscilacaoRede(idCliente, equipamentoAtual),
     buscarStatusSmartOlt(equipamentoAtual),
+    buscarStatusSmartOltCompleto(resolverSnOnu(equipamentoAtual)),
     buscarOrdensServico(idCliente, idsContratoAtivos),
     buscarAtendimentos(idCliente, idsContratoAtivos),
     buscarContextoComercial(idCliente, idsContrato),
@@ -99,6 +102,7 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
     historicoSinal,
     oscilacaoRede,
     statusSmartOlt,
+    statusSmartOltCompleto,
     ordensServico,
     osMensagens,
     osArquivos,

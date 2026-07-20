@@ -175,7 +175,7 @@ export async function buscarEquipamentoAtual(idCliente: number): Promise<{ descr
 /// um cliente cuja ONU, buscada por SN, respondia normalmente). Cai para busca
 /// por CPF só se não houver comodato de ONU ativo identificado.
 export async function buscarOscilacaoRede(idCliente: number, equipamentoAtual: { descricao: string; numeroSerie: string }[]): Promise<OscilacaoRede | null> {
-  let termoBusca = equipamentoAtual.find((e) => /onu/i.test(e.descricao))?.numeroSerie || null;
+  let termoBusca = resolverSnOnu(equipamentoAtual);
 
   if (!termoBusca) {
     const [rows] = await mysqlPool.query<any[]>(
@@ -221,12 +221,25 @@ export async function buscarOscilacaoRede(idCliente: number, equipamentoAtual: {
   }
 }
 
+/// Acha o SN da ONU dentro do equipamento atual do cliente: fonte única pra
+/// esse resolvedor, usado tanto pelo snapshot diário (buscarStatusSmartOlt)
+/// quanto pela consulta ao vivo (diagnostico.smartolt-live.ts).
+/// Bug real corrigido 2026-07-20: só testava "onu", mas um modelo bem comum
+/// no fleet é descrito como "ONT" (Optical Network Terminal, mesmo
+/// equipamento, nome diferente), ex: "ONT TX40 SUMEC NAVIGATOR WIFI 6",
+/// 16.822 ocorrências reais em movimento_produtos. Sem "ont" no regex, todo
+/// contrato com esse modelo nunca recebia enriquecimento de SmartOLT (nem o
+/// snapshot diário, nem a consulta ao vivo), silenciosamente.
+export function resolverSnOnu(equipamentoAtual: { descricao: string; numeroSerie: string }[]): string | null {
+  return equipamentoAtual.find((e) => /onu|ont/i.test(e.descricao))?.numeroSerie || null;
+}
+
 /// Busca o status granular da ONU no SmartOLT (otdr.historico_smartolt), pelo
 /// mesmo SN resolvido em buscarEquipamentoAtual. Cobre só uma parte do fleet
 /// (ONUs que já tiveram algum problema) — não encontrar é esperado, não erro,
 /// então retorna null silenciosamente nesse caso (só loga falha de conexão).
 export async function buscarStatusSmartOlt(equipamentoAtual: { descricao: string; numeroSerie: string }[]): Promise<StatusSmartOlt | null> {
-  const sn = equipamentoAtual.find((e) => /onu/i.test(e.descricao))?.numeroSerie || null;
+  const sn = resolverSnOnu(equipamentoAtual);
   if (!sn) return null;
 
   try {
