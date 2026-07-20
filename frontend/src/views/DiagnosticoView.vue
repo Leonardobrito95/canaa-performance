@@ -186,6 +186,25 @@
           </div>
           </div>
         </template>
+
+        <!-- Indicador de uso diário do CAIO — barra que enche conforme o
+             gasto do dia sobe (mesma ideia do indicador de limite do Claude
+             Code); clique expande o valor exato e o teto. -->
+        <div v-if="isHubAdmin && usoCaio" class="diag-uso-caio">
+          <button type="button" class="diag-uso-caio-toggle" @click="usoCaioExpandido = !usoCaioExpandido">
+            <div class="diag-uso-caio-linha">
+              <span>Uso do CAIO hoje</span>
+              <span>{{ usoCaioPct }}%</span>
+            </div>
+            <div class="diag-uso-caio-barra">
+              <div :class="['diag-uso-caio-fill', `nivel-${usoCaioNivel}`]" :style="{ width: usoCaioPct + '%' }"></div>
+            </div>
+          </button>
+          <div v-if="usoCaioExpandido" class="diag-uso-caio-detalhe">
+            <div>US$ {{ usoCaio.gastoHojeUsd.toFixed(2) }} de US$ {{ usoCaio.limiteUsd.toFixed(2) }} usados hoje</div>
+            <div class="diag-uso-caio-nota">Teto compartilhado entre todos com acesso ao CAIO · reinicia à meia-noite</div>
+          </div>
+        </div>
       </aside>
 
       <!-- Conteúdo principal: chat maximizado (Consulta/Gestão) ou lista de regras -->
@@ -513,6 +532,7 @@ import {
   criarRegra,
   editarRegra,
   excluirRegra,
+  buscarStatusGemini,
   type DiagnosticoResultado,
   type DiagnosticoAgregadoItem,
   type ClienteCandidato,
@@ -523,9 +543,35 @@ import {
   type ResumoGestao,
   type PopStatusEntry,
   type ArquivoGeradoGestao,
+  type StatusGeminiCaio,
 } from '../services/diagnosticoApi';
 
 const { user, isGestor, isHubAdmin } = useAuth();
+
+// ── Uso diário do CAIO (custo do Gemini) — indicador estilo Claude Code:
+// barra que enche conforme o gasto do dia sobe, clique expande o detalhe.
+// Só quem tem acesso ao CAIO (isHubAdmin) enxerga — mesmo público que já
+// consegue ver /diagnostico/_health/gemini no backend.
+const usoCaio = ref<StatusGeminiCaio | null>(null);
+const usoCaioExpandido = ref(false);
+const usoCaioPct = computed(() => {
+  if (!usoCaio.value || usoCaio.value.limiteUsd <= 0) return 0;
+  return Math.min(100, Math.round((usoCaio.value.gastoHojeUsd / usoCaio.value.limiteUsd) * 100));
+});
+const usoCaioNivel = computed(() => {
+  if (usoCaioPct.value >= 90) return 'critico';
+  if (usoCaioPct.value >= 70) return 'atencao';
+  return 'normal';
+});
+async function carregarUsoCaio() {
+  if (!isHubAdmin.value) return;
+  try {
+    const status = await buscarStatusGemini();
+    usoCaio.value = status.caio;
+  } catch {
+    // indicador é só informativo — uma falha aqui não deve travar o chat
+  }
+}
 
 type Modo = 'consulta' | 'gestao' | 'regras';
 const modo = ref<Modo>('consulta');
@@ -757,6 +803,7 @@ async function rodarAnalise(pergunta?: string) {
     adicionarTurno({ tipo: 'assistente', texto: msg });
   } finally {
     loading.value = false;
+    carregarUsoCaio();
   }
 }
 
@@ -921,6 +968,7 @@ async function enviarGestao(perguntaChip?: string) {
   } finally {
     loadingGestao.value = false;
     rolarGestaoParaFinal();
+    carregarUsoCaio();
   }
 }
 
@@ -1067,7 +1115,7 @@ watch(modo, (m) => {
 
 // Ao restaurar uma conversa salva (F5), abre já rolado pra última mensagem,
 // não pro topo do histórico.
-onMounted(() => rolarParaFinal());
+onMounted(() => { rolarParaFinal(); carregarUsoCaio(); });
 </script>
 
 <style scoped>
@@ -1086,6 +1134,24 @@ onMounted(() => rolarParaFinal());
    rola é o .diag-sidebar-scroll interno, pra nunca esconder Consulta/Gestão/
    Regras atrás de uma lista longa de POPs. */
 .diag-sidebar { width: 250px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; }
+
+.diag-uso-caio { flex-shrink: 0; margin-top: .6rem; padding-top: .7rem; border-top: 1px solid var(--border); }
+.diag-uso-caio-toggle {
+  width: 100%; background: none; border: none; padding: .2rem; cursor: pointer;
+  display: flex; flex-direction: column; gap: .35rem; font-family: var(--font-body);
+}
+.diag-uso-caio-linha { display: flex; justify-content: space-between; font-size: .72rem; color: var(--text-3); }
+.diag-uso-caio-barra { height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.diag-uso-caio-fill { height: 100%; border-radius: 2px; transition: width var(--transition); }
+.diag-uso-caio-fill.nivel-normal  { background: var(--accent); }
+.diag-uso-caio-fill.nivel-atencao { background: #ffb020; }
+.diag-uso-caio-fill.nivel-critico { background: var(--error); }
+.diag-uso-caio-detalhe {
+  margin-top: .5rem; padding: .55rem .65rem; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  font-size: .74rem; color: var(--text-2); line-height: 1.4;
+}
+.diag-uso-caio-nota { margin-top: .25rem; color: var(--text-3); font-size: .68rem; }
 
 .diag-brand { display: flex; align-items: center; gap: .55rem; padding: .1rem .3rem .9rem; flex-shrink: 0; }
 .diag-brand-icon { display: flex; color: var(--accent); flex-shrink: 0; }

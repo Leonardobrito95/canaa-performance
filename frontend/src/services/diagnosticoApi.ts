@@ -201,6 +201,25 @@ export const exportarRelatorioGestao = (chave: string, formato: 'pdf' | 'xlsx') 
 export const enviarFeedback = (consultaId: string, feedback: TipoFeedback, comentario?: string) =>
   api.post<{ success: boolean }>(`/consulta/${consultaId}/feedback`, { feedback, comentario }).then((r) => r.data);
 
+export interface StatusGeminiCaio {
+  gastoHojeUsd: number;
+  limiteUsd: number;
+}
+
+export interface StatusGemini {
+  chamadas: number;
+  falhas: number;
+  usosFallback: number;
+  tokensEntradaTotal: number;
+  tokensSaidaTotal: number;
+  latenciaMediaMs: number;
+  custoEstimadoUsd: number;
+  caio: StatusGeminiCaio;
+}
+
+export const buscarStatusGemini = () =>
+  api.get<StatusGemini>('/_health/gemini').then((r) => r.data);
+
 export const listarRegras = () =>
   api.get<RegraNegocio[]>('/regras').then((r) => r.data);
 
