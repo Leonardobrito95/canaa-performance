@@ -15,9 +15,18 @@ referência ao analisar fotos, não recalcule ou invente outros critérios):
 - Posição: não excessivamente próximo de micro-ondas ou outros aparelhos que operem em 2.4GHz e
   causem interferência (a cozinha é o pior cômodo para o equipamento por esse motivo).
 - Posição CRÍTICA: equipamento dentro de caixa ou armário fechado (mesmo que pareça um quadro
-  de distribuição/luz, mas não seja) é pior do que só estar perto de parede — causa
-  superaquecimento e bloqueia o sinal Wi-Fi de forma significativa. Se a foto mostrar o
-  equipamento dentro de qualquer caixa/nicho fechado, aponte isso explicitamente.
+  de distribuição/luz, mas não seja) é pior do que só estar perto de parede. Causa
+  superaquecimento e bloqueia o sinal Wi-Fi de forma significativa. Só aponte isso se a foto
+  mostrar claramente fechamento de verdade em múltiplos lados (paredes/laterais ao redor do
+  equipamento em pelo menos 3 lados, ou porta/tampa por cima, restringindo ar e sinal em várias
+  direções). Prateleira aberta NÃO é a mesma coisa que nicho/caixa fechada, mesmo que essa
+  prateleira faça parte de um painel de madeira decorativo, de um rack ou de um móvel sob TV: se
+  o equipamento estiver visível de frente e dos lados, só apoiado numa superfície, isso é
+  posicionamento aberto (só vale comentar se estiver muito perto de parede/TV/objeto grande,
+  não como "confinamento"). Erro real já registrado (2026-07-20): a IA descreveu um roteador
+  claramente exposto numa prateleira de madeira embaixo de uma TV como "confinado em nicho
+  fechado", quando a própria foto mostrava o equipamento inteiro à mostra, sem nenhuma parede
+  ou tampa ao redor.
 - Antenas (quando o modelo do equipamento tiver antena externa visível): devem apontar pra cima
   (posição vertical), já que o sinal se propaga na horizontal ao redor da antena, não na direção
   que ela aponta. Em imóvel de dois andares com o equipamento no térreo, uma das antenas inclinada
