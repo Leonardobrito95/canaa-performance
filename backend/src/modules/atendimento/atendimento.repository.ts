@@ -192,8 +192,9 @@ export async function buscarKpisAtendimento(
   // buscadas em lote logo abaixo (uma query só pro período inteiro, em vez
   // de 1 por atendimento — N1 sozinho tem milhares/mês).
   const segmentosPorAtendimento = new Map<string, { inicio: number; fim: number }[]>();
-  // TMR só entra pra canal=chat — ver comentário de tmrMs em atendimento.types.ts.
+  // TMR só entra pra canal=chat, ver comentário de tmrMs em atendimento.types.ts.
   const idsChat: ObjectId[] = [];
+  const idsLigacao: ObjectId[] = [];
 
   for (const doc of docs) {
     const tmaMs = calcularTma(doc);
@@ -208,7 +209,7 @@ export async function buscarKpisAtendimento(
       tmes.push(tmeMs);
       (ehLigacao ? tmesLigacao : tmesChat).push(tmeMs);
     }
-    if (ehLigacao) volumeLigacao++; else volumeChat++;
+    if (ehLigacao) { volumeLigacao++; idsLigacao.push(doc._id); } else volumeChat++;
 
     segmentosPorAtendimento.set(doc._id.toString(), segmentosHumanos(doc));
     if (!ehLigacao) idsChat.push(doc._id);
@@ -224,6 +225,7 @@ export async function buscarKpisAtendimento(
   }
 
   const tmrs = idsChat.length ? await buscarTemposRespostaEmLote(idsChat, segmentosPorAtendimento) : [];
+  const duracoesReaisLigacao = idsLigacao.length ? await buscarDuracaoRealLigacaoEmLote(idsLigacao) : [];
   const setorDestino = setorEscalonaPara(setor);
   const escalonamentos = setorDestino
     ? await contarEscalonamentos(DEPARTAMENTO_IDS[setor], DEPARTAMENTO_IDS[setorDestino], dateFrom, dateTo)
@@ -241,11 +243,39 @@ export async function buscarKpisAtendimento(
     tmeMsChat: mediana(tmesChat),
     tmaMsLigacao: mediana(tmasLigacao),
     tmeMsLigacao: mediana(tmesLigacao),
+    duracaoRealLigacaoMs: mediana(duracoesReaisLigacao),
     escalonamentos,
     pctEscalonamento: setorDestino && docs.length ? Math.round((escalonamentos / docs.length) * 1000) / 10 : null,
     notaMediaSatisfacao: qtdAvaliados ? Math.round((somaNotas / qtdAvaliados) * 100) / 100 : null,
     qtdAvaliados,
   };
+}
+
+/// Duração real da ligação telefônica (do PABX, via call_records.duration,
+/// em segundos), diferente de tmaMsLigacao (que só soma o trecho em que um
+/// atendente HUMANO estava na linha). Validado 2026-07-20: numa fatia real
+/// das ligações a IZA/bot segura a maior parte da chamada antes de passar
+/// pro humano (ex: ligação de 147s onde a IZA ficou 135s e o humano só 9s),
+/// então "TMA de ligação" sozinho subestima bastante quanto tempo o cliente
+/// ficou na linha de verdade. Join 1:1 confirmado (call_records.customerService
+/// == atendimentos._id, sem casos de 1 atendimento com mais de 1 call_records).
+/// NÃO filtra por status: confirmado que status não indica se houve conversa
+/// de verdade (LOST tem duração média de 251s, FAILED 341s, praticamente
+/// igual a COMPLETED com 304s, e 81-95% dos registros de cada status têm mais
+/// de 10s de duração). Um filtro por status='COMPLETED' zerava setores
+/// inteiros (Retenção ficava com duracaoRealLigacaoMs sempre null, mesmo
+/// tendo ligação real registrada). O sinal confiável é a própria duração:
+/// duration > 0 já exclui os status que nunca têm chamada de verdade (BOT,
+/// IN_PROGRESS, PARKED, todos com duração 0 sempre).
+async function buscarDuracaoRealLigacaoEmLote(idsAtendimento: ObjectId[]): Promise<number[]> {
+  const db = await getOpaSuiteDb();
+  const registros = await db.collection('call_records').find(
+    { customerService: { $in: idsAtendimento }, duration: { $gt: 0 } },
+    { projection: { duration: 1 } },
+  ).toArray();
+  return registros
+    .filter((r) => typeof r.duration === 'number')
+    .map((r) => r.duration * 1000);
 }
 
 /// Busca as mensagens de texto (exclui os passos internos de raciocínio da
@@ -744,7 +774,7 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
   const volumeChatPorOp = new Map<string, Set<string>>();
   const volumeLigacaoPorOp = new Map<string, Set<string>>();
   const segmentosPorAtendimento = new Map<string, { inicio: number; fim: number }[]>();
-  // TMR só entra pra canal=chat — ver comentário de tmrMs em atendimento.types.ts.
+  // TMR só entra pra canal=chat, ver comentário de tmrMs em atendimento.types.ts.
   const atendimentosValidosChat = [];
 
   for (const doc of atendimentosHoje) {

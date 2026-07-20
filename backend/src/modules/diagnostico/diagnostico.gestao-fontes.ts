@@ -202,14 +202,18 @@ function formatarKpisAtendimento(kpis: KpisAtendimento[] | null): string {
     const escalonamento = k.setor === 'N1'
       ? ` | Escalonado pra N2: ${k.escalonamentos} (${k.pctEscalonamento ?? 0}%)`
       : '';
-    // TME/TMA misturam chat+ligação no valor agregado — ligação tem espera
+    // TME/TMA misturam chat+ligação no valor agregado. Ligação tem espera
     // ~0 por definição (o atendente abre manualmente), então distorce pra
     // baixo quando o setor tem volume relevante de ligação. Só mostra a
     // quebra por canal quando há ligação de verdade no período.
+    // duracaoRealLigacaoMs vem do PABX (call_records), é a duração de fato da
+    // chamada. Diferente de tmaMsLigacao, que só conta o trecho com atendente
+    // HUMANO na linha (em várias ligações a IZA/bot segura a maior parte da
+    // chamada antes de passar pro humano, validado 2026-07-20).
     const quebraCanal = k.volumeLigacao > 0
-      ? ` (chat: TME ${fmtDuracao(k.tmeMsChat)}, TMA ${fmtDuracao(k.tmaMsChat)} | ligação: TME ${fmtDuracao(k.tmeMsLigacao)}, TMA ${fmtDuracao(k.tmaMsLigacao)}, volume ${k.volumeChat} chat / ${k.volumeLigacao} ligação)`
+      ? ` (chat: TME ${fmtDuracao(k.tmeMsChat)}, TMA ${fmtDuracao(k.tmaMsChat)} | ligação: TME ${fmtDuracao(k.tmeMsLigacao)}, TMA (só toque humano) ${fmtDuracao(k.tmaMsLigacao)}, duração real da chamada ${fmtDuracao(k.duracaoRealLigacaoMs)}, volume ${k.volumeChat} chat / ${k.volumeLigacao} ligação)`
       : '';
-    return `- ${k.setor} | Volume: ${k.volume} | TMR (tempo que o atendente HUMANO demora pra responder uma mensagem do cliente NO CHAT, nunca conta URA/IZA — ligação não tem essa métrica): ${fmtDuracao(k.tmrMs)} | ` +
+    return `- ${k.setor} | Volume: ${k.volume} | TMR (tempo que o atendente HUMANO demora pra responder uma mensagem do cliente NO CHAT, nunca conta URA/IZA, ligação não tem essa métrica): ${fmtDuracao(k.tmrMs)} | ` +
       `TME (espera em fila/URA/IZA até um humano assumir, chat+ligação): ${fmtDuracao(k.tmeMs)} | TMA (tempo com o atendente humano, chat+ligação): ${fmtDuracao(k.tmaMs)}${quebraCanal} | ` +
       `Satisfação: ${nota}${escalonamento}`;
   }).join('\n');

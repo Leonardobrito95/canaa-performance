@@ -29,7 +29,7 @@
             <th class="num">Volume Hoje</th>
             <th class="num" title="Mediana do Tempo de Espera das conversas que este operador assumiu (chat + ligação)">TME (Espera)</th>
             <th class="num" title="Mediana do Tempo de Atendimento individual do operador (chat + ligação)">TMA (Atendimento)</th>
-            <th class="num" title="Mediana do Tempo de Resposta a mensagens — só chat, ligação não tem essa métrica">TMR (Resposta · chat)</th>
+            <th class="num" title="Mediana do Tempo de Resposta a mensagens, só chat, ligação não tem essa métrica">TMR (Resposta · chat)</th>
           </tr>
         </thead>
         <tbody>

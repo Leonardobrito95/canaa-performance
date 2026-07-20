@@ -395,15 +395,15 @@ model AtendimentoKpiMensal {
   /// 'YYYY-MM'
   mes_referencia         String
   volume                 Int
-  /// Agregado (chat + ligação) — mantido pra continuidade do histórico já
+  /// Agregado (chat + ligação), mantido pra continuidade do histórico já
   /// salvo antes da quebra por canal (2026-07-20). Ver *_chat/*_ligacao.
   tma_ms                 Int?
   tme_ms                 Int?
-  /// Só canal=chat — ligação não gera "tempo de resposta" válido (ver
+  /// Só canal=chat, ligação não gera "tempo de resposta" válido (ver
   /// KpisAtendimento.tmrMs no types.ts).
   tmr_ms                 Int?
-  /// Quebra por canal (canal='pabx' no OpaSuite → ligação, resto → chat) —
-  /// null em snapshots calculados antes de 2026-07-20 (nunca recalculados
+  /// Quebra por canal (canal='pabx' no OpaSuite vira ligação, resto vira chat).
+  /// Null em snapshots calculados antes de 2026-07-20 (nunca recalculados
   /// retroativamente).
   volume_chat            Int?
   volume_ligacao         Int?
@@ -411,6 +411,10 @@ model AtendimentoKpiMensal {
   tme_ms_chat            Int?
   tma_ms_ligacao         Int?
   tme_ms_ligacao         Int?
+  /// Duração real da ligação (call_records.duration do PABX), diferente de
+  /// tma_ms_ligacao (que só conta trecho com atendente HUMANO). Adicionado
+  /// 2026-07-20, null em snapshots anteriores.
+  duracao_real_ligacao_ms Int?
   escalonamentos         Int
   pct_escalonamento      Float?
   nota_media_satisfacao  Float?
@@ -623,15 +627,15 @@ model AtendimentoAlertaOperacional {
   status                  String    @default("ABERTO")
   criado_em               DateTime  @default(now())
   resolvido_em            DateTime?
-  /// Nome de quem clicou "Resolver" — null enquanto aberto, e volta a null
+  /// Nome de quem clicou "Resolver". Null enquanto aberto, e volta a null
   /// se o alerta reabrir (ver upsertAlerta em atendimento.alertas-
   /// operacionais.ts: se a pendência ainda existe no OpaSuite, o alerta
   /// reabre a cada ciclo de 2 min, então a resolução manual anterior deixa
-  /// de valer — isso é comportamento esperado, não bug).
+  /// de valer. Isso é comportamento esperado, não bug.
   resolvido_por           String?
 
   /// Quando o alerta foi notificado por WhatsApp pra gestora (1ª notificação,
-  /// só acontece uma vez por alerta CRITICO — null enquanto não notificado).
+  /// só acontece uma vez por alerta CRITICO, null enquanto não notificado).
   /// Reabrir o alerta (ver upsertAlerta) NÃO reseta esses dois campos, pra
   /// evitar reenvio repetido a cada ciclo de 2 min pro mesmo incidente.
   notificado_whatsapp_em  DateTime?
@@ -672,7 +676,7 @@ model VistoriaAlerta {
   status       String    @default("ABERTO")
   criado_em    DateTime  @default(now())
   resolvido_em DateTime?
-  /// Nome de quem clicou "Resolver" — mesma lógica de reabertura de
+  /// Nome de quem clicou "Resolver", mesma lógica de reabertura de
   /// AtendimentoAlertaOperacional.resolvido_por.
   resolvido_por String?
 

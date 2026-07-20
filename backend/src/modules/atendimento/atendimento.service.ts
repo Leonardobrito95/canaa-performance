@@ -71,6 +71,7 @@ export async function getKpisAtendimentoHistorico(meses = 6): Promise<KpiAtendim
       tmeMsChat:           r.tme_ms_chat,
       tmaMsLigacao:        r.tma_ms_ligacao,
       tmeMsLigacao:        r.tme_ms_ligacao,
+      duracaoRealLigacaoMs: r.duracao_real_ligacao_ms,
       escalonamentos:      r.escalonamentos,
       pctEscalonamento:    r.pct_escalonamento,
       notaMediaSatisfacao: r.nota_media_satisfacao,
