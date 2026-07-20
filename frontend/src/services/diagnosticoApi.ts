@@ -57,6 +57,8 @@ export interface ClienteCandidato {
   nome: string;
   cpfCnpj: string;
   endereco: string;
+  /// IDs dos contratos ativos desse cliente — mais de um vira "ID - NOME" na tela.
+  contratosAtivos: number[];
 }
 
 export type CategoriaRegra = 'VENDAS' | 'RETENCAO' | 'REDE' | 'COMISSAO' | 'ATENDIMENTO';

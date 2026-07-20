@@ -1,4 +1,5 @@
 import { fetchContracts, ContractRecord } from './vendas.repository';
+import { metaB2CParaMes, META_B2B } from './vendas.metas';
 
 export interface ContractKpis {
   totalContratos: number;
@@ -53,7 +54,10 @@ export async function getContracts(
     valorLiberado:         liberadas.reduce((s, c) => s + c.valor_mensal, 0), // só liberados — base comissão
     valorBloqueado:        [...bloqueadas, ...pendentes].reduce((s, c) => s + c.valor_mensal, 0),
     valorComissaoLiberada: liberadas.reduce((s, c) => s + c.comissao, 0),
-    metaAlvo:              qtdB2b > contracts.length / 2 ? 7_000 : 10_000,
+    // Heurística existente (maioria B2B no filtro atual) + meta B2C mês-dependente
+    // (ver vendas.metas.ts) — dateFrom só dá o mês certo quando o filtro é de um
+    // mês só; fora disso cai no padrão, mesmo comportamento de antes da mudança.
+    metaAlvo:              qtdB2b > contracts.length / 2 ? META_B2B : metaB2CParaMes(filters.dateFrom?.slice(0, 7)),
     b2c:                   contracts.filter((c) => c.segmento === 'B2C').length,
     b2b:                   qtdB2b,
     cortesias:             contracts.filter((c) => c.cortesia === 'SIM').length,

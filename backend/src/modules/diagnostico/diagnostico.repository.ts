@@ -27,6 +27,11 @@ export interface ClienteCandidato {
   nome:     string;
   cpfCnpj:  string;
   endereco: string;
+  /// IDs dos contratos ATIVOS (status='A') desse cliente. Um cliente pode ter
+  /// mais de um contrato ativo ao mesmo tempo (ex: endereços diferentes) —
+  /// quando houver mais de um, o frontend mostra "ID CONTRATO - NOME" pra cada
+  /// um, em vez de escolher um sozinho. Vazio/1 item = sem ambiguidade.
+  contratosAtivos: number[];
 }
 
 /// Busca cliente por nome (parcial) ou CPF/CNPJ (dígitos), para o chat de
@@ -43,12 +48,26 @@ export async function buscarClientePorNome(termo: string): Promise<ClienteCandid
       : `SELECT id, razao, cnpj_cpf, endereco FROM cliente WHERE razao LIKE ? LIMIT 10`,
     [porDocumento ? apenasDigitos : `%${limpo}%`],
   );
+  if (!rows.length) return [];
+
+  const idsClientes = rows.map((r) => r.id);
+  const [contratoRows] = await mysqlPool.query<any[]>(
+    `SELECT id_cliente, id FROM cliente_contrato WHERE status = 'A' AND id_cliente IN (${idsClientes.map(() => '?').join(',')})`,
+    idsClientes,
+  );
+  const contratosPorCliente = new Map<number, number[]>();
+  for (const c of contratoRows) {
+    const lista = contratosPorCliente.get(c.id_cliente) ?? [];
+    lista.push(c.id);
+    contratosPorCliente.set(c.id_cliente, lista);
+  }
 
   return rows.map((r) => ({
-    id:       r.id,
-    nome:     r.razao,
-    cpfCnpj:  r.cnpj_cpf,
-    endereco: r.endereco || '',
+    id:              r.id,
+    nome:            r.razao,
+    cpfCnpj:         r.cnpj_cpf,
+    endereco:        r.endereco || '',
+    contratosAtivos: contratosPorCliente.get(r.id) ?? [],
   }));
 }
 

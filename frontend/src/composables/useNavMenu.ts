@@ -8,11 +8,11 @@ export type Tab =
   | 'diagnostico' | 'hub' | 'hub-viewer' | 'hub-admin' | 'sala-reuniao'
   | 'alertas-hub' | 'rh';
 
-export type NavGroupKey = 'alertas' | 'comercial' | 'centro-solucao' | 'campo' | 'redes' | 'infraestrutura' | 'hub' | 'rh' | 'ferramentas';
+export type NavGroupKey = 'alertas' | 'comercial' | 'centro-solucao' | 'campo' | 'redes' | 'infraestrutura' | 'rh' | 'ferramentas';
 
 export interface NavItem {
   tab?: Tab;
-  /// P/ itens cujo estado "ativo" cobre mais de um tab (ex: Hub cobre 'hub' e 'hub-viewer').
+  /// P/ itens cujo estado "ativo" cobre mais de um tab (ex: Dashboards cobre 'hub' e 'hub-viewer').
   activeTabs?: Tab[];
   label: string;
   /// Só o OTDR usa (label muda pra "Abrindo..." durante o carregamento).
@@ -146,13 +146,6 @@ export function useNavMenu(deps: UseNavMenuDeps) {
       ],
     },
     {
-      key: 'hub', label: 'Hub', icon: 'fa-layer-group', visible: true,
-      items: [
-        { tab: 'hub', activeTabs: ['hub', 'hub-viewer'], label: 'Dashboards', icon: ICON_HUB, visible: true },
-        { tab: 'hub-admin', label: 'Administração', icon: ICON_ADMIN, visible: isHubAdmin.value },
-      ],
-    },
-    {
       // RH: módulo próprio de indicadores de pessoas (jornada, desempenho),
       // separado dos setores operacionais (Comercial/Centro de Solução/Campo)
       // porque cruza equipes de vários setores ao mesmo tempo, não é dono de
@@ -160,15 +153,22 @@ export function useNavMenu(deps: UseNavMenuDeps) {
       // têm aos mesmos indicadores dentro da própria tela de Atendimento
       // (aba "Jornada e Produtividade"); aqui é a visão ampliada, com filtro
       // de setor livre, pra RH olhar a empresa inteira de uma vez.
-      key: 'rh', label: 'RH', icon: 'fa-users', visible: temAcesso(perfilAtual.value, PERFIS_MODULO.rh),
+      key: 'rh', label: 'RH', color: '#8E24AA', icon: 'fa-users', visible: temAcesso(perfilAtual.value, PERFIS_MODULO.rh),
       items: [
         { tab: 'rh', label: 'Indicadores de Atendimento', icon: ICON_RH, visible: true },
       ],
     },
     {
-      key: 'ferramentas', label: 'Ferramentas', icon: 'fa-screwdriver-wrench', visible: isGestor.value,
+      // Grupo Hub foi dissolvido (2026-07-19) — Dashboards/Administração vieram
+      // pra cá. Visibilidade do GRUPO fica sempre true (Dashboards é visível
+      // pra qualquer perfil, sem gate) — o antigo gate isGestor.value do grupo
+      // desceu pro item Sala de Reunião, que é o único que realmente precisa
+      // dele, pra não tirar acesso de ninguém que já via Dashboards.
+      key: 'ferramentas', label: 'Ferramentas', icon: 'fa-screwdriver-wrench', visible: true,
       items: [
-        { tab: 'sala-reuniao', label: 'Sala de Reunião', icon: ICON_SALA_REUNIAO, visible: true },
+        { tab: 'hub', activeTabs: ['hub', 'hub-viewer'], label: 'Dashboards', icon: ICON_HUB, visible: true },
+        { tab: 'hub-admin', label: 'Administração', icon: ICON_ADMIN, visible: isHubAdmin.value },
+        { tab: 'sala-reuniao', label: 'Sala de Reunião', icon: ICON_SALA_REUNIAO, visible: isGestor.value },
       ],
     },
   ]);

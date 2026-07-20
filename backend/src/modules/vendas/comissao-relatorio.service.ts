@@ -1,13 +1,19 @@
 import ExcelJS from 'exceljs';
 import prisma from '../../config/prisma';
+import { metaB2CParaMes, META_B2B } from './vendas.metas';
 
 // ── Regras de negócio ────────────────────────────────────────────────────────
 // Meta calculada sobre valor total ativado (liberado + bloqueado)
 // Comissão paga somente sobre o valor liberado (1º boleto recebido)
-const META_B2C           = 10_000;
-const META_B2B           = 7_000;
-const META_BDR_UPGRADES  = 50;
-const META_BDR_RENOVACOES = 80;
+// META_B2C: ver vendas.metas.ts (mês-dependente, tem exceção pontual pra 2026-06)
+//
+// Não existe meta separada pra BDR (upgrade/downgrade/renovação) — confirmado
+// pelo usuário 2026-07-19: quem bate a meta de vendas (ativos) já recebe
+// venda liberada + BDR juntos, não tem uma segunda meta específica de volume
+// de BDR. Coluna "META ALCANÇADA" da seção de Alterações de Plano (que
+// existia antes, com META_BDR_UPGRADES/RENOVACOES=50/80 — inatingível por
+// pessoa, depois recalibrada e ainda incoerente com quem de fato recebia)
+// foi removida por não representar nada de real.
 
 const MESES = ['janeiro','fevereiro','março','abril','maio','junho',
                'julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -119,7 +125,6 @@ interface VendedorMetrics {
   qtdUpgrade:  number; comUpgrade:  number;
   qtdDowngrade: number; comDowngrade: number;
   qtdRenovacao: number; comRenovacao: number;
-  metaBDR: boolean;
   // Vendas
   qtdVendas: number; valorVendas: number;
   qtdInterna: number; qtdExterna: number; qtdPlantao: number;
@@ -213,7 +218,6 @@ export async function gerarRelatorioComissao(mes_referencia: string): Promise<Bu
     const comDowngrade = downgrades.reduce((s, c) => s + Number(c.valor_comissao), 0);
     const qtdRenovacao = renovacoes.length;
     const comRenovacao = renovacoes.reduce((s, c) => s + Number(c.valor_comissao), 0);
-    const metaBDR      = qtdUpgrade >= META_BDR_UPGRADES && qtdRenovacao >= META_BDR_RENOVACOES;
 
     const qtdVendas   = vendas.length;
     const valorVendas = vendas.reduce((s, v) => s + Number(v.valor_mensal), 0);
@@ -231,7 +235,7 @@ export async function gerarRelatorioComissao(mes_referencia: string): Promise<Bu
     const valorLiberado          = liberadas.reduce((s, v) => s + Number(v.valor_mensal), 0); // só liberados → base comissão
     const somaVendas             = comUpgrade + valorAtivado; // meta sobre valor total ativado
 
-    const metaLimit   = equipe === 'B2B' ? META_B2B : META_B2C;
+    const metaLimit   = equipe === 'B2B' ? META_B2B : metaB2CParaMes(mes_referencia);
     const analiseMeta = somaVendas >= metaLimit;
 
     // Comissão a pagar só se meta atingida
@@ -241,7 +245,7 @@ export async function gerarRelatorioComissao(mes_referencia: string): Promise<Bu
 
     return {
       nome, equipe,
-      qtdUpgrade, comUpgrade, qtdDowngrade, comDowngrade, qtdRenovacao, comRenovacao, metaBDR,
+      qtdUpgrade, comUpgrade, qtdDowngrade, comDowngrade, qtdRenovacao, comRenovacao,
       qtdVendas, valorVendas, qtdInterna, qtdExterna, qtdPlantao, valorComissaoVendas,
       valorAtivado, valorLiberado, somaVendas, analiseMeta,
       valorComissaoLiberada, valorComissaoBloqueada,
@@ -256,7 +260,7 @@ export async function gerarRelatorioComissao(mes_referencia: string): Promise<Bu
 
   const refLabel = `${MESES[month - 1]}/${year}`;
 
-  buildSheet1(wb, metrics, refLabel);
+  buildSheet1(wb, metrics, refLabel, metaB2CParaMes(mes_referencia));
   buildSheet2(wb, snapshots);
   buildSheet3(wb, commissions);
 
@@ -264,7 +268,7 @@ export async function gerarRelatorioComissao(mes_referencia: string): Promise<Bu
 }
 
 // ── Sheet 1: Aplicação de regras ─────────────────────────────────────────────
-function buildSheet1(wb: ExcelJS.Workbook, metrics: VendedorMetrics[], refLabel: string) {
+function buildSheet1(wb: ExcelJS.Workbook, metrics: VendedorMetrics[], refLabel: string, metaB2CDoMes: number) {
   const ws = wb.addWorksheet('Aplicação de regras');
   const N = 9; // colunas
 
@@ -296,13 +300,16 @@ function buildSheet1(wb: ExcelJS.Workbook, metrics: VendedorMetrics[], refLabel:
   let row = 3;
 
   // ── Seção 1: ALTERAÇÕES DE PLANO (BDR) ──────────────────────────────────────
-  sectionHeader(ws, row++, 'ALTERAÇÕES DE PLANO', N, C.navyDark);
+  // Sem coluna de meta própria — BDR não tem meta separada (confirmado pelo
+  // usuário 2026-07-19), a comissão de upgrade/downgrade/renovação já é
+  // gatilhada pela mesma meta de vendas aplicada na Seção 3.
+  const N1 = 8;
+  sectionHeader(ws, row++, 'ALTERAÇÕES DE PLANO', N1, C.navyDark);
   colHeaders(ws, row++, [
     'COLABORADOR','EQUIPE',
     'QTD DOWNGRADE','COMISSÃO DOWNGRADE',
     'QTD UPGRADE','COMISSÃO UPGRADE',
     'QTD RENOVAÇÃO','COMISSÃO RENOVAÇÃO',
-    'META ALCANÇADA',
   ], C.navyMid);
 
   const bdrRows = metrics.filter((m) => m.qtdUpgrade > 0 || m.qtdDowngrade > 0 || m.qtdRenovacao > 0);
@@ -312,13 +319,10 @@ function buildSheet1(wb: ExcelJS.Workbook, metrics: VendedorMetrics[], refLabel:
       m.qtdDowngrade || null, fmt(m.comDowngrade),
       m.qtdUpgrade   || null, fmt(m.comUpgrade),
       m.qtdRenovacao || null, fmt(m.comRenovacao),
-      m.metaBDR ? 'SIM' : 'NÃO',
-    ], {
-      8: { fontArgb: m.metaBDR ? C.greenOk : C.red, bold: true },
-    });
+    ]);
   }
   if (bdrRows.length === 0) {
-    ws.mergeCells(row, 1, row, N);
+    ws.mergeCells(row, 1, row, N1);
     const r = ws.getRow(row++);
     r.getCell(1).value = 'Sem registros BDR neste período';
     r.getCell(1).font  = font({ italic: true, argb: 'FF888888' });
@@ -359,7 +363,7 @@ function buildSheet1(wb: ExcelJS.Workbook, metrics: VendedorMetrics[], refLabel:
   row++; // espaço
 
   // ── Seção 3: APLICAÇÃO DE REGRAS ─────────────────────────────────────────────
-  const metaLabel = `META: R$ ${META_B2C.toLocaleString('pt-BR')}`;
+  const metaLabel = `META: R$ ${metaB2CDoMes.toLocaleString('pt-BR')}`;
   sectionHeader(ws, row++, `APLICAÇÃO DE REGRAS — ${metaLabel} EM VALOR ATIVADO`, N, C.navyDark);
   colHeaders(ws, row++, [
     'COLABORADOR','EQUIPE',

@@ -107,6 +107,10 @@ Regras:
   o cliente tiver mais de um contrato, mencione isso no DIAGNOSTICO quando for relevante (ex:
   "este cliente também possui um contrato anterior já cancelado, sem relação com o problema
   atual"), deixando claro qual contrato é o ATIVO sendo diagnosticado.
+- No DIAGNOSTICO, sempre informe o número da(s) O.S. e o ID do contrato analisados para
+  chegar à conclusão (ex: "com base na O.S. #561227, contrato 35575"). Isso é uma exigência de
+  transparência sobre qual dado foi usado, vale sempre, não só quando já existe uma O.S. em
+  aberto tratando do mesmo problema (essa é uma regra à parte, na seção ERRO acima).
 - Cada O.S. e cada atendimento no contexto abaixo indica a qual contrato pertence e se esse
   contrato está ativo. NUNCA use uma O.S./atendimento marcado como NÃO ATIVO para explicar o
   problema atual do cliente ou avaliar a instalação vigente — isso é sobre um contrato

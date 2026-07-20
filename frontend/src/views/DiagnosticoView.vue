@@ -209,15 +209,24 @@
 
             <!-- candidatos pra escolher -->
             <div v-if="turno.candidatos" class="candidatos-lista">
-              <button
-                v-for="c in turno.candidatos"
-                :key="c.id"
-                class="candidato-btn"
-                @click="escolherCandidato(c)"
-              >
-                <span class="candidato-nome">{{ c.nome }}</span>
-                <span class="candidato-doc">{{ c.cpfCnpj }}<span v-if="c.endereco"> · {{ c.endereco }}</span></span>
-              </button>
+              <template v-for="c in turno.candidatos" :key="c.id">
+                <!-- mais de um contrato ativo: um botão por contrato, "ID - NOME" -->
+                <template v-if="c.contratosAtivos.length > 1">
+                  <button
+                    v-for="idContrato in c.contratosAtivos"
+                    :key="`${c.id}-${idContrato}`"
+                    class="candidato-btn"
+                    @click="escolherCandidato(c)"
+                  >
+                    <span class="candidato-nome">{{ idContrato }} - {{ c.nome }}</span>
+                    <span class="candidato-doc">{{ c.cpfCnpj }}<span v-if="c.endereco"> · {{ c.endereco }}</span></span>
+                  </button>
+                </template>
+                <button v-else class="candidato-btn" @click="escolherCandidato(c)">
+                  <span class="candidato-nome">{{ c.nome }}</span>
+                  <span class="candidato-doc">{{ c.cpfCnpj }}<span v-if="c.endereco"> · {{ c.endereco }}</span></span>
+                </button>
+              </template>
             </div>
 
             <!-- resultado: estruturado (3 seções) ou texto livre (fora de escopo) -->
@@ -709,11 +718,15 @@ async function resolverCliente(termo: string) {
     const candidatos = await buscarCliente(termo);
     if (candidatos.length === 0) {
       adicionarTurno({ tipo: 'assistente', texto: 'Não encontrei nenhum cliente com esse nome ou documento. Tente novamente (nome completo, CPF/CNPJ ou ID).' });
-    } else if (candidatos.length === 1) {
+    } else if (candidatos.length === 1 && candidatos[0].contratosAtivos.length <= 1) {
       clienteAtivo.value = { id: candidatos[0].id, nome: candidatos[0].nome };
       loading.value = false;
       await rodarAnalise();
       return;
+    } else if (candidatos.length === 1) {
+      // 1 cliente, mas com mais de um contrato ativo — não auto-seleciona,
+      // mostra os contratos pra deixar claro qual vai ser analisado.
+      adicionarTurno({ tipo: 'assistente', texto: 'Esse cliente tem mais de um contrato ativo. Qual deles?', candidatos });
     } else {
       adicionarTurno({ tipo: 'assistente', texto: 'Encontrei mais de um cliente com esse nome. Qual deles?', candidatos });
     }

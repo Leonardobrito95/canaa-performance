@@ -69,7 +69,7 @@
         </template>
       </nav>
 
-      <div style="margin-top: auto; flex-shrink: 0; padding-bottom: 0.5rem;">
+      <div v-if="isHubAdmin" style="margin-top: auto; flex-shrink: 0; padding-bottom: 0.5rem;">
         <div class="nav-divider" style="margin-top: 0;"></div>
         <button type="button" :class="['sidebar-caio-btn', { active: tab === 'diagnostico' }]" @click="tab = 'diagnostico'" title="Canaã Artificial Intelligence Operator">
           <div class="sidebar-icon-wrap" style="width: auto; height: 32px; display: flex; align-items: center; justify-content: center;">
@@ -148,7 +148,7 @@
               </button>
             </div>
 
-            <div class="drawer-group">
+            <div v-if="isHubAdmin" class="drawer-group">
               <span class="drawer-group-label">C.A.I.O.</span>
               <button :class="['drawer-btn', { active: tab === 'diagnostico' }]" @click="tab = 'diagnostico'; menuOpen = false">
                 <svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M1 8h2.3l1.4-3.6 2.3 7.2 1.4-4.5 1 .9H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
