@@ -66,18 +66,36 @@ export interface KpisAtendimento {
   /// TMA — Tempo Médio de Atendimento: tempo que um atendente HUMANO de
   /// verdade passou com o cliente (soma dos segmentos com atendimentoHumano
   /// = true; exclui triagem/encerramento por bot). Mediana, não média.
+  /// Agregado (chat + ligação) — mantido por compatibilidade com o
+  /// histórico mensal já salvo; pra comparar canais, ver tmaMsChat/tmaMsLigacao.
   tmaMs:                number | null;
   /// TME — Tempo Médio de Espera: do momento em que o atendimento é aberto
   /// até a operação 'primeiraInteracaoAtendente' (primeira vez que um
   /// humano de fato interage) — null quando o atendimento nunca chegou a
   /// ser atendido por um humano (resolvido só pelo bot, ou abandonado).
+  /// Agregado (chat + ligação) — ver tmeMsChat/tmeMsLigacao pro detalhe.
   tmeMs:                number | null;
   /// TMR — Tempo Médio de Resposta: quanto tempo um atendente HUMANO demora
   /// pra responder uma mensagem do cliente (nunca conta resposta da
   /// URA/IZA, nem mensagem que o atendente manda por conta própria).
   /// Calculado por par pergunta-resposta dentro da conversa, não por
   /// atendimento inteiro — ver calcularTemposRespostaHumana no repository.
+  /// SÓ existe pra canal=chat: uma ligação não tem "tempo de resposta" (é
+  /// atendida ou não) e as "mensagens" de uma ligação no Mongo são só log
+  /// automático do sistema, não conversa real — confirmado 2026-07-20.
   tmrMs:                number | null;
+  /// Volume e TMA/TME quebrados por canal (canal='pabx' → ligação, resto →
+  /// chat) — confirmado 2026-07-20 que misturar os dois distorce os números
+  /// agregados: ligação é aberta manualmente pelo atendente, então tem
+  /// espera ~0 por definição, puxando o TME misturado pra baixo (ex: N1 com
+  /// 21% de ligação mostrava TME de 13min quando o TME real de chat era
+  /// 25min).
+  volumeChat:           number;
+  volumeLigacao:        number;
+  tmaMsChat:            number | null;
+  tmeMsChat:            number | null;
+  tmaMsLigacao:         number | null;
+  tmeMsLigacao:         number | null;
   /// Só tem sentido pra N1 (transferências pra N2) — nos outros setores vem 0.
   escalonamentos:       number;
   pctEscalonamento:     number | null;
@@ -127,9 +145,17 @@ export interface OperadorAoVivo {
   status: 'on' | 'au' | 'pause';
   tempoStatusMs: number;
   volumeHoje: number;
+  /// Agregado (chat + ligação) — ver tmaMsChat/tmaMsLigacao pro detalhe.
   tmaMs: number | null;
   tmeMs: number | null;
+  /// Só canal=chat — ligação não tem "tempo de resposta" (ver KpisAtendimento.tmrMs).
   tmrMs: number | null;
+  volumeChat: number;
+  volumeLigacao: number;
+  tmaMsChat: number | null;
+  tmeMsChat: number | null;
+  tmaMsLigacao: number | null;
+  tmeMsLigacao: number | null;
 }
 
 /// Indicador de jornada por operador num período configurável (RH/gestão do

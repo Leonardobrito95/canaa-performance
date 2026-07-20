@@ -46,28 +46,56 @@
           <div class="setor-volume-bloco">
             <span class="setor-volume">{{ k.volume }}</span>
             <span class="setor-volume-label">Volume total</span>
+            <span v-if="k.volumeLigacao > 0" class="setor-volume-canal">
+              <span class="canal-chip canal-chip-chat"><i class="fa-solid fa-comment"></i>{{ k.volumeChat }}</span>
+              <span class="canal-chip canal-chip-lig"><i class="fa-solid fa-phone"></i>{{ k.volumeLigacao }}</span>
+            </span>
+          </div>
+        </div>
+        <!-- TMR/TME/TMA sempre em 3 colunas fixas — alinha mesmo quando um
+             setor tem amostra pequena ou pouco texto de apoio (ex: N2). -->
+        <div class="setor-tempos-grid">
+          <div class="setor-stat" title="TMR — quanto tempo o atendente HUMANO demora pra responder uma mensagem do cliente no CHAT (nunca conta resposta da URA/IZA, nem mensagem que o atendente manda por conta própria). Ligação não entra aqui: não tem 'tempo de resposta' — é atendida ou não.">
+            <span class="setor-stat-label">TMR · resposta</span>
+            <span class="setor-stat-valor">{{ formatarDuracao(k.tmrMs) }}</span>
+            <span class="setor-stat-detalhe">
+              mediana · chat
+              <i v-if="k.volumeChat > 0 && k.volumeChat < AMOSTRA_MINIMA" class="fa-solid fa-triangle-exclamation icone-amostra" title="Amostra pequena (menos de 5 atendimentos no período) — valor pode não ser representativo."></i>
+            </span>
+          </div>
+          <div class="setor-stat" title="TME — tempo em fila/URA/IZA até um atendente HUMANO de verdade assumir o atendimento (mede fila/espera). Chat e ligação juntos no valor principal.">
+            <span class="setor-stat-label">TME · espera</span>
+            <span class="setor-stat-valor">{{ formatarDuracao(k.tmeMs) }}</span>
+            <span class="setor-stat-detalhe">
+              mediana
+              <i v-if="k.volume > 0 && k.volume < AMOSTRA_MINIMA" class="fa-solid fa-triangle-exclamation icone-amostra" title="Amostra pequena (menos de 5 atendimentos no período) — valor pode não ser representativo."></i>
+            </span>
+            <div v-if="k.volumeLigacao > 0" class="setor-stat-canal">
+              <span class="canal-chip canal-chip-chat"><i class="fa-solid fa-comment"></i>{{ formatarDuracao(k.tmeMsChat) }}</span>
+              <span class="canal-chip canal-chip-lig"><i class="fa-solid fa-phone"></i>{{ formatarDuracao(k.tmeMsLigacao) }}</span>
+            </div>
+          </div>
+          <div class="setor-stat" title="TMA — só o tempo que o atendente humano passou de fato com o cliente. Chat e ligação juntos no valor principal.">
+            <span class="setor-stat-label">TMA · atendimento</span>
+            <span class="setor-stat-valor">{{ formatarDuracao(k.tmaMs) }}</span>
+            <span class="setor-stat-detalhe">
+              mediana
+              <i v-if="k.volume > 0 && k.volume < AMOSTRA_MINIMA" class="fa-solid fa-triangle-exclamation icone-amostra" title="Amostra pequena (menos de 5 atendimentos no período) — valor pode não ser representativo."></i>
+            </span>
+            <div v-if="k.volumeLigacao > 0" class="setor-stat-canal">
+              <span class="canal-chip canal-chip-chat"><i class="fa-solid fa-comment"></i>{{ formatarDuracao(k.tmaMsChat) }}</span>
+              <span class="canal-chip canal-chip-lig"><i class="fa-solid fa-phone"></i>{{ formatarDuracao(k.tmaMsLigacao) }}</span>
+            </div>
           </div>
         </div>
         <div class="setor-stat-row">
-          <div class="setor-stat" title="TMR — quanto tempo o atendente HUMANO demora pra responder uma mensagem do cliente (nunca conta resposta da URA/IZA, nem mensagem que o atendente manda por conta própria)">
-            <span class="setor-stat-label">TMR · resposta</span>
-            <span class="setor-stat-valor">{{ formatarDuracao(k.tmrMs) }}</span>
-            <span class="setor-stat-detalhe">{{ amostraPequena(k.volume) }}</span>
-          </div>
-          <div class="setor-stat" title="TME — tempo em fila/URA/IZA até um atendente HUMANO de verdade assumir o atendimento (mede fila/espera)">
-            <span class="setor-stat-label">TME · espera</span>
-            <span class="setor-stat-valor">{{ formatarDuracao(k.tmeMs) }}</span>
-            <span class="setor-stat-detalhe">{{ amostraPequena(k.volume) }}</span>
-          </div>
-          <div class="setor-stat" title="TMA — só o tempo que o atendente humano passou de fato com o cliente">
-            <span class="setor-stat-label">TMA · atendimento</span>
-            <span class="setor-stat-valor">{{ formatarDuracao(k.tmaMs) }}</span>
-            <span class="setor-stat-detalhe">{{ amostraPequena(k.volume) }}</span>
-          </div>
           <div class="setor-stat">
             <span class="setor-stat-label">Satisfação</span>
-            <span class="setor-stat-valor">{{ k.notaMediaSatisfacao !== null ? `${k.notaMediaSatisfacao}/5` : '—' }}</span>
-            <span class="setor-stat-detalhe">{{ k.qtdAvaliados }} avaliações{{ k.qtdAvaliados > 0 && k.qtdAvaliados < AMOSTRA_MINIMA ? ' · amostra pequena' : '' }}</span>
+            <span class="setor-stat-valor" :class="corSatisfacao(k.notaMediaSatisfacao)">{{ k.notaMediaSatisfacao !== null ? `${k.notaMediaSatisfacao}/5` : '—' }}</span>
+            <span class="setor-stat-detalhe">
+              {{ k.qtdAvaliados }} avaliações
+              <i v-if="k.qtdAvaliados > 0 && k.qtdAvaliados < AMOSTRA_MINIMA" class="fa-solid fa-triangle-exclamation icone-amostra" title="Amostra pequena (menos de 5 avaliações) — valor pode não ser representativo."></i>
+            </span>
           </div>
           <div v-if="k.pctEscalonamento !== null" class="setor-stat">
             <span class="setor-stat-label">Escalonado</span>
@@ -175,8 +203,18 @@ const props = defineProps<{
 // representativo (ex: N2 com só 2 atendimentos no mês, um deles um outlier
 // gigante) — sinaliza em vez de mostrar como se fosse um valor confiável.
 const AMOSTRA_MINIMA = 5;
-function amostraPequena(n: number): string { return n < AMOSTRA_MINIMA ? 'amostra pequena' : 'mediana'; }
 function nomeSetor(s: SetorAtendimento) { return NOMES_SETOR[s] ?? s; }
+
+// Faixas de satisfação (escala Likert 1-5) — ponto de partida razoável, não é
+// meta formal da empresa (não existe regra de negócio cadastrada pra isso
+// ainda, diferente do LIMITE_INDISPONIBILIDADE_ATENDIMENTO que já é oficial).
+// Ajustar aqui se a gestão definir um limiar diferente.
+function corSatisfacao(nota: number | null): string {
+  if (nota === null) return '';
+  if (nota >= 4.5) return 'texto-bom';
+  if (nota < 3.5) return 'texto-critico';
+  return 'texto-alerta';
+}
 
 function formatarDuracao(ms: number | null): string {
   if (ms === null) return '—';
@@ -344,11 +382,40 @@ onUnmounted(() => { if (pollingId) clearInterval(pollingId); });
 .setor-volume-bloco { display: flex; flex-direction: column; align-items: flex-end; gap: .1rem; }
 .setor-volume { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--text); line-height: 1; }
 .setor-volume-label { font-size: .64rem; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
-.setor-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: .9rem .7rem; }
-.setor-stat { display: flex; flex-direction: column; gap: .1rem; }
-.setor-stat-label { font-size: .68rem; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
-.setor-stat-valor { font-family: var(--font-mono); font-size: 1rem; font-weight: 700; color: var(--text); }
-.setor-stat-detalhe { font-size: .7rem; color: var(--text-2); }
+.setor-volume-canal { display: flex; align-items: center; gap: .3rem; margin-top: .25rem; }
+
+/* TMR/TME/TMA sempre em 3 colunas iguais — trava o alinhamento mesmo
+   quando um setor tem pouco texto de apoio (ex: N2, que não tem quebra por
+   canal nem aviso de amostra), em vez de deixar o grid auto-fit encolher
+   e "flutuar" de forma imprevisível. */
+.setor-tempos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem .7rem; }
+.setor-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: .9rem .7rem; }
+.setor-stat { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.setor-stat-label { font-size: .66rem; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; white-space: nowrap; opacity: .85; }
+/* Valor principal em destaque — antes tinha peso quase igual ao rótulo,
+   dificultando escanear o número rápido (2026-07-20). */
+.setor-stat-valor { font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--text); line-height: 1.15; }
+.setor-stat-detalhe { display: flex; align-items: center; gap: .3rem; font-size: .66rem; font-weight: 400; color: var(--text-3); }
+.icone-amostra { color: var(--warning); font-size: .68rem; cursor: help; }
+.setor-stat-canal { display: flex; gap: .3rem; margin-top: .3rem; }
+.canal-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-family: var(--font-mono); font-size: .66rem; font-weight: 600; color: var(--text-2);
+  background: var(--bg); border-radius: 5px; padding: .15rem .4rem; white-space: nowrap;
+}
+.canal-chip i { font-size: .62rem; }
+.canal-chip-chat { color: var(--accent); }
+.canal-chip-chat i { color: var(--accent); }
+.canal-chip-lig { color: var(--warning); }
+.canal-chip-lig i { color: var(--warning); }
+
+/* Sinalização condicional (só aplicada onde já existe uma meta clara —
+   satisfação em escala Likert 1-5. Tempos (TMR/TME/TMA) ainda não têm
+   limite aceitável cadastrado como regra de negócio, então não ganham cor
+   ainda — ver corSatisfacao() no script. */
+.texto-bom      { color: var(--success) !important; }
+.texto-alerta   { color: var(--warning) !important; }
+.texto-critico  { color: var(--error) !important; }
 
 .charts-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; margin-bottom: 1.5rem; }
 @media (max-width: 1400px) { .charts-4 { grid-template-columns: repeat(2, 1fr); } }

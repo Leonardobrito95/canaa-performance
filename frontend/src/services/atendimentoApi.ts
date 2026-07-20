@@ -65,9 +65,17 @@ export const CORES_SETOR: Record<SetorAtendimento, string> = {
 export interface KpisAtendimento {
   setor:               SetorAtendimento;
   volume:              number;
+  /// Agregado (chat + ligação) — ver *Chat/*Ligacao pra quebra por canal.
   tmaMs:               number | null;
   tmeMs:               number | null;
+  /// Só canal=chat — ligação não tem "tempo de resposta" (é atendida ou não).
   tmrMs:               number | null;
+  volumeChat:          number;
+  volumeLigacao:       number;
+  tmaMsChat:           number | null;
+  tmeMsChat:           number | null;
+  tmaMsLigacao:        number | null;
+  tmeMsLigacao:        number | null;
   escalonamentos:      number;
   pctEscalonamento:    number | null;
   notaMediaSatisfacao: number | null;
@@ -121,7 +129,14 @@ export interface OperadorAoVivo {
   volumeHoje: number;
   tmaMs: number | null;
   tmeMs: number | null;
+  /// Só canal=chat — ligação não tem "tempo de resposta" (é atendida ou não).
   tmrMs: number | null;
+  volumeChat: number;
+  volumeLigacao: number;
+  tmaMsChat: number | null;
+  tmeMsChat: number | null;
+  tmaMsLigacao: number | null;
+  tmeMsLigacao: number | null;
 }
 
 /// Indicador de jornada por operador (RH/gestão) num período configurável —

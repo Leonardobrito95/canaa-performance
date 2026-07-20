@@ -27,9 +27,9 @@
             <th>Setor</th>
             <th>Status (Tempo)</th>
             <th class="num">Volume Hoje</th>
-            <th class="num" title="Mediana do Tempo de Espera das conversas que este operador assumiu">TME (Espera)</th>
-            <th class="num" title="Mediana do Tempo de Atendimento individual do operador">TMA (Atendimento)</th>
-            <th class="num" title="Mediana do Tempo de Resposta a mensagens">TMR (Resposta)</th>
+            <th class="num" title="Mediana do Tempo de Espera das conversas que este operador assumiu (chat + ligação)">TME (Espera)</th>
+            <th class="num" title="Mediana do Tempo de Atendimento individual do operador (chat + ligação)">TMA (Atendimento)</th>
+            <th class="num" title="Mediana do Tempo de Resposta a mensagens — só chat, ligação não tem essa métrica">TMR (Resposta · chat)</th>
           </tr>
         </thead>
         <tbody>
@@ -44,8 +44,20 @@
               </div>
             </td>
             <td class="num font-mono">{{ op.volumeHoje }}</td>
-            <td class="num font-mono">{{ formatarDuracao(op.tmeMs) }}</td>
-            <td class="num font-mono">{{ formatarDuracao(op.tmaMs) }}</td>
+            <td class="num font-mono">
+              {{ formatarDuracao(op.tmeMs) }}
+              <div v-if="op.volumeLigacao > 0" class="cel-canal">
+                <span class="canal-chip canal-chip-chat"><i class="fa-solid fa-comment"></i>{{ formatarDuracao(op.tmeMsChat) }}</span>
+                <span class="canal-chip canal-chip-lig"><i class="fa-solid fa-phone"></i>{{ formatarDuracao(op.tmeMsLigacao) }}</span>
+              </div>
+            </td>
+            <td class="num font-mono">
+              {{ formatarDuracao(op.tmaMs) }}
+              <div v-if="op.volumeLigacao > 0" class="cel-canal">
+                <span class="canal-chip canal-chip-chat"><i class="fa-solid fa-comment"></i>{{ formatarDuracao(op.tmaMsChat) }}</span>
+                <span class="canal-chip canal-chip-lig"><i class="fa-solid fa-phone"></i>{{ formatarDuracao(op.tmaMsLigacao) }}</span>
+              </div>
+            </td>
             <td class="num font-mono">{{ formatarDuracao(op.tmrMs) }}</td>
           </tr>
         </tbody>
@@ -168,6 +180,17 @@ onUnmounted(() => {
 .num { text-align: right; }
 .font-bold { font-weight: 600; }
 .font-mono { font-family: var(--font-mono); font-weight: 600; }
+.cel-canal { display: flex; justify-content: flex-end; gap: .3rem; margin-top: .25rem; }
+.canal-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-family: var(--font-mono); font-size: .64rem; font-weight: 600; color: var(--text-2);
+  background: var(--bg); border-radius: 5px; padding: .1rem .4rem; white-space: nowrap;
+}
+.canal-chip i { font-size: .6rem; }
+.canal-chip-chat { color: var(--accent); }
+.canal-chip-chat i { color: var(--accent); }
+.canal-chip-lig { color: var(--warning); }
+.canal-chip-lig i { color: var(--warning); }
 
 .setor-badge { 
   padding: 0.2rem 0.6rem; 

@@ -395,9 +395,22 @@ model AtendimentoKpiMensal {
   /// 'YYYY-MM'
   mes_referencia         String
   volume                 Int
+  /// Agregado (chat + ligação) — mantido pra continuidade do histórico já
+  /// salvo antes da quebra por canal (2026-07-20). Ver *_chat/*_ligacao.
   tma_ms                 Int?
   tme_ms                 Int?
+  /// Só canal=chat — ligação não gera "tempo de resposta" válido (ver
+  /// KpisAtendimento.tmrMs no types.ts).
   tmr_ms                 Int?
+  /// Quebra por canal (canal='pabx' no OpaSuite → ligação, resto → chat) —
+  /// null em snapshots calculados antes de 2026-07-20 (nunca recalculados
+  /// retroativamente).
+  volume_chat            Int?
+  volume_ligacao         Int?
+  tma_ms_chat            Int?
+  tme_ms_chat            Int?
+  tma_ms_ligacao         Int?
+  tme_ms_ligacao         Int?
   escalonamentos         Int
   pct_escalonamento      Float?
   nota_media_satisfacao  Float?

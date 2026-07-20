@@ -202,8 +202,15 @@ function formatarKpisAtendimento(kpis: KpisAtendimento[] | null): string {
     const escalonamento = k.setor === 'N1'
       ? ` | Escalonado pra N2: ${k.escalonamentos} (${k.pctEscalonamento ?? 0}%)`
       : '';
-    return `- ${k.setor} | Volume: ${k.volume} | TMR (tempo que o atendente HUMANO demora pra responder uma mensagem do cliente, nunca conta URA/IZA): ${fmtDuracao(k.tmrMs)} | ` +
-      `TME (espera em fila/URA/IZA até um humano assumir): ${fmtDuracao(k.tmeMs)} | TMA (tempo com o atendente humano): ${fmtDuracao(k.tmaMs)} | ` +
+    // TME/TMA misturam chat+ligação no valor agregado — ligação tem espera
+    // ~0 por definição (o atendente abre manualmente), então distorce pra
+    // baixo quando o setor tem volume relevante de ligação. Só mostra a
+    // quebra por canal quando há ligação de verdade no período.
+    const quebraCanal = k.volumeLigacao > 0
+      ? ` (chat: TME ${fmtDuracao(k.tmeMsChat)}, TMA ${fmtDuracao(k.tmaMsChat)} | ligação: TME ${fmtDuracao(k.tmeMsLigacao)}, TMA ${fmtDuracao(k.tmaMsLigacao)}, volume ${k.volumeChat} chat / ${k.volumeLigacao} ligação)`
+      : '';
+    return `- ${k.setor} | Volume: ${k.volume} | TMR (tempo que o atendente HUMANO demora pra responder uma mensagem do cliente NO CHAT, nunca conta URA/IZA — ligação não tem essa métrica): ${fmtDuracao(k.tmrMs)} | ` +
+      `TME (espera em fila/URA/IZA até um humano assumir, chat+ligação): ${fmtDuracao(k.tmeMs)} | TMA (tempo com o atendente humano, chat+ligação): ${fmtDuracao(k.tmaMs)}${quebraCanal} | ` +
       `Satisfação: ${nota}${escalonamento}`;
   }).join('\n');
 }

@@ -174,11 +174,17 @@ export async function buscarKpisAtendimento(
   const db = await getOpaSuiteDb();
   const docs = await db.collection('atendimentos').find(
     { setor: new ObjectId(DEPARTAMENTO_IDS[setor]), date: { $gte: dateFrom, $lte: dateTo } },
-    { projection: { date: 1, atendentes: 1, operacoes: 1, evaluations: 1 } },
+    { projection: { date: 1, atendentes: 1, operacoes: 1, evaluations: 1, canal: 1 } },
   ).toArray();
 
   const tmas: number[] = [];
   const tmes: number[] = [];
+  const tmasChat: number[] = [];
+  const tmesChat: number[] = [];
+  const tmasLigacao: number[] = [];
+  const tmesLigacao: number[] = [];
+  let volumeChat = 0;
+  let volumeLigacao = 0;
   let somaNotas = 0;
   let qtdAvaliados = 0;
 
@@ -186,13 +192,26 @@ export async function buscarKpisAtendimento(
   // buscadas em lote logo abaixo (uma query só pro período inteiro, em vez
   // de 1 por atendimento — N1 sozinho tem milhares/mês).
   const segmentosPorAtendimento = new Map<string, { inicio: number; fim: number }[]>();
+  // TMR só entra pra canal=chat — ver comentário de tmrMs em atendimento.types.ts.
+  const idsChat: ObjectId[] = [];
 
   for (const doc of docs) {
     const tmaMs = calcularTma(doc);
     const tmeMs = calcularTme(doc);
-    if (tmaMs !== null) tmas.push(tmaMs);
-    if (tmeMs !== null) tmes.push(tmeMs);
+    const ehLigacao = doc.canal === 'pabx';
+
+    if (tmaMs !== null) {
+      tmas.push(tmaMs);
+      (ehLigacao ? tmasLigacao : tmasChat).push(tmaMs);
+    }
+    if (tmeMs !== null) {
+      tmes.push(tmeMs);
+      (ehLigacao ? tmesLigacao : tmesChat).push(tmeMs);
+    }
+    if (ehLigacao) volumeLigacao++; else volumeChat++;
+
     segmentosPorAtendimento.set(doc._id.toString(), segmentosHumanos(doc));
+    if (!ehLigacao) idsChat.push(doc._id);
 
     const likerts = (doc.evaluations ?? []).filter(
       (e: any) => e.metric === 'likert' && typeof e.likert?.rating === 'number',
@@ -204,7 +223,7 @@ export async function buscarKpisAtendimento(
     }
   }
 
-  const tmrs = docs.length ? await buscarTemposRespostaEmLote(docs.map((d) => d._id), segmentosPorAtendimento) : [];
+  const tmrs = idsChat.length ? await buscarTemposRespostaEmLote(idsChat, segmentosPorAtendimento) : [];
   const setorDestino = setorEscalonaPara(setor);
   const escalonamentos = setorDestino
     ? await contarEscalonamentos(DEPARTAMENTO_IDS[setor], DEPARTAMENTO_IDS[setorDestino], dateFrom, dateTo)
@@ -216,6 +235,12 @@ export async function buscarKpisAtendimento(
     tmaMs: mediana(tmas),
     tmeMs: mediana(tmes),
     tmrMs: mediana(tmrs),
+    volumeChat,
+    volumeLigacao,
+    tmaMsChat: mediana(tmasChat),
+    tmeMsChat: mediana(tmesChat),
+    tmaMsLigacao: mediana(tmasLigacao),
+    tmeMsLigacao: mediana(tmesLigacao),
     escalonamentos,
     pctEscalonamento: setorDestino && docs.length ? Math.round((escalonamentos / docs.length) * 1000) / 10 : null,
     notaMediaSatisfacao: qtdAvaliados ? Math.round((somaNotas / qtdAvaliados) * 100) / 100 : null,
@@ -596,7 +621,7 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
   
   const atendimentosHoje = await db.collection('atendimentos').find(
     { setor: { $in: deptIds }, date: { $gte: hojeInicio, $lte: hojeFim } },
-    { projection: { date: 1, setor: 1, atendentes: 1, operacoes: 1 } }
+    { projection: { date: 1, setor: 1, atendentes: 1, operacoes: 1, canal: 1 } }
   ).toArray();
 
   const idsOperadoresHoje = new Set<string>();
@@ -662,6 +687,12 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
       tmaMs: null,
       tmeMs: null,
       tmrMs: null,
+      volumeChat: 0,
+      volumeLigacao: 0,
+      tmaMsChat: null,
+      tmeMsChat: null,
+      tmaMsLigacao: null,
+      tmeMsLigacao: null,
       _userId: uid
     });
   }
@@ -705,13 +736,21 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
   // 5. Pegar KPIs do dia para esses operadores (usando os atendimentos já buscados + filtrando para esses IDs ativos)
   const tmasPorOp = new Map<string, number[]>();
   const tmesPorOp = new Map<string, number[]>();
+  const tmasChatPorOp = new Map<string, number[]>();
+  const tmesChatPorOp = new Map<string, number[]>();
+  const tmasLigacaoPorOp = new Map<string, number[]>();
+  const tmesLigacaoPorOp = new Map<string, number[]>();
   const volumePorOp = new Map<string, Set<string>>();
+  const volumeChatPorOp = new Map<string, Set<string>>();
+  const volumeLigacaoPorOp = new Map<string, Set<string>>();
   const segmentosPorAtendimento = new Map<string, { inicio: number; fim: number }[]>();
-  const atendimentosValidos = [];
+  // TMR só entra pra canal=chat — ver comentário de tmrMs em atendimento.types.ts.
+  const atendimentosValidosChat = [];
 
   for (const doc of atendimentosHoje) {
     const docId = doc._id.toString();
     const tme = calcularTme(doc);
+    const ehLigacao = doc.canal === 'pabx';
     const opIdsNoAtendimento = new Set<string>();
     let teveAtivo = false;
 
@@ -721,13 +760,19 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
         if (opsMap.has(opId)) {
           teveAtivo = true;
           opIdsNoAtendimento.add(opId);
-          
+
           if (!volumePorOp.has(opId)) volumePorOp.set(opId, new Set());
           volumePorOp.get(opId)!.add(docId);
+          const volumeCanalMap = ehLigacao ? volumeLigacaoPorOp : volumeChatPorOp;
+          if (!volumeCanalMap.has(opId)) volumeCanalMap.set(opId, new Set());
+          volumeCanalMap.get(opId)!.add(docId);
 
           if (typeof a.tempoDeAtendimento === 'number') {
             if (!tmasPorOp.has(opId)) tmasPorOp.set(opId, []);
             tmasPorOp.get(opId)!.push(a.tempoDeAtendimento);
+            const tmaCanalMap = ehLigacao ? tmasLigacaoPorOp : tmasChatPorOp;
+            if (!tmaCanalMap.has(opId)) tmaCanalMap.set(opId, []);
+            tmaCanalMap.get(opId)!.push(a.tempoDeAtendimento);
           }
         }
       }
@@ -738,18 +783,21 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
         for (const opId of opIdsNoAtendimento) {
           if (!tmesPorOp.has(opId)) tmesPorOp.set(opId, []);
           tmesPorOp.get(opId)!.push(tme);
+          const tmeCanalMap = ehLigacao ? tmesLigacaoPorOp : tmesChatPorOp;
+          if (!tmeCanalMap.has(opId)) tmeCanalMap.set(opId, []);
+          tmeCanalMap.get(opId)!.push(tme);
         }
       }
       segmentosPorAtendimento.set(docId, segmentosHumanos(doc));
-      atendimentosValidos.push(doc);
+      if (!ehLigacao) atendimentosValidosChat.push(doc);
     }
   }
 
   // TMR
   const tmrsPorOp = new Map<string, number[]>();
-  if (atendimentosValidos.length) {
+  if (atendimentosValidosChat.length) {
     const msgs = await db.collection('atendimentos_mensagens').find(
-      { id_rota: { $in: atendimentosValidos.map((d) => d._id) }, tipo: 'texto' },
+      { id_rota: { $in: atendimentosValidosChat.map((d) => d._id) }, tipo: 'texto' },
       { projection: { id_rota: 1, data: 1, id_user: 1, id_atend: 1, mensagem: 1 } }
     ).sort({ data: 1 }).toArray();
 
@@ -800,6 +848,12 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
     op.tmaMs = mediana(tmasPorOp.get(uid) ?? []);
     op.tmeMs = mediana(tmesPorOp.get(uid) ?? []);
     op.tmrMs = mediana(tmrsPorOp.get(uid) ?? []);
+    op.volumeChat = volumeChatPorOp.get(uid)?.size ?? 0;
+    op.volumeLigacao = volumeLigacaoPorOp.get(uid)?.size ?? 0;
+    op.tmaMsChat = mediana(tmasChatPorOp.get(uid) ?? []);
+    op.tmeMsChat = mediana(tmesChatPorOp.get(uid) ?? []);
+    op.tmaMsLigacao = mediana(tmasLigacaoPorOp.get(uid) ?? []);
+    op.tmeMsLigacao = mediana(tmesLigacaoPorOp.get(uid) ?? []);
     const { _userId, ...cleanOp } = op;
     opsFinal.push(cleanOp);
   }

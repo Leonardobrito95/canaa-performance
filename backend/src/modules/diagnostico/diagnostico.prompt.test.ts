@@ -308,16 +308,28 @@ describe('montarContextoGestaoTextual — Atendimento (KPIs vs QA humano)', () =
     const kpis = [
       // TMR em segundos de propósito — guarda contra a formatação arredondar
       // TMR pra "0min" e esconder o dado quando a resposta humana é rápida.
-      { setor: 'N1' as const, volume: 100, tmrMs: 45000, tmeMs: 900000, tmaMs: 600000, escalonamentos: 5, pctEscalonamento: 5, notaMediaSatisfacao: 4.1, qtdAvaliados: 20 },
-      { setor: 'SAC' as const, volume: 50, tmrMs: 20000, tmeMs: 120000, tmaMs: 300000, escalonamentos: 0, pctEscalonamento: null, notaMediaSatisfacao: null, qtdAvaliados: 0 },
+      { setor: 'N1' as const, volume: 100, tmrMs: 45000, tmeMs: 900000, tmaMs: 600000, volumeChat: 100, volumeLigacao: 0, tmaMsChat: 600000, tmeMsChat: 900000, tmaMsLigacao: null, tmeMsLigacao: null, escalonamentos: 5, pctEscalonamento: 5, notaMediaSatisfacao: 4.1, qtdAvaliados: 20 },
+      { setor: 'SAC' as const, volume: 50, tmrMs: 20000, tmeMs: 120000, tmaMs: 300000, volumeChat: 50, volumeLigacao: 0, tmaMsChat: 300000, tmeMsChat: 120000, tmaMsLigacao: null, tmeMsLigacao: null, escalonamentos: 0, pctEscalonamento: null, notaMediaSatisfacao: null, qtdAvaliados: 0 },
     ];
     const texto = montarContextoGestaoTextual({ kpisAtendimento: kpis });
-    expect(texto).toContain('TMR (tempo que o atendente HUMANO demora pra responder uma mensagem do cliente, nunca conta URA/IZA): 45s');
-    expect(texto).toContain('TME (espera em fila/URA/IZA até um humano assumir): 15min');
-    expect(texto).toContain('TMA (tempo com o atendente humano): 10min');
+    expect(texto).toContain('TMR (tempo que o atendente HUMANO demora pra responder uma mensagem do cliente NO CHAT, nunca conta URA/IZA — ligação não tem essa métrica): 45s');
+    expect(texto).toContain('TME (espera em fila/URA/IZA até um humano assumir, chat+ligação): 15min');
+    expect(texto).toContain('TMA (tempo com o atendente humano, chat+ligação): 10min');
     expect(texto).toContain('Escalonado pra N2: 5 (5%)');
     const linhaSac = texto.split('\n').find((l) => l.startsWith('- SAC'));
     expect(linhaSac).not.toContain('Escalonado');
+  });
+
+  it('mostra a quebra TME/TMA por canal (chat vs ligação) só quando o setor tem volume real de ligação', () => {
+    const kpis = [
+      { setor: 'N1' as const, volume: 130, tmrMs: 45000, tmeMs: 780000, tmaMs: 1470000, volumeChat: 100, volumeLigacao: 30, tmaMsChat: 1800000, tmeMsChat: 1500000, tmaMsLigacao: 30000, tmeMsLigacao: 0, escalonamentos: 5, pctEscalonamento: 5, notaMediaSatisfacao: 4.1, qtdAvaliados: 20 },
+      { setor: 'N2' as const, volume: 8, tmrMs: 30000, tmeMs: 60000, tmaMs: 200000, volumeChat: 8, volumeLigacao: 0, tmaMsChat: 200000, tmeMsChat: 60000, tmaMsLigacao: null, tmeMsLigacao: null, escalonamentos: 0, pctEscalonamento: null, notaMediaSatisfacao: null, qtdAvaliados: 0 },
+    ];
+    const texto = montarContextoGestaoTextual({ kpisAtendimento: kpis });
+    const linhaN1 = texto.split('\n').find((l) => l.startsWith('- N1'));
+    expect(linhaN1).toContain('chat: TME 25min, TMA 30min | ligação: TME 0s, TMA 30s, volume 100 chat / 30 ligação');
+    const linhaN2 = texto.split('\n').find((l) => l.startsWith('- N2'));
+    expect(linhaN2).not.toContain('chat: TME');
   });
 });
 

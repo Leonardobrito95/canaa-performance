@@ -409,6 +409,8 @@ function openViewer(dashboard: HubDashboard) {
   --text-3:       #707c98;
   --success:      #c7ff00;
   --success-bg:   rgba(199, 255, 0, 0.1);
+  --warning:      #f59e0b;
+  --warning-bg:   rgba(245, 158, 11, 0.1);
   --error:        #ff2a5f;
   --error-bg:     rgba(255, 42, 95, 0.1);
   --upgrade:      #00f0ff;
