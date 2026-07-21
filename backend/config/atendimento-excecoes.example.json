@@ -1,0 +1,7 @@
+{
+  "_comentario": "Copie este arquivo para atendimento-excecoes.json e preencha com os nomes reais desta instalação. 'agentesExcluidosRanking' são nomes EXATOS do roster de QA que são agregados/placeholders (terceirizada agregada, conta de treino) e não devem entrar em ranking individual. 'palavrasContaTeste' são palavras (case-insensitive) que, aparecendo em qualquer parte do nome de um usuário/agente, marcam a conta como teste e a excluem de listagens de atendimento reais - se essa instalação tem alguma terceirizada/parceria cujo nome contenha uma dessas palavras por coincidência, ela deve ficar de fora dessa lista (é uma conta real, não de teste).",
+
+  "agentesExcluidosRanking": [],
+
+  "palavrasContaTeste": ["teste"]
+}

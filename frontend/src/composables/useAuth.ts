@@ -10,6 +10,10 @@ interface AuthUser {
   /// true quando o usuário logado é um agente ativo do roster de QA — habilita
   /// "Minhas Avaliações" independente do perfil (ver auth.service.ts).
   souAgenteQa: boolean;
+  /// Decidido pelo backend no login (HUB_SUPER_ADMIN_ID, requireHubAdmin.ts).
+  /// Não duplicar a lista de IDs aqui: o backend é a única fonte de verdade
+  /// (e quem de fato bloqueia as rotas restritas).
+  isHubAdmin: boolean;
 }
 
 const TOKEN_KEY = 'bdr_token';
@@ -33,8 +37,6 @@ function init() {
 
 init();
 
-const HUB_ADMIN_IDS = ['349', '167'];
-
 export function useAuth() {
   const isAuthenticated = computed(() => !!user.value);
   const isGestor        = computed(() => user.value?.perfil === 'gestor');
@@ -43,7 +45,7 @@ export function useAuth() {
   const isCampo         = computed(() => user.value?.perfil === 'campo');
   const isAgente        = computed(() => user.value?.perfil === 'agente');
   const souAgenteQa     = computed(() => !!user.value?.souAgenteQa);
-  const isHubAdmin      = computed(() => !!user.value && HUB_ADMIN_IDS.includes(String(user.value.id)));
+  const isHubAdmin      = computed(() => !!user.value?.isHubAdmin);
 
   async function login(email: string, password: string) {
     const { data } = await axios.post('/bdr/api/v1/auth/login', { email, password });

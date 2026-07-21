@@ -96,12 +96,6 @@ export type OrigemMonitoriaQa = 'legado' | 'canaa_performance' | 'caio_automatic
 /// sobrescreve uma monitoria humana, humano não duplica uma que o CAIO já criou.
 export const ORIGENS_MONITORIA_OFICIAL: OrigemMonitoriaQa[] = ['canaa_performance', 'caio_automatico'];
 
-/// Nomes que existem no roster de QA mas NÃO representam 1 pessoa real — "APRIMORAR" é
-/// terceirizada agregada, "TESTE" é conta de treino. Excluídos do ranking (não faz sentido
-/// comparar desempenho individual contra um agregado) e do resolver de identidade da monitoria
-/// automática (não faz sentido o CAIO atribuir uma nota oficial a um placeholder).
-export const AGENTES_QA_EXCLUIDOS_RANKING = ['APRIMORAR', 'TESTE'];
-
 export interface MonitoriaQa extends MonitoriaQaInput, ResultadoPontuacaoQa {
   id:            string;
   origem:        OrigemMonitoriaQa;

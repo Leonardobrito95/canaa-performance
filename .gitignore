@@ -25,3 +25,4 @@ backend/config/setores-atendimento.json
 backend/config/retencao-diagnosticos.json
 backend/config/comissoes.json
 backend/config/rbac.json
+backend/config/atendimento-excecoes.json

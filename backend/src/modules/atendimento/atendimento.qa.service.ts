@@ -3,8 +3,9 @@ import {
   CRITERIOS_QA, PENALIZACOES_QA, CRITERIO_ERRO_CRITICO, classificarPontuacaoMedia,
   RespostaCriterio, CriterioQa, ResultadoPontuacaoQa, MonitoriaQaInput, FiltrosMonitoriaQa,
   CriterioNaoConformeResumo, MotivoQaResumo, AgenteQaRanking, OrigemMonitoriaQa,
-  ORIGENS_MONITORIA_OFICIAL, AGENTES_QA_EXCLUIDOS_RANKING,
+  ORIGENS_MONITORIA_OFICIAL,
 } from './atendimento.qa.types';
+import { AGENTES_QA_EXCLUIDOS_RANKING } from '../../config/atendimentoExcecoes';
 
 /// Calcula a pontuação de uma monitoria a partir das respostas dos 22
 /// critérios — porta 1:1 o `calcular_pontuacao()` do sistema legado

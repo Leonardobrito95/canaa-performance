@@ -73,6 +73,10 @@ cp config/rbac.example.json config/rbac.json
 # preencha com os grupos reais do IXC desta instalação e confira o
 # RBAC de módulos (qual papel acessa qual módulo do Hub)
 
+cp config/atendimento-excecoes.example.json config/atendimento-excecoes.json
+# preencha com nomes de conta que são agregados/placeholders (não
+# pessoas reais) no roster de Atendimento/QA desta instalação
+
 npm install
 npm run prisma:generate
 npm run prisma:migrate

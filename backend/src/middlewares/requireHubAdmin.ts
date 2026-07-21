@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 
-const HUB_ADMIN_IDS = (process.env.HUB_SUPER_ADMIN_ID ?? '349')
+const HUB_ADMIN_IDS = (process.env.HUB_SUPER_ADMIN_ID ?? '')
   .split(',')
-  .map(id => id.trim());
+  .map(id => id.trim())
+  .filter(Boolean);
 
 export function requireHubAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {

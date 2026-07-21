@@ -6,7 +6,7 @@ import {
   SetorAtendimento, KpisAtendimento, AtendimentoParaMonitoria, RankingAtendenteEntry, MotivoAtendimentoEntry, RankingAvaliacaoEntry,
   SETORES_ATENDIMENTO, TODOS_SETORES, setorEscalonaPara, OperadorAoVivo, IndicadorJornadaOperador, ConfigJornada,
 } from './atendimento.types';
-import { AGENTES_QA_EXCLUIDOS_RANKING } from './atendimento.qa.types';
+import { AGENTES_QA_EXCLUIDOS_RANKING, NOME_CONTA_TESTE_REGEX } from '../../config/atendimentoExcecoes';
 
 /// ObjectId do departamento no OpaSuite pra cada setor — derivado da config
 /// central (SETORES_ATENDIMENTO em atendimento.types.ts), não hardcoded
@@ -14,14 +14,6 @@ import { AGENTES_QA_EXCLUIDOS_RANKING } from './atendimento.qa.types';
 export const DEPARTAMENTO_IDS: Record<SetorAtendimento, string> = Object.fromEntries(
   SETORES_ATENDIMENTO.map((s) => [s.codigo, s.departamentoId]),
 ) as Record<SetorAtendimento, string>;
-
-/// Conta de teste/treinamento do OpaSuite — não é atendente real, mas não
-/// some do roster de usuários, então precisa ser excluída explicitamente dos
-/// rankings. NÃO inclui "aprimorar": Aprimorar é uma empresa terceirizada
-/// contratada pra reforçar o atendimento do Centro de Solução — agente real,
-/// contando pra volume/eficiência/jornada como qualquer outro (confirmado
-/// pelo usuário 2026-07-14, corrigindo suposição errada de conta de teste).
-const NOME_CONTA_TESTE_REGEX = /teste/i;
 
 /// Abaixo disso, a média de satisfação de 1 agente é ruído estatístico, não
 /// sinal — 1-2 notas 5/5 não podem ranquear acima de alguém com dezenas de

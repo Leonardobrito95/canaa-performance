@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import prisma from '../../config/prisma';
 import { findUserByCredentials } from './auth.repository';
 import { Perfil, perfilPorGrupoIxc } from '../../config/acesso';
+import { isHubAdmin } from '../../middlewares/requireHubAdmin';
 
 export interface AuthPayload {
   id: string;
@@ -15,6 +16,11 @@ export interface AuthPayload {
   /// logam como cs/campo mas também podem ser agentes avaliados — grupo
   /// IXC não é sinal confiável de papel, confirmado 2026-07-12).
   souAgenteQa: boolean;
+  /// Decidido 1x no login a partir de HUB_SUPER_ADMIN_ID (requireHubAdmin.ts)
+  /// pra o frontend não precisar de uma cópia própria da lista de IDs (única
+  /// fonte de verdade é o backend, que também é quem de fato bloqueia as
+  /// rotas restritas).
+  isHubAdmin: boolean;
 }
 
 const httpError = (msg: string, status: number) =>
@@ -44,6 +50,7 @@ export async function login(email: string, password: string): Promise<{ token: s
     id_grupo: user.id_grupo,
     perfil,
     souAgenteQa: Boolean(agenteQa),
+    isHubAdmin: isHubAdmin(user.id),
   };
 
   const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '8h' });
@@ -51,6 +58,9 @@ export async function login(email: string, password: string): Promise<{ token: s
   return {
     token,
     ixc_user_id: user.id,
-    user: { nome: user.nome, email: user.email, id_grupo: user.id_grupo, perfil, souAgenteQa: payload.souAgenteQa },
+    user: {
+      nome: user.nome, email: user.email, id_grupo: user.id_grupo, perfil,
+      souAgenteQa: payload.souAgenteQa, isHubAdmin: payload.isHubAdmin,
+    },
   };
 }
