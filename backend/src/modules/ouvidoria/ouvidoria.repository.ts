@@ -8,6 +8,7 @@ import {
   CruzamentoRetencao,
   OuvidoriaFiltros,
 } from './ouvidoria.types';
+import { ID_ASSUNTO_RETENCAO } from '../retencao/retencao.repository';
 
 // ids reais de su_oss_assunto, validados em produção IXC em 2026-07-16.
 // "reclamacao" soma dois ids com o mesmo nome "04 - Reclamação" (220 e 304).
@@ -27,9 +28,6 @@ const IDS_RECLAMACAO_NEGATIVA = [
   ...ASSUNTO_IDS.reclame_aqui,
   ...ASSUNTO_IDS.anatel,
 ];
-
-// mesmo critério usado em retencao.repository.ts para identificar uma O.S. de retenção
-const ID_ASSUNTO_RETENCAO = 348;
 
 function condicoesData(filtros: OuvidoriaFiltros, coluna: string, conditions: string[], params: unknown[]) {
   if (filtros.dateFrom) {

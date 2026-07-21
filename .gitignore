@@ -17,7 +17,9 @@ scratch_*.js
 scratch_*.ts
 test_result.txt
 
-# Configuração específica desta instalação (IDs de departamento do OpaSuite
-# etc.), cada cliente/deploy tem os seus próprios, nunca commitar os reais.
-# Ver backend/config/*.example.json pro formato esperado.
+# Configuração específica desta instalação (IDs de departamento do OpaSuite,
+# IDs de diagnóstico/assunto do IXC etc.), cada cliente/deploy tem os seus
+# próprios, nunca commitar os reais. Ver backend/config/*.example.json pro
+# formato esperado.
 backend/config/setores-atendimento.json
+backend/config/retencao-diagnosticos.json

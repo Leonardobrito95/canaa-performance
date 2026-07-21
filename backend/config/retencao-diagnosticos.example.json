@@ -1,0 +1,9 @@
+{
+  "_comentario": "Copie este arquivo para retencao-diagnosticos.json e preencha com os IDs reais desta instalação do IXC. 'idAssuntoRetencao' é o id_assunto (categoria de O.S.) usado para identificar atendimentos de retenção/cancelamento em su_oss_chamado. 'retidoIds' e 'naoRetidoIds' são os IDs de diagnóstico (motivo de fechamento da O.S., tabela de diagnósticos do IXC) que contam como cliente retido ou não retido, respectivamente — um ID de diagnóstico fora das duas listas ainda conta no total de O.S. tratadas, só não entra no cálculo de retidas/não-retidas.",
+
+  "idAssuntoRetencao": "SUBSTITUA_PELO_ID_REAL",
+
+  "retidoIds": [0],
+
+  "naoRetidoIds": [0]
+}

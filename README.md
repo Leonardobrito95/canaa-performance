@@ -61,6 +61,10 @@ cp config/setores-atendimento.example.json config/setores-atendimento.json
 # preencha com os IDs reais de departamento do OpaSuite desta instalação
 # (só precisa incluir os setores que essa instalação realmente usa)
 
+cp config/retencao-diagnosticos.example.json config/retencao-diagnosticos.json
+# preencha com o id_assunto de retenção e os IDs de diagnóstico
+# (retido/não retido) do IXC desta instalação
+
 npm install
 npm run prisma:generate
 npm run prisma:migrate
