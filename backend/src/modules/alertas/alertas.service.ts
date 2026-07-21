@@ -8,6 +8,7 @@ import { getComparativoVolumeHoje } from '../atendimento/atendimento.service';
 import { buscarKpisAtendimento } from '../atendimento/atendimento.repository';
 import { TODOS_SETORES } from '../atendimento/atendimento.types';
 import { gerarRespostaGestaoIndividual } from '../diagnostico/diagnostico.service';
+import { FAIXAS_COMISSAO_RETENCAO } from '../../config/comissoes';
 
 /// Ver config/notificacoes.ts — sistema em desenvolvimento, a versão em
 /// produção (modelo antigo) já cobre o envio real. `true` = suprimido (nada
@@ -258,11 +259,13 @@ export async function alertaFaturaNaoQuitada(): Promise<void> {
 
 // ── 3. Operador atingiu meta de retenção ──────────────────────────────────────
 
-const METAS = [
-  { nivel: '110', minimo: 110, label: 'Ouro', valor: 'R$ 750,00', cor: '#d97706' },
-  { nivel: '90', minimo: 90, label: 'Prata', valor: 'R$ 550,00', cor: '#6b7280' },
-  { nivel: '70', minimo: 70, label: 'Bronze', valor: 'R$ 400,00', cor: '#92400e' },
-];
+const METAS = FAIXAS_COMISSAO_RETENCAO.map((f) => ({
+  nivel:  String(f.minimo),
+  minimo: f.minimo,
+  label:  f.label,
+  valor:  `R$ ${f.valorReais.toFixed(2).replace('.', ',')}`,
+  cor:    f.cor,
+}));
 
 export async function alertaRetencaoMeta(): Promise<void> {
   if (envioSuprimido('Retenção Meta')) return;

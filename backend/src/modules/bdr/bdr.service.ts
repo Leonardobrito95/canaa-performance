@@ -11,9 +11,7 @@ import {
   ContractData,
   findDuplicateCommission,
 } from './bdr.repository';
-
-const COMMISSION_REFIDELIZACAO = 3.0;
-const COMMISSION_DOWNGRADE    = 0.0;
+import { COMISSAO_BDR_REFIDELIZACAO, COMISSAO_BDR_DOWNGRADE } from '../../config/comissoes';
 
 const httpError = (msg: string, status: number) =>
   Object.assign(new Error(msg), { status });
@@ -77,8 +75,8 @@ export async function registerCommission(payload: {
 
   const valor_comissao =
     tipo_negociacao === 'Upgrade'       ? (valor_novo! - contract.valor_atual) :
-    tipo_negociacao === 'Refidelizacao' ? COMMISSION_REFIDELIZACAO :
-    COMMISSION_DOWNGRADE;
+    tipo_negociacao === 'Refidelizacao' ? COMISSAO_BDR_REFIDELIZACAO :
+    COMISSAO_BDR_DOWNGRADE;
 
   const temValorNovo = tipo_negociacao === 'Upgrade' || tipo_negociacao === 'Downgrade';
 

@@ -65,6 +65,10 @@ cp config/retencao-diagnosticos.example.json config/retencao-diagnosticos.json
 # preencha com o id_assunto de retenção e os IDs de diagnóstico
 # (retido/não retido) do IXC desta instalação
 
+cp config/comissoes.example.json config/comissoes.json
+# preencha com os valores reais de comissão (faixas de Retenção e
+# Refidelização/Downgrade do BDR) desta instalação
+
 npm install
 npm run prisma:generate
 npm run prisma:migrate

@@ -4,6 +4,7 @@ import pool from '../../config/mysql';
 import { RowDataPacket } from 'mysql2';
 import prisma from '../../config/prisma';
 import { extrairProtocolos, buscarConversasPorProtocolos, ConversaOpaSuite } from '../opasuite/opasuite.service';
+import { FAIXAS_COMISSAO_RETENCAO } from '../../config/comissoes';
 
 // ── Operadoras autorizadas no módulo de Retenção ─────────────────────────────
 export const OPERADORES_CS = (process.env.RETENCAO_OPERADORES_CS || '')
@@ -42,17 +43,17 @@ export const NAO_RETIDO_IDS      = configDiagnosticos.naoRetidoIds;
 
 // ── Comissão por faixa ────────────────────────────────────────────────────────
 export function getComissaoRetencao(qtdRetidas: number): number {
-  if (qtdRetidas >= 110) return 750;
-  if (qtdRetidas >= 90)  return 550;
-  if (qtdRetidas >= 70)  return 400;
-  return 0;
+  const faixa = FAIXAS_COMISSAO_RETENCAO.find((f) => qtdRetidas >= f.minimo);
+  return faixa?.valorReais ?? 0;
 }
 
 export function getFaixaRetencao(qtdRetidas: number): string {
-  if (qtdRetidas >= 110) return '110+ retenções — R$ 750';
-  if (qtdRetidas >= 90)  return '90+ retenções — R$ 550';
-  if (qtdRetidas >= 70)  return '70+ retenções — R$ 400';
-  return 'Abaixo da meta (mín. 70)';
+  const faixa = FAIXAS_COMISSAO_RETENCAO.find((f) => qtdRetidas >= f.minimo);
+  if (!faixa) {
+    const menorMinimo = FAIXAS_COMISSAO_RETENCAO[FAIXAS_COMISSAO_RETENCAO.length - 1]?.minimo ?? 0;
+    return `Abaixo da meta (mín. ${menorMinimo})`;
+  }
+  return `${faixa.minimo}+ retenções — R$ ${faixa.valorReais}`;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

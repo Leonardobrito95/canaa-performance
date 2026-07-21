@@ -1,0 +1,12 @@
+{
+  "_comentario": "Copie este arquivo para comissoes.json e preencha com os valores reais de comissão desta instalação. 'retencaoFaixas' são as faixas de comissão do módulo Retenção por volume mensal de clientes retidos, ordenadas da maior 'minimo' pra menor (o primeiro item cujo 'minimo' o operador atingiu vale). 'bdr' são os valores fixos de comissão do módulo BDR pra Refidelização e Downgrade — Upgrade não tem valor fixo, é sempre a diferença entre o valor novo e o valor atual do contrato.",
+
+  "retencaoFaixas": [
+    { "minimo": 0, "valorReais": 0, "label": "SUBSTITUA_PELO_NOME_DA_FAIXA", "cor": "#000000" }
+  ],
+
+  "bdr": {
+    "refidelizacao": 0,
+    "downgrade": 0
+  }
+}
