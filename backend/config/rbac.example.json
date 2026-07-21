@@ -1,0 +1,24 @@
+{
+  "_comentario": "Copie este arquivo para rbac.json e preencha com os grupos reais do IXC desta instalação (Configurações > Usuários e Permissões > Grupos). 'gruposIxc' mapeia id_grupo do IXC pros papéis fixos do sistema ('gestor', 'cs', 'estoque', 'campo', 'agente'); um grupo que não aparece em nenhuma lista cai no papel padrão 'consultor'. 'perfisModulo' define quais papéis acessam cada módulo do Hub; os nomes de módulo abaixo são fixos (correspondem a código), só os papéis de cada um são configuráveis.",
+
+  "gruposIxc": {
+    "gestor":  [0],
+    "cs":      [0],
+    "estoque": [0],
+    "campo":   [0],
+    "agente":  [0]
+  },
+
+  "perfisModulo": {
+    "atendimentoGestaoQa":  ["gestor", "cs"],
+    "atendimentoAuditoria": ["gestor"],
+    "vistoriaPop":          ["gestor", "campo"],
+    "posAtivacao":          ["gestor", "campo", "cs"],
+    "retencaoAuditoria":    ["gestor"],
+    "diagnosticoGestao":    ["gestor"],
+    "bdrGeral":             ["consultor", "gestor", "cs", "estoque", "campo"],
+    "otdrLink":             ["gestor", "campo"],
+    "alertasHub":           ["gestor", "cs", "campo"],
+    "rh":                   ["gestor"]
+  }
+}

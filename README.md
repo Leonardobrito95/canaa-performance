@@ -69,6 +69,10 @@ cp config/comissoes.example.json config/comissoes.json
 # preencha com os valores reais de comissão (faixas de Retenção e
 # Refidelização/Downgrade do BDR) desta instalação
 
+cp config/rbac.example.json config/rbac.json
+# preencha com os grupos reais do IXC desta instalação e confira o
+# RBAC de módulos (qual papel acessa qual módulo do Hub)
+
 npm install
 npm run prisma:generate
 npm run prisma:migrate
@@ -95,4 +99,4 @@ cd frontend && npm run build && sudo cp -r dist/. /var/www/bdr/
 
 ## Autenticação
 
-Login validado contra o IXC (MariaDB, hash SHA-256). JWT com expiração de 8h. Perfis (`consultor` / `gestor` / `cs`) derivados do grupo IXC do usuário.
+Login validado contra o IXC (MariaDB, hash SHA-256). JWT com expiração de 8h. Perfis (`consultor` / `gestor` / `cs` / `estoque` / `campo` / `agente`) derivados do grupo IXC do usuário via `config/rbac.json` (ver Configuração acima).
