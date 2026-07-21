@@ -1,0 +1,13 @@
+{
+  "_comentario": "Copie este arquivo para setores-atendimento.json e preencha com os IDs reais dos departamentos no OpaSuite desta instalação (coleção 'departamentos' do Mongo). O código do setor (SAC, N1, N2, COBRANCA, VENDAS, RETENCAO, POS_VENDAS, BACKOFFICE, OUVIDORIA) é fixo, definido no tipo SetorAtendimento; só é obrigatório incluir os setores que essa instalação realmente usa, os demais simplesmente não participam de KPIs/alertas/relatórios.",
+
+  "SAC":        { "nome": "SAC",        "departamentoId": "SUBSTITUA_PELO_ID_REAL" },
+  "N1":         { "nome": "Suporte N1", "departamentoId": "SUBSTITUA_PELO_ID_REAL", "escalonaPara": "N2" },
+  "N2":         { "nome": "Suporte N2", "departamentoId": "SUBSTITUA_PELO_ID_REAL" },
+  "COBRANCA":   { "nome": "Cobrança",   "departamentoId": "SUBSTITUA_PELO_ID_REAL" },
+  "VENDAS":     { "nome": "Vendas",     "departamentoId": "SUBSTITUA_PELO_ID_REAL" },
+  "RETENCAO":   { "nome": "Retenção",   "departamentoId": "SUBSTITUA_PELO_ID_REAL" },
+  "POS_VENDAS": { "nome": "Pós-Vendas", "departamentoId": "SUBSTITUA_PELO_ID_REAL" },
+  "BACKOFFICE": { "nome": "Backoffice", "departamentoId": "SUBSTITUA_PELO_ID_REAL" },
+  "OUVIDORIA":  { "nome": "Ouvidoria",  "departamentoId": "SUBSTITUA_PELO_ID_REAL" }
+}

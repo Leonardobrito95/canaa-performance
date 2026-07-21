@@ -57,6 +57,10 @@ cd backend
 cp .env.example .env
 # preencha DATABASE_URL, MYSQL_*, IXC_*, ALERT_EMAIL_*, SMTP_*, JWT_SECRET etc.
 
+cp config/setores-atendimento.example.json config/setores-atendimento.json
+# preencha com os IDs reais de departamento do OpaSuite desta instalação
+# (só precisa incluir os setores que essa instalação realmente usa)
+
 npm install
 npm run prisma:generate
 npm run prisma:migrate

@@ -1,27 +1,47 @@
-/// Fonte única de verdade dos setores de atendimento — adicionar um setor
-/// novo é adicionar 1 linha aqui, nada mais (o resto do módulo — KPIs,
-/// ranking, monitoria, rollup, alertas, frontend — itera essa lista, não tem
-/// mais setor hardcoded espalhado). `departamentoId` é o ObjectId do
-/// departamento no OpaSuite (Mongo), confirmado empiricamente consultando a
-/// coleção `departamentos`. `escalonaPara` só existe pra quem tem um
-/// conceito real de escalonamento hierárquico (hoje só N1->N2 — os outros
-/// setores não têm um "próximo nível" equivalente).
-export const SETORES_ATENDIMENTO = [
-  { codigo: 'SAC',        nome: 'SAC',         departamentoId: '613b6be1e07cf2665f7cd6d5', escalonaPara: undefined as string | undefined }, // 02 - 🎧 SAC
-  { codigo: 'N1',         nome: 'Suporte N1',  departamentoId: '5bf73d1d186f7d2b0d647a61', escalonaPara: 'N2' as string | undefined }, // 03 - ⚙️ Suporte
-  { codigo: 'N2',         nome: 'Suporte N2',  departamentoId: '68596bc21570ca514d4f9285', escalonaPara: undefined as string | undefined }, // Suporte N2
-  { codigo: 'COBRANCA',   nome: 'Cobrança',    departamentoId: '614df1790c3ad8233abad7f6', escalonaPara: undefined as string | undefined }, // 07 - 💸 Cobrança
-  { codigo: 'VENDAS',     nome: 'Vendas',      departamentoId: '5d1624085e74a002308aa25e', escalonaPara: undefined as string | undefined }, // 01 - 🛒 Vendas
-  { codigo: 'RETENCAO',   nome: 'Retenção',    departamentoId: '614df007aeb48522ce5a8526', escalonaPara: undefined as string | undefined }, // 05 - 🤔 Retenção (departamento OpaSuite — NÃO é a auditoria de negociação de O.S. do módulo retencao/)
-  { codigo: 'POS_VENDAS', nome: 'Pós-Vendas',  departamentoId: '614e2c4f754666225f58f5c0', escalonaPara: undefined as string | undefined }, // 09 - 💭 Pós-Vendas
-  { codigo: 'BACKOFFICE', nome: 'Backoffice',  departamentoId: '5bf73d1d186f7d2b0d647a64', escalonaPara: undefined as string | undefined }, // 06 - 📊 Backoffice
-  { codigo: 'OUVIDORIA',    nome: 'Ouvidoria',     departamentoId: '67eadc472d93ff929c6010c0', escalonaPara: undefined as string | undefined }, // Ouvidoria (Centro de Solução, achado 2026-07-21 investigando pedido real de fila ao vivo)
-] as const;
-// Nota: "10 - 🚨 Falha Massiva" (id 614344a46996d363bcc5f562) foi cogitado e
-// descartado, é do setor Campo, não Centro de Solução, e muito esporádico
-// (2 atendimentos em 30 dias). Confirmado pelo usuário 2026-07-21.
+import fs from 'fs';
+import path from 'path';
 
-export type SetorAtendimento = typeof SETORES_ATENDIMENTO[number]['codigo'];
+/// O código de cada setor é fixo (union abaixo, "menu" que o produto
+/// suporta), mas o ID do departamento no OpaSuite, o nome de exibição e o
+/// escalonamento vêm de config/setores-atendimento.json, um arquivo por
+/// instalação (2026-07-21: cada cliente tem seu próprio OpaSuite, com IDs
+/// diferentes, essa era a última coisa hardcoded pra uma instalação
+/// específica). Ver config/setores-atendimento.example.json pro formato.
+/// Só setor presente nesse arquivo participa de KPIs/alertas/relatórios,
+/// uma instalação sem "Ouvidoria", por exemplo, só deixa essa entrada de
+/// fora, sem precisar mexer em código.
+export type SetorAtendimento =
+  'SAC' | 'N1' | 'N2' | 'COBRANCA' | 'VENDAS' | 'RETENCAO' | 'POS_VENDAS' | 'BACKOFFICE' | 'OUVIDORIA';
+
+const CODIGOS_SUPORTADOS: SetorAtendimento[] =
+  ['SAC', 'N1', 'N2', 'COBRANCA', 'VENDAS', 'RETENCAO', 'POS_VENDAS', 'BACKOFFICE', 'OUVIDORIA'];
+
+interface SetorConfigArquivo {
+  nome:          string;
+  departamentoId: string;
+  escalonaPara?: SetorAtendimento;
+}
+
+const CAMINHO_CONFIG = path.join(__dirname, '../../../config/setores-atendimento.json');
+
+function carregarConfigSetores(): Record<string, SetorConfigArquivo> {
+  if (!fs.existsSync(CAMINHO_CONFIG)) {
+    throw new Error(
+      `Arquivo de configuração não encontrado: ${CAMINHO_CONFIG}. Copie ` +
+      `backend/config/setores-atendimento.example.json para ` +
+      `backend/config/setores-atendimento.json e preencha com os IDs reais ` +
+      `de departamento do OpaSuite desta instalação.`
+    );
+  }
+  return JSON.parse(fs.readFileSync(CAMINHO_CONFIG, 'utf8'));
+}
+
+const configBruta = carregarConfigSetores();
+
+export const SETORES_ATENDIMENTO: { codigo: SetorAtendimento; nome: string; departamentoId: string; escalonaPara?: SetorAtendimento }[] =
+  CODIGOS_SUPORTADOS
+    .filter((codigo) => configBruta[codigo])
+    .map((codigo) => ({ codigo, ...configBruta[codigo] }));
 
 export const TODOS_SETORES: SetorAtendimento[] = SETORES_ATENDIMENTO.map((s) => s.codigo);
 
