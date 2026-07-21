@@ -248,6 +248,15 @@
               </template>
             </div>
 
+            <!-- resumo leve: pergunta se quer o diagnóstico completo -->
+            <button
+              v-if="turno.pedirConfirmacaoDiagnostico && i === turnos.length - 1"
+              class="candidato-btn diagnostico-completo-btn"
+              @click="turno.pedirConfirmacaoDiagnostico = false; rodarAnalise()"
+            >
+              <span class="candidato-nome">Gerar diagnóstico completo</span>
+            </button>
+
             <!-- resultado: estruturado (3 seções) ou texto livre (fora de escopo) -->
             <div v-if="turno.resultado?.estruturado" class="result-secoes">
               <div class="result-secao">
@@ -522,6 +531,7 @@ import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useAuth } from '../composables/useAuth';
 import {
   buscarCliente,
+  buscarResumoCliente,
   consultarDiagnostico,
   buscarAgregados,
   buscarResumoGestao,
@@ -536,6 +546,7 @@ import {
   type DiagnosticoResultado,
   type DiagnosticoAgregadoItem,
   type ClienteCandidato,
+  type ResumoCliente,
   type RegraNegocio,
   type CategoriaRegra,
   type HistoricoTurnoConversa,
@@ -651,6 +662,9 @@ interface Turno {
   resultado?: DiagnosticoResultado;
   feedback?: TipoFeedback;
   criadoEm?: string;
+  /// true no turno do resumo leve, mostra o botão "Gerar diagnóstico
+  /// completo" (só dispara o Gemini/fotos quando o usuário confirmar).
+  pedirConfirmacaoDiagnostico?: boolean;
 }
 
 async function darFeedback(turno: { feedback?: TipoFeedback }, consultaId: string, feedback: TipoFeedback) {
@@ -754,7 +768,7 @@ async function enviar() {
 async function resolverCliente(termo: string) {
   if (/^\d+$/.test(termo)) {
     clienteAtivo.value = { id: Number(termo), nome: `cliente #${termo}` };
-    await rodarAnalise();
+    await mostrarResumo();
     return;
   }
 
@@ -767,7 +781,7 @@ async function resolverCliente(termo: string) {
     } else if (candidatos.length === 1 && candidatos[0].contratosAtivos.length <= 1) {
       clienteAtivo.value = { id: candidatos[0].id, nome: candidatos[0].nome };
       loading.value = false;
-      await rodarAnalise();
+      await mostrarResumo();
       return;
     } else if (candidatos.length === 1) {
       // 1 cliente, mas com mais de um contrato ativo — não auto-seleciona,
@@ -786,7 +800,58 @@ async function resolverCliente(termo: string) {
 function escolherCandidato(c: ClienteCandidato) {
   clienteAtivo.value = { id: c.id, nome: c.nome };
   historicoConversa.value = [];
-  rodarAnalise();
+  mostrarResumo();
+}
+
+function formatarDataCurta(iso: string | null): string {
+  if (!iso) return 'data não registrada';
+  return new Date(iso).toLocaleDateString('pt-BR');
+}
+
+function formatarResumo(r: ResumoCliente): string {
+  const linhas: string[] = [];
+  linhas.push(`**${r.nomeCliente}**${r.contratoAtivoId ? ` · contrato ${r.contratoAtivoId} ativo` : ' · sem contrato ativo no momento'}`);
+
+  if (r.sinalAtualDbm !== null) {
+    linhas.push(`- Sinal atual: ${r.sinalAtualDbm}dBm${r.sinalNivel ? ` (${r.sinalNivel})` : ''}`);
+  } else {
+    linhas.push('- Sem dado de sinal disponível agora');
+  }
+
+  if (r.equipamento) {
+    const aviso = r.equipamento.fonteIncerta ? ' (fonte incerta, sem comodato confirmado no IXC)' : '';
+    linhas.push(`- Equipamento: ${r.equipamento.descricao} (S/N ${r.equipamento.numeroSerie})${aviso}`);
+  }
+
+  linhas.push(`- ${r.qtdOsRecentes} O.S. e ${r.qtdAtendimentosRecentes} atendimento(s) recentes`);
+  if (r.ultimaOs) {
+    linhas.push(`- Última O.S.: #${r.ultimaOs.id} (${r.ultimaOs.status}), aberta em ${formatarDataCurta(r.ultimaOs.dataAbertura)}`);
+  }
+  if (r.qtdFotosDisponiveis > 0) {
+    linhas.push(`- ${r.qtdFotosDisponiveis} foto(s) de instalação disponível(is) pra análise visual`);
+  }
+
+  linhas.push('', 'Quer que eu gere o diagnóstico completo (causa + sugestão)?');
+  return linhas.join('\n');
+}
+
+/// Resumo leve, sem Gemini nem fotos (rápido e sem custo). Só quando o
+/// usuário confirmar (botão "Gerar diagnóstico completo") é que
+/// rodarAnalise() roda de verdade, com a mesma lógica de sempre.
+async function mostrarResumo() {
+  if (!clienteAtivo.value) return;
+  loading.value = true;
+  loadingLabel.value = 'Buscando resumo…';
+  try {
+    const resumo = await buscarResumoCliente(clienteAtivo.value.id);
+    clienteAtivo.value = { id: resumo.idCliente, nome: resumo.nomeCliente };
+    adicionarTurno({ tipo: 'assistente', texto: formatarResumo(resumo), pedirConfirmacaoDiagnostico: true });
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || 'Não consegui buscar o resumo desse cliente agora.';
+    adicionarTurno({ tipo: 'assistente', texto: msg });
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function rodarAnalise(pergunta?: string) {
@@ -1245,6 +1310,12 @@ onMounted(() => { rolarParaFinal(); carregarUsoCaio(); });
 .candidato-btn:hover { border-color: var(--accent); }
 .candidato-nome { font-size: .83rem; font-weight: 600; color: var(--text); }
 .candidato-doc { font-size: .71rem; color: var(--text-3); font-family: var(--font-mono); }
+
+/* Ação principal (vs. seleção neutra de candidato), sinaliza que é o
+   próximo passo natural depois do resumo. */
+.diagnostico-completo-btn { background: var(--accent-dim); border-color: var(--accent); align-items: center; }
+.diagnostico-completo-btn:hover { background: var(--accent); }
+.diagnostico-completo-btn:hover .candidato-nome { color: #000; }
 
 /* ── Loading ── */
 .loading-dots { display: inline-flex; gap: 3px; vertical-align: middle; }

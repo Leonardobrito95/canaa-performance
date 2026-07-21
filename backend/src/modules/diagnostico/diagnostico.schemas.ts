@@ -22,6 +22,10 @@ export const historicoParamsSchema = z.object({
   id_cliente: z.string().regex(/^\d+$/, 'id_cliente deve ser numérico'),
 });
 
+export const resumoClienteParamsSchema = z.object({
+  id_cliente: z.string().regex(/^\d+$/, 'id_cliente deve ser numérico'),
+});
+
 export const feedbackParamsSchema = z.object({
   id: z.string().uuid('id deve ser um uuid válido'),
 });

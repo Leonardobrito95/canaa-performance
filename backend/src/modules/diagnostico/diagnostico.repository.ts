@@ -35,6 +35,14 @@ export interface ClienteCandidato {
   contratosAtivos: number[];
 }
 
+/// Nome do cliente por ID, pro resumo leve (o usuário pode ter digitado só o
+/// ID direto no chat, sem passar pela busca por nome, que é a única outra
+/// fonte de nome que o frontend tem hoje).
+export async function buscarNomeCliente(idCliente: number): Promise<string | null> {
+  const [rows] = await mysqlPool.query<any[]>(`SELECT razao FROM cliente WHERE id = ?`, [idCliente]);
+  return rows[0]?.razao ?? null;
+}
+
 /// Busca cliente por nome (parcial) ou CPF/CNPJ (dígitos), para o chat de
 /// Diagnóstico resolver "qual cliente" antes de rodar a análise. Limitado a
 /// poucos resultados — quando ambíguo, quem decide é o usuário, não a IA.
@@ -583,6 +591,16 @@ const EXTENSOES_IMAGEM = /\.(jpe?g|png|webp)$/i;
 /// a instalação física, enquanto a foto do local (tirada só na instalação
 /// original ou troca de equipamento) fica de fora por ser mais antiga.
 const DESCRICAO_LOCAL_INSTALADO = /local\s*instalad/i;
+
+/// Conta quantas fotos de instalação existem sem baixar nenhuma (mesmo filtro
+/// de buscarFotosRelevantes). Usado pelo resumo leve do cliente, pra avisar
+/// se vale a pena pedir o diagnóstico completo, sem pagar o custo de baixar
+/// os binários.
+export function contarFotosDisponiveis(osArquivos: Record<number, OsArquivoEntry[]>): number {
+  return Object.values(osArquivos).flat()
+    .filter((a) => a.classificacao !== 'A' && EXTENSOES_IMAGEM.test(a.nomeArquivo))
+    .length;
+}
 
 /// Seleciona os anexos mais recentes e relevantes (exclui assinatura do cliente
 /// e documentos como PDF de O.S., que não ajudam a avaliar qualidade de

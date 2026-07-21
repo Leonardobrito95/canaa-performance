@@ -14,11 +14,13 @@ import {
   buscarRetencaoNegociacoes,
   buscarRegrasNegocio,
   buscarFotosRelevantes,
+  buscarNomeCliente,
+  contarFotosDisponiveis,
   resolverSnOnu,
 } from './diagnostico.repository';
 import { buscarStatusSmartOltCompleto } from './diagnostico.smartolt-live';
 import { buscarFatoPosAtivacaoCliente } from '../posativacao/posativacao.repository';
-import { ContextoClienteDiagnostico } from './diagnostico.types';
+import { ContextoClienteDiagnostico, ResumoCliente } from './diagnostico.types';
 import { montarContextoTextual, montarContextoGestaoTextual } from './diagnostico.prompt';
 import { FONTES_GESTAO, DadosGestao, JanelaTemporalGestao } from './diagnostico.gestao-fontes';
 import { gerarDiagnostico, gerarRespostaGestao, DiagnosticoIaResultado, custoEstimadoChamada } from './diagnostico.ia';
@@ -109,6 +111,42 @@ export async function montarContextoCliente(idCliente: number): Promise<Contexto
     atendimentos,
     comercial: { ...comercial, retencaoNegociacoes },
     regrasNegocio,
+  };
+}
+
+/// Resumo leve pro chat de Consulta mostrar ANTES de rodar o diagnóstico
+/// completo (que chama o Gemini e baixa fotos). Reaproveita o mesmo
+/// montarContextoCliente (só SQL/Mongo, nenhuma chamada de IA nem download
+/// de foto), então não conta pro teto diário de gasto do CAIO.
+export async function gerarResumoCliente(idCliente: number): Promise<ResumoCliente> {
+  const [contexto, nomeCliente] = await Promise.all([
+    montarContextoCliente(idCliente),
+    buscarNomeCliente(idCliente),
+  ]);
+
+  const contratoAtivo = contexto.contratos.find((c) => c.ativo);
+  const ultimaOs = contexto.ordensServico[0] ?? null;
+  const equipamento = contexto.equipamentoAtual[0] ?? null;
+
+  return {
+    idCliente,
+    nomeCliente: nomeCliente ?? `cliente #${idCliente}`,
+    contratoAtivoId: contratoAtivo?.id ?? null,
+    qtdOsRecentes: contexto.ordensServico.length,
+    ultimaOs: ultimaOs ? {
+      id: ultimaOs.idOssChamado,
+      status: ultimaOs.status,
+      dataAbertura: ultimaOs.dataAbertura,
+    } : null,
+    qtdAtendimentosRecentes: contexto.atendimentos.length,
+    sinalAtualDbm: contexto.oscilacaoRede?.rxHoje ?? null,
+    sinalNivel: contexto.oscilacaoRede?.nivelHoje ?? null,
+    equipamento: equipamento ? {
+      descricao: equipamento.descricao,
+      numeroSerie: equipamento.numeroSerie,
+      fonteIncerta: !!equipamento.fonteIncerta,
+    } : null,
+    qtdFotosDisponiveis: contarFotosDisponiveis(contexto.osArquivos),
   };
 }
 

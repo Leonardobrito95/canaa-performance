@@ -5,6 +5,7 @@ import { validate } from '../../middlewares/validate';
 import {
   consultaBodySchema,
   historicoParamsSchema,
+  resumoClienteParamsSchema,
   buscarClienteQuerySchema,
   regraNegocioBodySchema,
   regraNegocioUpdateBodySchema,
@@ -15,6 +16,7 @@ import {
 } from './diagnostico.schemas';
 import {
   criarConsulta,
+  buscarResumoCliente,
   listarHistoricoConsultas,
   listarAgregados,
   buscarCliente,
@@ -38,6 +40,15 @@ const router = Router();
 // MESMO gate já usado em Regras de Negócio/Administração — não é um
 // mecanismo novo, é o super admin existente cobrindo mais rotas.
 router.get('/cliente', authenticate, requireHubAdmin, validate('query', buscarClienteQuerySchema), buscarCliente);
+// Resumo leve (sem Gemini, sem fotos), mostrado antes do usuário confirmar
+// que quer o diagnóstico completo (criarConsulta abaixo).
+router.get(
+  '/cliente/:id_cliente/resumo',
+  authenticate,
+  requireHubAdmin,
+  validate('params', resumoClienteParamsSchema),
+  buscarResumoCliente,
+);
 router.post('/consulta', authenticate, requireHubAdmin, validate('body', consultaBodySchema), criarConsulta);
 router.get(
   '/consulta/:id_cliente/historico',

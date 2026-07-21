@@ -242,6 +242,32 @@ export interface StatusRedeAgora {
   piorGeral: PiorSinalAgora | null;
 }
 
+/// Resumo leve do cliente, montado só com dado estruturado (sem Gemini, sem
+/// baixar fotos) pro chat de Consulta mostrar antes de perguntar se o
+/// usuário quer o diagnóstico completo. Decisão do usuário 2026-07-21: em
+/// vez de já disparar a análise cara (com fotos) em toda consulta, mostra
+/// esse resumo primeiro e só chama o diagnóstico completo sob confirmação.
+export interface ResumoCliente {
+  idCliente:       number;
+  nomeCliente:     string;
+  contratoAtivoId: string | null;
+  qtdOsRecentes:   number;
+  ultimaOs: {
+    id:           number;
+    status:       string;
+    dataAbertura: Date | null;
+  } | null;
+  qtdAtendimentosRecentes: number;
+  sinalAtualDbm: number | null;
+  sinalNivel:    string | null;
+  equipamento: {
+    descricao:    string;
+    numeroSerie:  string;
+    fonteIncerta: boolean;
+  } | null;
+  qtdFotosDisponiveis: number;
+}
+
 export interface ContextoClienteDiagnostico {
   idCliente:       number;
   contratos:       ContratoResumo[];

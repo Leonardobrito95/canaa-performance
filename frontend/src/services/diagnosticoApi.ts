@@ -52,6 +52,27 @@ export interface DiagnosticoAgregadoItem {
   atualizado_em: string;
 }
 
+export interface ResumoCliente {
+  idCliente:       number;
+  nomeCliente:     string;
+  contratoAtivoId: string | null;
+  qtdOsRecentes:   number;
+  ultimaOs: {
+    id:           number;
+    status:       string;
+    dataAbertura: string | null;
+  } | null;
+  qtdAtendimentosRecentes: number;
+  sinalAtualDbm: number | null;
+  sinalNivel:    string | null;
+  equipamento: {
+    descricao:    string;
+    numeroSerie:  string;
+    fonteIncerta: boolean;
+  } | null;
+  qtdFotosDisponiveis: number;
+}
+
 export interface ClienteCandidato {
   id: number;
   nome: string;
@@ -161,6 +182,9 @@ export interface ResumoGestao {
 
 export const buscarCliente = (termo: string) =>
   api.get<ClienteCandidato[]>('/cliente', { params: { termo } }).then((r) => r.data);
+
+export const buscarResumoCliente = (id_cliente: number) =>
+  api.get<ResumoCliente>(`/cliente/${id_cliente}/resumo`).then((r) => r.data);
 
 export interface HistoricoTurnoConversa {
   pergunta: string;

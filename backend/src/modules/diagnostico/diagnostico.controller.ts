@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthPayload } from '../auth/auth.service';
 import prisma from '../../config/prisma';
-import { gerarDiagnosticoIndividual, gerarRespostaGestaoIndividual, intervaloMesAtual, criarJanelaAtual, gastoCaioHojeUsd, LIMITE_CAIO_USD_DIA } from './diagnostico.service';
+import { gerarDiagnosticoIndividual, gerarResumoCliente, gerarRespostaGestaoIndividual, intervaloMesAtual, criarJanelaAtual, gastoCaioHojeUsd, LIMITE_CAIO_USD_DIA } from './diagnostico.service';
 import {
   buscarClientePorNome,
   buscarRankingVendedores,
@@ -22,6 +22,14 @@ export async function buscarCliente(req: Request, res: Response, next: NextFunct
     const { termo } = req.query as { termo: string };
     const candidatos = await buscarClientePorNome(termo);
     res.json(candidatos);
+  } catch (err) { next(err); }
+}
+
+export async function buscarResumoCliente(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id_cliente } = req.params;
+    const resumo = await gerarResumoCliente(Number(id_cliente));
+    res.json(resumo);
   } catch (err) { next(err); }
 }
 
