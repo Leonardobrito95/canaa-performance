@@ -233,3 +233,32 @@ export async function excluirRegra(req: Request, res: Response, next: NextFuncti
     next(err);
   }
 }
+
+/// Ao contrário de Regras de Negócio, aqui não há create/delete: cada chave
+/// é referenciada por um ponto fixo do código (system prompt), só o texto é
+/// editável pela UI.
+export async function listarBlocosPrompt(req: Request, res: Response, next: NextFunction) {
+  try {
+    const blocos = await prisma.diagnosticoBlocoPrompt.findMany({ orderBy: { chave: 'asc' } });
+    res.json(blocos);
+  } catch (err) { next(err); }
+}
+
+export async function editarBlocoPrompt(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { nome } = (req as AuthRequest).user;
+    const { chave } = req.params;
+    const { texto } = req.body;
+    const bloco = await prisma.diagnosticoBlocoPrompt.update({
+      where: { chave },
+      data: { texto, atualizado_por: nome },
+    });
+    res.json(bloco);
+  } catch (err: any) {
+    if (err.code === 'P2025') {
+      res.status(404).json({ message: 'Bloco não encontrado.' });
+      return;
+    }
+    next(err);
+  }
+}

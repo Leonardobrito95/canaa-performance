@@ -668,3 +668,10 @@ export async function buscarRegrasNegocio(): Promise<Record<string, string>> {
   const regras = await prisma.diagnosticoRegraNegocio.findMany();
   return Object.fromEntries(regras.map((r) => [r.chave, r.valor]));
 }
+
+// ── Blocos de texto longo do system prompt (critérios de instalação, regras
+// comparativas entre fontes), buscado a cada chamada da IA, não cacheado.
+export async function buscarBlocosPrompt(): Promise<Record<string, string>> {
+  const blocos = await prisma.diagnosticoBlocoPrompt.findMany();
+  return Object.fromEntries(blocos.map((b) => [b.chave, b.texto]));
+}

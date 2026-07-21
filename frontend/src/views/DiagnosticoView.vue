@@ -518,6 +518,49 @@
           </div>
           <p v-if="regras.length === 0" class="empty-sub">Nenhuma regra cadastrada ainda.</p>
         </div>
+
+        <div class="blocos-prompt-secao">
+          <h3 class="blocos-prompt-titulo">Blocos de texto do prompt</h3>
+          <p class="regras-info">
+            Parágrafos inteiros usados como instrução fixa da IA (critérios de instalação,
+            regras de como não confundir fontes de dados no chat de Gestão). Diferente das
+            regras acima, aqui não dá pra criar nem remover chave, só editar o texto das
+            existentes.
+          </p>
+
+          <div v-if="loadingBlocosPrompt" class="state-msg">
+            <span class="loading-dots"><span/><span/><span/></span> Carregando blocos…
+          </div>
+          <div v-else class="regras-lista">
+            <div v-for="b in blocosPrompt" :key="b.chave" class="regra-row">
+              <template v-if="editandoBlocoChave === b.chave">
+                <label class="regra-form-descricao">{{ b.titulo }}
+                  <textarea v-model="blocoTextoEmEdicao" rows="12" class="bloco-prompt-textarea"></textarea>
+                </label>
+                <div v-if="erroBlocoPrompt" class="regra-erro">{{ erroBlocoPrompt }}</div>
+                <div class="regra-form-acoes">
+                  <button class="btn-cancelar" @click="cancelarEdicaoBloco">Cancelar</button>
+                  <button class="btn-salvar" :disabled="salvandoBlocoPrompt" @click="salvarEdicaoBloco(b.chave)">Salvar</button>
+                </div>
+              </template>
+              <template v-else>
+                <div class="regra-main">
+                  <span class="regra-chave">{{ b.titulo }}</span>
+                </div>
+                <p class="regra-descricao bloco-prompt-preview">{{ b.texto }}</p>
+                <div class="regra-rodape">
+                  <span class="regra-meta">atualizado por {{ b.atualizado_por }} · {{ formatarDataHora(b.atualizado_em) }}</span>
+                  <div class="regra-acoes">
+                    <button class="icon-btn" title="Editar" @click="iniciarEdicaoBloco(b)">
+                      <svg width="14" height="14" viewBox="0 0 15 15" fill="none"><path d="M10.5 1.5l3 3-8 8-3.5 1 1-3.5 8-8z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <p v-if="blocosPrompt.length === 0" class="empty-sub">Nenhum bloco cadastrado ainda.</p>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -542,12 +585,15 @@ import {
   criarRegra,
   editarRegra,
   excluirRegra,
+  listarBlocosPrompt,
+  editarBlocoPrompt,
   buscarStatusGemini,
   type DiagnosticoResultado,
   type DiagnosticoAgregadoItem,
   type ClienteCandidato,
   type ResumoCliente,
   type RegraNegocio,
+  type BlocoPrompt,
   type CategoriaRegra,
   type HistoricoTurnoConversa,
   type TipoFeedback,
@@ -1167,6 +1213,55 @@ function formatarDataHora(iso: string) {
   });
 }
 
+// ── Blocos de texto do prompt (critérios de instalação, regras comparativas) ──
+// Diferente de Regras de Negócio: sem create/delete, chave fixa referenciada
+// no código, só o texto é editável.
+const blocosPrompt = ref<BlocoPrompt[]>([]);
+const loadingBlocosPrompt = ref(false);
+const editandoBlocoChave = ref<string | null>(null);
+const blocoTextoEmEdicao = ref('');
+const salvandoBlocoPrompt = ref(false);
+const erroBlocoPrompt = ref('');
+
+async function carregarBlocosPrompt() {
+  loadingBlocosPrompt.value = true;
+  try {
+    blocosPrompt.value = await listarBlocosPrompt();
+  } finally {
+    loadingBlocosPrompt.value = false;
+  }
+}
+
+function iniciarEdicaoBloco(b: BlocoPrompt) {
+  editandoBlocoChave.value = b.chave;
+  blocoTextoEmEdicao.value = b.texto;
+  erroBlocoPrompt.value = '';
+}
+
+function cancelarEdicaoBloco() {
+  editandoBlocoChave.value = null;
+  erroBlocoPrompt.value = '';
+}
+
+async function salvarEdicaoBloco(chave: string) {
+  if (!blocoTextoEmEdicao.value.trim()) {
+    erroBlocoPrompt.value = 'O texto não pode ficar vazio.';
+    return;
+  }
+  salvandoBlocoPrompt.value = true;
+  erroBlocoPrompt.value = '';
+  try {
+    const atualizado = await editarBlocoPrompt(chave, blocoTextoEmEdicao.value);
+    const idx = blocosPrompt.value.findIndex((b) => b.chave === chave);
+    if (idx !== -1) blocosPrompt.value[idx] = atualizado;
+    editandoBlocoChave.value = null;
+  } catch (e: any) {
+    erroBlocoPrompt.value = e?.response?.data?.message || 'Não consegui salvar a alteração agora.';
+  } finally {
+    salvandoBlocoPrompt.value = false;
+  }
+}
+
 watch(modo, (m) => {
   // Regras de negócio é restrita ao admin do hub — se por algum motivo o
   // estado chegar aqui sem permissão (ex: race de carregamento do usuário),
@@ -1175,6 +1270,7 @@ watch(modo, (m) => {
   if (m === 'gestao' && agregados.value.length === 0) carregarAgregados();
   if (m === 'gestao' && !resumoGestaoData.value) carregarResumoGestao();
   if (m === 'regras' && regras.value.length === 0) carregarRegras();
+  if (m === 'regras' && blocosPrompt.value.length === 0) carregarBlocosPrompt();
   if (m === 'gestao') rolarGestaoParaFinal();
 });
 
@@ -1584,6 +1680,15 @@ onMounted(() => { rolarParaFinal(); carregarUsoCaio(); });
 }
 .icon-btn-perigo:hover { color: var(--error); border-color: var(--error); background: var(--error-bg); filter: brightness(1.2); }
 .icon-btn-confirm-label { font-size: .72rem; font-weight: 600; white-space: nowrap; }
+
+/* ── Blocos de texto do prompt ── */
+.blocos-prompt-secao { display: flex; flex-direction: column; gap: .7rem; margin-top: .4rem; padding-top: 1rem; border-top: 1px solid var(--border-2); }
+.blocos-prompt-titulo { font-family: var(--font-body); font-size: .9rem; font-weight: 700; color: var(--text); margin: 0; }
+.bloco-prompt-preview {
+  white-space: pre-wrap; max-height: 5.6em; overflow-y: auto;
+  padding-right: .4rem;
+}
+.bloco-prompt-textarea { font-family: var(--font-mono); font-size: .78rem; line-height: 1.5; white-space: pre-wrap; }
 
 /* ── Baixar arquivo gerado (PDF/Excel) pelo CAIO ── */
 .btn-baixar-arquivo {

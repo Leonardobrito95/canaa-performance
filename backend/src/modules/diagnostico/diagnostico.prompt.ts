@@ -1,10 +1,10 @@
 import { ContextoClienteDiagnostico } from './diagnostico.types';
 import {
   FONTES_GESTAO, DadosGestao,
-  REGRA_SINAL_DUAS_FONTES, REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA, REGRA_ATENDIMENTO_SETE_FONTES,
+  REGRA_SINAL_DUAS_FONTES_PADRAO, REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA_PADRAO, REGRA_ATENDIMENTO_SETE_FONTES_PADRAO,
 } from './diagnostico.gestao-fontes';
 
-const CRITERIOS_INSTALACAO = `Critérios de boa instalação verificáveis visualmente numa foto (use como
+export const CRITERIOS_INSTALACAO_PADRAO = `Critérios de boa instalação verificáveis visualmente numa foto (use como
 referência ao analisar fotos, não recalcule ou invente outros critérios):
 - Posição: equipamento em local elevado (prateleira, mesa, fixado na parede), nunca direto no chão.
 - Posição: de preferência num cômodo central do imóvel, não num canto/extremidade. Só avalie isso
@@ -80,7 +80,16 @@ explicitamente que não há acesso remoto a essa configuração, e que só dá p
 se alguma foto anexada for um print da própria tela de configuração mostrando o item (raro nas
 fotos de O.S., que costumam ser da instalação física).`;
 
-export const DIAGNOSTICO_SYSTEM_PROMPT = `Você é um analista sênior do Canaã Performance, o hub interno da Canaã Telecom.
+/// Chave em blocos_prompt (banco) pro texto de CRITERIOS_INSTALACAO_PADRAO acima. Se não
+/// houver linha cadastrada (instalação nova, antes do seed, ou linha apagada), cai no
+/// texto padrão embutido no código.
+const CHAVE_CRITERIOS_INSTALACAO = 'CRITERIOS_INSTALACAO';
+
+/// Montada a cada chamada da IA (não é mais uma const estática): permite editar os
+/// critérios de instalação pela UI de Regras de Negócio sem precisar de deploy.
+export function montarDiagnosticoSystemPrompt(blocos: Record<string, string>): string {
+  const criteriosInstalacao = blocos[CHAVE_CRITERIOS_INSTALACAO] ?? CRITERIOS_INSTALACAO_PADRAO;
+  return `Você é um analista sênior do Canaã Performance, o hub interno da Canaã Telecom.
 Você tem acesso a três fontes de dados sobre um cliente: histórico de sinal de rede (OTDR),
 ordens de serviço e atendimentos (IXC), e situação comercial (vendas/comissão). Quando
 fotos da instalação forem fornecidas, analise-as visualmente contra os critérios abaixo.
@@ -94,7 +103,7 @@ posicionado, você NÃO PODE concluir que a instalação está inadequada — is
 especulação. Nesse caso, aponte como ERRO a ausência da foto necessária (falha de processo:
 o técnico não documentou o local da instalação), não a instalação em si.
 
-${CRITERIOS_INSTALACAO}
+${criteriosInstalacao}
 
 Existem três tipos possíveis de pergunta sobre o cliente ativo:
 
@@ -175,6 +184,7 @@ Regras:
 - Cada seção deve ter no máximo 3 frases.
 - Se precisar enumerar mais de dois itens (ex: técnicos de várias O.S., vários atendimentos),
   use lista markdown ("- " por item) com **negrito** no dado-chave, em vez de um parágrafo corrido.`;
+}
 
 /// Formata uma data com segurança. Datas "zero" do MySQL (0000-00-00) chegam
 /// como Date inválido (truthy, mas NaN internamente) — nunca usar só `data ?`.
@@ -480,19 +490,34 @@ ${Object.entries(TOPICO_POR_FONTE).map(([chave, topico]) => `  - ${chave}: ${top
   um recorte (ex: só um mês, só um setor), deixe claro no texto que o arquivo anexado traz a fonte
   completa, não só o recorte pedido.`;
 
+/// Chaves em blocos_prompt (banco) pros textos _PADRAO acima. Se não houver linha
+/// cadastrada, cai no texto padrão embutido no código.
+const CHAVE_REGRA_SINAL_DUAS_FONTES = 'REGRA_SINAL_DUAS_FONTES';
+const CHAVE_REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA = 'REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA';
+const CHAVE_REGRA_ATENDIMENTO_SETE_FONTES = 'REGRA_ATENDIMENTO_SETE_FONTES';
+
 /// Composição, não template monolítico: cada fonte de FONTES_GESTAO contribui
 /// sua própria regra (se tiver), regras COMPARATIVAS entre fontes ficam à
 /// parte (ver diagnostico.gestao-fontes.ts) pra não perder a moldura "não
 /// confunda X com Y" que corrigiu bugs reais de confusão do modelo nesta sessão.
-export const GESTAO_SYSTEM_PROMPT = [
-  GESTAO_INTRO_E_REGRAS_GERAIS,
-  ...FONTES_GESTAO.flatMap((f) => (f.regraPrompt ? [f.regraPrompt] : [])),
-  REGRA_SINAL_DUAS_FONTES,
-  REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA,
-  REGRA_ATENDIMENTO_SETE_FONTES,
-  REGRA_EXPORTAR_ARQUIVO,
-  GESTAO_REGRAS_FINAIS,
-].join('\n\n');
+/// Montada a cada chamada da IA (não é mais uma const estática): permite editar essas
+/// regras pela UI de Regras de Negócio sem precisar de deploy.
+export function montarGestaoSystemPrompt(blocos: Record<string, string>): string {
+  const sinalDuasFontes = blocos[CHAVE_REGRA_SINAL_DUAS_FONTES] ?? REGRA_SINAL_DUAS_FONTES_PADRAO;
+  const retencaoDesempenhoVsAuditoria =
+    blocos[CHAVE_REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA] ?? REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA_PADRAO;
+  const atendimentoSeteFontes = blocos[CHAVE_REGRA_ATENDIMENTO_SETE_FONTES] ?? REGRA_ATENDIMENTO_SETE_FONTES_PADRAO;
+
+  return [
+    GESTAO_INTRO_E_REGRAS_GERAIS,
+    ...FONTES_GESTAO.flatMap((f) => (f.regraPrompt ? [f.regraPrompt] : [])),
+    sinalDuasFontes,
+    retencaoDesempenhoVsAuditoria,
+    atendimentoSeteFontes,
+    REGRA_EXPORTAR_ARQUIVO,
+    GESTAO_REGRAS_FINAIS,
+  ].join('\n\n');
+}
 
 /// Itera FONTES_GESTAO (diagnostico.gestao-fontes.ts) em vez de 11 parâmetros
 /// posicionais — adicionar uma fonte nova não muda essa assinatura.

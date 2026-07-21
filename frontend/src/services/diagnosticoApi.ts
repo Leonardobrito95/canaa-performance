@@ -255,3 +255,17 @@ export const editarRegra = (chave: string, regra: Omit<RegraNegocioInput, 'chave
 
 export const excluirRegra = (chave: string) =>
   api.delete<{ success: boolean }>(`/regras/${chave}`).then((r) => r.data);
+
+export interface BlocoPrompt {
+  chave: string;
+  titulo: string;
+  texto: string;
+  atualizado_em: string;
+  atualizado_por: string;
+}
+
+export const listarBlocosPrompt = () =>
+  api.get<BlocoPrompt[]>('/blocos-prompt').then((r) => r.data);
+
+export const editarBlocoPrompt = (chave: string, texto: string) =>
+  api.put<BlocoPrompt>(`/blocos-prompt/${chave}`, { texto }).then((r) => r.data);

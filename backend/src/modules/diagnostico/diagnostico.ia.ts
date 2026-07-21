@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import logger from '../../config/logger';
-import { DIAGNOSTICO_SYSTEM_PROMPT, GESTAO_SYSTEM_PROMPT } from './diagnostico.prompt';
+import { montarDiagnosticoSystemPrompt, montarGestaoSystemPrompt } from './diagnostico.prompt';
+import { buscarBlocosPrompt } from './diagnostico.repository';
 import { ImagemAnexo } from './diagnostico.types';
 
 // 'gemini-2.5-flash' foi descontinuado para geração (ainda aparece em
@@ -187,8 +188,9 @@ export async function gerarDiagnostico(
   imagens: ImagemAnexo[] = [],
   historico?: { pergunta: string; resposta: string }[],
 ): Promise<DiagnosticoIaResultado> {
+  const blocos = await buscarBlocosPrompt();
   const partes = [
-    DIAGNOSTICO_SYSTEM_PROMPT,
+    montarDiagnosticoSystemPrompt(blocos),
     '',
     contextoTextual,
   ];
@@ -257,7 +259,8 @@ export async function gerarRespostaGestao(
   pergunta: string,
   historico?: { pergunta: string; resposta: string }[],
 ): Promise<{ texto: string; metricas: MetricasGemini }> {
-  const partes = [GESTAO_SYSTEM_PROMPT, '', contextoTextual];
+  const blocos = await buscarBlocosPrompt();
+  const partes = [montarGestaoSystemPrompt(blocos), '', contextoTextual];
   if (historico?.length) {
     partes.push('', `=== CONVERSA ANTERIOR NESTE ATENDIMENTO ===`,
       'As perguntas abaixo já foram feitas e respondidas nesta mesma conversa de gestão. ' +

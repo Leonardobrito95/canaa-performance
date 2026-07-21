@@ -630,7 +630,7 @@ export const FONTES_GESTAO: FonteGestao[] = [
 // à parte do registry de propósito, pra não perder a moldura "não confunda
 // X com Y" fragmentando cada uma no regraPrompt de uma fonte isolada.
 
-export const REGRA_SINAL_DUAS_FONTES = `- Há DUAS fontes diferentes sobre sinal de cliente, não confunda uma com a outra:
+export const REGRA_SINAL_DUAS_FONTES_PADRAO = `- Há DUAS fontes diferentes sobre sinal de cliente, não confunda uma com a outra:
   (1) "PIOR SINAL DA REDE AGORA" é uma leitura AO VIVO, sempre atual — é a resposta certa para
   perguntas como "qual cliente tem o pior sinal?", "quem está com o sinal mais fraco?" (sem
   menção a "hoje"/"piorou"). É o mesmo número que aparece no painel como "pior sinal" da rede.
@@ -643,7 +643,7 @@ export const REGRA_SINAL_DUAS_FONTES = `- Há DUAS fontes diferentes sobre sinal
   ele não está entre os casos monitorados agora e sugira o modo Consulta para um diagnóstico
   completo dele.`;
 
-export const REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA = `- "DESEMPENHO DE RETENÇÃO DO MÊS" é uma coisa DIFERENTE da "AUDITORIA DE RETENÇÃO" acima, não
+export const REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA_PADRAO = `- "DESEMPENHO DE RETENÇÃO DO MÊS" é uma coisa DIFERENTE da "AUDITORIA DE RETENÇÃO" acima, não
   confunda as duas: o desempenho é o VOLUME operacional do mês em andamento (quantas O.S. de
   retenção foram tratadas, quantas retidas/não retidas, taxa de reversão, comissão gerada,
   quantas operadoras bateram meta) — é a contagem bruta do IXC, sem passar por auditoria de
@@ -652,7 +652,7 @@ export const REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA = `- "DESEMPENHO DE RETENÇ�
   desempenho do mês; se perguntarem sobre qualidade/veracidade da negociação, use a auditoria.
   O período do desempenho do mês é sempre do dia 1 até hoje (mês corrente em andamento).`;
 
-export const REGRA_ATENDIMENTO_SETE_FONTES = `- Atendimento cobre 9 setores (SAC, Suporte N1, Suporte N2, Cobrança, Vendas, Retenção,
+export const REGRA_ATENDIMENTO_SETE_FONTES_PADRAO = `- Atendimento cobre 9 setores (SAC, Suporte N1, Suporte N2, Cobrança, Vendas, Retenção,
   Pós-Vendas, Backoffice, Ouvidoria) e tem SETE fontes diferentes, não confunda:
   (1) "KPIS BRUTOS DO MES EM ANDAMENTO" é volume/tempo (TME/TMA/TMR)/satisfação cru do mês
   corrente, calculado AO VIVO, sem avaliação de qualidade — responde "quantos atendimentos

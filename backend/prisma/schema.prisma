@@ -343,6 +343,25 @@ model DiagnosticoRegraNegocio {
   @@schema("diagnostico")
 }
 
+/// Blocos de texto longo embutidos no system prompt do CAIO (critérios de
+/// instalação, regras comparativas entre fontes de dados), diferente de
+/// DiagnosticoRegraNegocio (chave/valor curto): aqui cada chave é um
+/// parágrafo inteiro, referenciado por um ponto fixo do código (não é uma
+/// lista livre, não dá pra criar/apagar chave nova pela UI, só editar o
+/// texto das existentes). Buscado a cada chamada da IA (não cacheado),
+/// editar pela UI tem efeito imediato, sem deploy.
+model DiagnosticoBlocoPrompt {
+  /// ex: 'CRITERIOS_INSTALACAO', 'REGRA_SINAL_DUAS_FONTES'
+  chave          String   @id
+  titulo         String
+  texto          String
+  atualizado_em  DateTime @updatedAt
+  atualizado_por String?
+
+  @@map("blocos_prompt")
+  @@schema("diagnostico")
+}
+
 /// Auditoria de retenção: para cada O.S. de retenção (id_assunto=348) no IXC,
 /// classifica se há evidência REAL de negociação no texto das mensagens (O.S. +
 /// atendimento relacionado) — a classificação do IXC (id_su_diagnostico numa

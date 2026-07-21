@@ -54,3 +54,11 @@ export const regraNegocioUpdateBodySchema = regraNegocioBodySchema.omit({ chave:
 export const regraNegocioParamsSchema = z.object({
   chave: z.string().min(2).max(80),
 });
+
+export const blocoPromptParamsSchema = z.object({
+  chave: z.string().min(2).max(80),
+});
+
+export const blocoPromptUpdateBodySchema = z.object({
+  texto: z.string().min(1).max(20000),
+});

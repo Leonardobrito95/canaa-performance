@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { montarContextoTextual, montarContextoGestaoTextual, DIAGNOSTICO_SYSTEM_PROMPT } from './diagnostico.prompt';
+import { montarContextoTextual, montarContextoGestaoTextual, montarDiagnosticoSystemPrompt } from './diagnostico.prompt';
 import type { ContextoClienteDiagnostico, RankingVendedorEntry, EvolucaoMensalEntry } from './diagnostico.types';
 
 // ── Fixture base — um cliente "completo", editado por teste conforme necessário ──
@@ -230,8 +230,9 @@ describe('montarContextoTextual — Status SmartOLT (Power fail vs LOS)', () => 
     expect(texto).toContain('2026-07-08');
     // A regra que ensina a IA a não confundir queda de energia com problema de
     // fibra tem que continuar no prompt (guarda contra regressão de instrução).
-    expect(DIAGNOSTICO_SYSTEM_PROMPT).toContain('queda de energia');
-    expect(DIAGNOSTICO_SYSTEM_PROMPT).toContain('LOS');
+    const systemPrompt = montarDiagnosticoSystemPrompt({});
+    expect(systemPrompt).toContain('queda de energia');
+    expect(systemPrompt).toContain('LOS');
   });
 
   it('não menciona status SmartOLT quando a fonte não tem dado pra esse cliente (não é erro)', () => {

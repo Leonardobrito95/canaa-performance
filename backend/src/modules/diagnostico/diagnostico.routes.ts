@@ -10,6 +10,8 @@ import {
   regraNegocioBodySchema,
   regraNegocioUpdateBodySchema,
   regraNegocioParamsSchema,
+  blocoPromptParamsSchema,
+  blocoPromptUpdateBodySchema,
   gestaoConsultaBodySchema,
   feedbackParamsSchema,
   feedbackBodySchema,
@@ -24,6 +26,8 @@ import {
   criarRegra,
   editarRegra,
   excluirRegra,
+  listarBlocosPrompt,
+  editarBlocoPrompt,
   criarConsultaGestao,
   statusIxc,
   statusGemini,
@@ -106,6 +110,19 @@ router.delete(
   requireHubAdmin,
   validate('params', regraNegocioParamsSchema),
   excluirRegra,
+);
+
+// Blocos de texto longo do system prompt (critérios de instalação, regras
+// comparativas), sem create/delete: chave fixa referenciada no código,
+// só o texto é editável.
+router.get('/blocos-prompt', authenticate, requireHubAdmin, listarBlocosPrompt);
+router.put(
+  '/blocos-prompt/:chave',
+  authenticate,
+  requireHubAdmin,
+  validate('params', blocoPromptParamsSchema),
+  validate('body', blocoPromptUpdateBodySchema),
+  editarBlocoPrompt,
 );
 
 export default router;
