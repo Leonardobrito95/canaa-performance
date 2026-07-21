@@ -16,7 +16,7 @@
     <template v-if="pagina === 'indicadores-atendimento'">
       <p class="rh-desc">
         Tempo real logado por operador no período (produtivo, pausa, ausente) e volume atendido,
-        para todos os 8 setores de atendimento de uma vez, incluindo equipe terceirizada. Escolha os
+        para todos os 9 setores de atendimento de uma vez, incluindo equipe terceirizada. Escolha os
         setores e o período abaixo.
       </p>
 

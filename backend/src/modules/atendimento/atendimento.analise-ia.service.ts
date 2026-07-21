@@ -11,7 +11,7 @@ export interface FiltrosAnaliseIa {
   /// Grupo de setores (ex: SETORES_CENTRO_SOLUCAO) — usado pela tela de
   /// Monitoria de Qualidade pra não misturar setor de Comercial (VENDAS/
   /// POS_VENDAS) no dashboard/triagem, que hoje só cobre Centro de Solução.
-  /// Sem isso, `atendimento_analise_ia` (que cobre os 8 setores) aparecia
+  /// Sem isso, `atendimento_analise_ia` (que cobre os 9 setores) aparecia
   /// inteiro ali, incluindo VENDAS — mesma classe de mistura já corrigida no
   /// resumo de KPIs (ver atendimento.controller.ts).
   setores?:   string[];

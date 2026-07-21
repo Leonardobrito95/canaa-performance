@@ -352,7 +352,7 @@ async function idsQuePertencemAoFiltro(
 }
 
 /// Ranking de atendentes humanos por volume (quantos atendimentos cada um
-/// cuidou) num período, somando os setores informados (todos os 8, se
+/// cuidou) num período, somando os setores informados (todos os 9, se
 /// `setores` não for passado). Conta segmentos com atendimentoHumano=true em
 /// `atendentes[]` — se o mesmo atendente aparece mais de uma vez no mesmo
 /// atendimento (raro, ex: reassumiu depois de uma escalada), cada segmento
@@ -448,7 +448,7 @@ export async function buscarRankingAvaliacaoAtendentes(dateFrom: Date, dateTo: D
 }
 
 /// Top motivos de atendimento (assunto/tipificação) num período, somando os
-/// setores informados (todos os 8, se `setores` não for passado). `motivos[]`
+/// setores informados (todos os 9, se `setores` não for passado). `motivos[]`
 /// no atendimento guarda só o id — o texto vem da coleção `motivo_atendimentos`.
 export async function buscarMotivosAtendimento(dateFrom: Date, dateTo: Date, setores?: SetorAtendimento[], limite = 10): Promise<MotivoAtendimentoEntry[]> {
   const db = await getOpaSuiteDb();
@@ -615,10 +615,12 @@ const EQUIPE_ROSTER_PARA_CODIGO: Record<string, SetorAtendimento> = {
 };
 
 // Status reais observados em user_status (OpaSuite): on/off/call/oc/pause/au.
-// 'call' (em ligação) e 'oc' (ocupado) contam como presente/online — só
-// 'off' é de fato ausente do sistema.
-const STATUS_PARA_UI: Record<string, 'on' | 'au' | 'pause'> = {
-  on: 'on', call: 'on', oc: 'on', pause: 'pause', au: 'au',
+// 'call' (em ligação) tem status próprio na UI desde 2026-07-20 (pedido real
+// da gestora do Centro de Solução, que queria ver quantos estão em ligação
+// agora). 'oc' (ocupado) continua contando como 'on', só 'off' é de fato
+// ausente do sistema.
+const STATUS_PARA_UI: Record<string, 'on' | 'call' | 'au' | 'pause'> = {
+  on: 'on', call: 'call', oc: 'on', pause: 'pause', au: 'au',
 };
 
 export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): Promise<OperadorAoVivo[]> {
@@ -891,6 +893,21 @@ export async function buscarKpisOperadoresAoVivo(setores?: SetorAtendimento[]): 
   return opsFinal;
 }
 
+/// Quantidade de atendimentos aguardando (status='AG') agora, pelos setores
+/// informados, mesma query de detectarFilaAcumulada, mas ao vivo pra
+/// exibição direta (não só quando cruza o limiar de alerta). Exclui VENDAS
+/// por padrão, mesma exclusão de detectarFilaAcumulada (não opera como fila
+/// de espera). Pedido real da gestora do Centro de Solução (2026-07-20): ela
+/// queria ver esse número, não só descobrir que existe um alerta sobre ele.
+export async function buscarFilaAoVivo(setores?: SetorAtendimento[]): Promise<number> {
+  const db = await getOpaSuiteDb();
+  const setoresValidos = (setores ?? TODOS_SETORES).filter((s) => s !== 'VENDAS');
+  if (!setoresValidos.length) return 0;
+
+  const deptIds = setoresValidos.map((s) => new ObjectId(DEPARTAMENTO_IDS[s]));
+  return db.collection('atendimentos').countDocuments({ setor: { $in: deptIds }, status: 'AG' });
+}
+
 /// Indicador de jornada por operador num PERÍODO configurável (RH/gestão do
 /// Centro de Solução) — diferente de buscarKpisOperadoresAoVivo, que só olha
 /// o status ATUAL de agora. Mesma descoberta de candidatos (roster QA ∪ quem
@@ -1001,7 +1018,9 @@ export async function buscarIndicadoresJornada(
     if (!statusUi) return; // 'off' (ou status desconhecido) não conta como tempo logado
     if (!temposPorOp.has(uid)) temposPorOp.set(uid, { produtivo: 0, pausa: 0, ausente: 0 });
     const bucket = temposPorOp.get(uid)!;
-    if (statusUi === 'on') bucket.produtivo += ms;
+    // 'call' conta como produtivo igual 'on' (só virou status visual próprio
+    // na tabela ao vivo, não muda o que é tempo produtivo aqui).
+    if (statusUi === 'on' || statusUi === 'call') bucket.produtivo += ms;
     else if (statusUi === 'pause') bucket.pausa += ms;
     else if (statusUi === 'au') bucket.ausente += ms;
   }

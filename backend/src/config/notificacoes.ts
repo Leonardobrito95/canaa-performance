@@ -24,3 +24,10 @@ export const MONITORIA_AUTOMATICA_ATIVA = process.env.MONITORIA_AUTOMATICA_ATIVA
 /// do Atendimento e diretoria). Fica off até o usuário confirmar webhook + números reais no
 /// n8n e validar o texto das mensagens.
 export const ESCALONAMENTO_WHATSAPP_ATIVO = process.env.ESCALONAMENTO_WHATSAPP_ATIVO === 'true';
+
+/// Kill-switch do alerta de fila crítica do Centro de Solução por WhatsApp
+/// (atendimento.alerta-fila-whatsapp.ts). Chama a Meta Cloud API direto
+/// deste backend (decisão do usuário 2026-07-21, diferente do padrão via
+/// webhook/n8n do ESCALONAMENTO_WHATSAPP_ATIVO acima). Fica off até existir
+/// token real da Meta configurado E o usuário confirmar que quer ativar.
+export const ALERTA_FILA_CENTRO_SOLUCAO_WHATSAPP_ATIVO = process.env.ALERTA_FILA_CENTRO_SOLUCAO_WHATSAPP_ATIVO === 'true';

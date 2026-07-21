@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthPayload } from '../auth/auth.service';
-import { getResumoKpisAtendimento, getRankingsAtendimento, auditarAtendimentoIndividual, getOperadoresAoVivo, getIndicadoresJornada, getConfigJornada } from './atendimento.service';
+import { getResumoKpisAtendimento, getRankingsAtendimento, auditarAtendimentoIndividual, getOperadoresAoVivo, getFilaAoVivo, getIndicadoresJornada, getConfigJornada } from './atendimento.service';
 import { SetorAtendimento } from './atendimento.types';
 
 type AuthRequest = Request & { user: AuthPayload };
@@ -19,7 +19,7 @@ export async function resumoAtendimento(req: Request, res: Response, next: NextF
     const from = parseData(dateFrom, inicioMes);
     const to   = parseData(dateTo, hoje);
     to.setHours(23, 59, 59, 999);
-    // Sem ?setores=, os dois lados usam o default (todos os 8) — mantém o
+    // Sem ?setores=, os dois lados usam o default (todos os 9) — mantém o
     // chat de gestão (que não passa esse param) com a visão completa de sempre.
     const setores = setoresRaw ? (setoresRaw.split(',') as SetorAtendimento[]) : undefined;
 
@@ -52,6 +52,15 @@ export async function operadoresAoVivo(req: Request, res: Response, next: NextFu
     const setores = setoresRaw ? (setoresRaw.split(',') as SetorAtendimento[]) : undefined;
     const operadores = await getOperadoresAoVivo(setores);
     res.json({ operadores });
+  } catch (err) { next(err); }
+}
+
+export async function filaAoVivo(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { setores: setoresRaw } = req.query as Record<string, string>;
+    const setores = setoresRaw ? (setoresRaw.split(',') as SetorAtendimento[]) : undefined;
+    const naFila = await getFilaAoVivo(setores);
+    res.json({ naFila });
   } catch (err) { next(err); }
 }
 

@@ -1,11 +1,14 @@
 <template>
   <div class="operadores-ao-vivo">
+    <AtendimentoLiveStats :setores="setores" />
+
     <div class="op-header-row">
       <p class="op-desc">
         Acompanhamento em tempo real da "Sala de Controle". Atualiza automaticamente a cada 2 minutos. O TMA, TME e TMR representam a performance individual do dia até este instante.
       </p>
       <div class="op-legend">
         <span class="legend-item"><span class="dot on"></span>Online</span>
+        <span class="legend-item"><span class="dot call"></span>Em ligação</span>
         <span class="legend-item"><span class="dot au"></span>Ausente</span>
         <span class="legend-item"><span class="dot pause"></span>Pausa</span>
       </div>
@@ -68,6 +71,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import AtendimentoLiveStats from './AtendimentoLiveStats.vue';
 import { atendimentoApiClient, NOMES_SETOR, CORES_SETOR, type SetorAtendimento, type OperadorAoVivo } from '../services/atendimentoApi';
 
 const props = defineProps<{
@@ -87,6 +91,7 @@ function corSetor(s: string) {
 
 function textoStatus(s: string) {
   if (s === 'on') return 'Online';
+  if (s === 'call') return 'Em ligação';
   if (s === 'au') return 'Ausente';
   if (s === 'pause') return 'Pausa';
   return s;
@@ -104,8 +109,8 @@ function formatarDuracao(ms: number | null): string {
 
 const operadoresSorted = computed(() => {
   return [...operadores.value].sort((a, b) => {
-    // Ordenar primeiro por status (on > pause > au)
-    const order = { on: 1, pause: 2, au: 3 };
+    // Ordenar primeiro por status (on > call > pause > au)
+    const order = { on: 1, call: 2, pause: 3, au: 4 };
     const aOrder = order[a.status] || 4;
     const bOrder = order[b.status] || 4;
     if (aOrder !== bOrder) return aOrder - bOrder;
@@ -208,11 +213,13 @@ onUnmounted(() => {
 .status-time { font-size: 0.75rem; color: var(--text-3); }
 
 .status-text.on { color: var(--success); }
+.status-text.call { color: var(--accent); }
 .status-text.au { color: var(--warning); }
 .status-text.pause { color: var(--warning); }
 
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .dot.on { background: var(--success); box-shadow: 0 0 8px var(--success); }
+.dot.call { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
 .dot.au { background: var(--warning); opacity: 0.7; }
 .dot.pause { background: var(--warning); opacity: 0.7; }
 

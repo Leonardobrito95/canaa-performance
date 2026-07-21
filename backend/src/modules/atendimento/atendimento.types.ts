@@ -15,11 +15,21 @@ export const SETORES_ATENDIMENTO = [
   { codigo: 'RETENCAO',   nome: 'Retenção',    departamentoId: '614df007aeb48522ce5a8526', escalonaPara: undefined as string | undefined }, // 05 - 🤔 Retenção (departamento OpaSuite — NÃO é a auditoria de negociação de O.S. do módulo retencao/)
   { codigo: 'POS_VENDAS', nome: 'Pós-Vendas',  departamentoId: '614e2c4f754666225f58f5c0', escalonaPara: undefined as string | undefined }, // 09 - 💭 Pós-Vendas
   { codigo: 'BACKOFFICE', nome: 'Backoffice',  departamentoId: '5bf73d1d186f7d2b0d647a64', escalonaPara: undefined as string | undefined }, // 06 - 📊 Backoffice
+  { codigo: 'OUVIDORIA',    nome: 'Ouvidoria',     departamentoId: '67eadc472d93ff929c6010c0', escalonaPara: undefined as string | undefined }, // Ouvidoria (Centro de Solução, achado 2026-07-21 investigando pedido real de fila ao vivo)
 ] as const;
+// Nota: "10 - 🚨 Falha Massiva" (id 614344a46996d363bcc5f562) foi cogitado e
+// descartado, é do setor Campo, não Centro de Solução, e muito esporádico
+// (2 atendimentos em 30 dias). Confirmado pelo usuário 2026-07-21.
 
 export type SetorAtendimento = typeof SETORES_ATENDIMENTO[number]['codigo'];
 
 export const TODOS_SETORES: SetorAtendimento[] = SETORES_ATENDIMENTO.map((s) => s.codigo);
+
+/// Espelha SETORES_CENTRO_SOLUCAO do frontend (atendimentoApi.ts). Vendas e
+/// Pós-Vendas são do Comercial, não entram aqui. Usado pelo alerta de fila
+/// crítica por WhatsApp (atendimento.alerta-fila-whatsapp.ts), que soma a
+/// fila do grupo inteiro, igual ao card "Na fila de espera" do dashboard.
+export const SETORES_CENTRO_SOLUCAO: SetorAtendimento[] = ['SAC', 'N1', 'N2', 'COBRANCA', 'RETENCAO', 'BACKOFFICE', 'OUVIDORIA'];
 
 export function nomeSetorAtendimento(codigo: SetorAtendimento): string {
   return SETORES_ATENDIMENTO.find((s) => s.codigo === codigo)?.nome ?? codigo;
@@ -149,7 +159,10 @@ export interface AtendimentoParaMonitoria {
 export interface OperadorAoVivo {
   nome: string;
   setor: string;
-  status: 'on' | 'au' | 'pause';
+  /// 'call' é status próprio (agente literalmente em ligação agora),
+  /// separado de 'on' desde 2026-07-20, pedido real da gestora do Centro
+  /// de Solução, que precisava saber quantos estão em ligação neste instante.
+  status: 'on' | 'call' | 'au' | 'pause';
   tempoStatusMs: number;
   volumeHoje: number;
   /// Agregado (chat + ligação), ver tmaMsChat/tmaMsLigacao pro detalhe.

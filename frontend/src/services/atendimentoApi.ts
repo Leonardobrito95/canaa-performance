@@ -27,15 +27,17 @@ api.interceptors.response.use(
 /// novo precisa ser adicionado nos dois lados (frontend/backend não
 /// compartilham pacote de tipos neste monorepo), mas só aqui no frontend,
 /// não espalhado pelas views.
-export type SetorAtendimento = 'SAC' | 'N1' | 'N2' | 'COBRANCA' | 'VENDAS' | 'RETENCAO' | 'POS_VENDAS' | 'BACKOFFICE';
+export type SetorAtendimento = 'SAC' | 'N1' | 'N2' | 'COBRANCA' | 'VENDAS' | 'RETENCAO' | 'POS_VENDAS' | 'BACKOFFICE' | 'OUVIDORIA';
 
-export const SETORES_ATENDIMENTO_ORDEM: SetorAtendimento[] = ['SAC', 'N1', 'N2', 'COBRANCA', 'VENDAS', 'RETENCAO', 'POS_VENDAS', 'BACKOFFICE'];
+export const SETORES_ATENDIMENTO_ORDEM: SetorAtendimento[] = ['SAC', 'N1', 'N2', 'COBRANCA', 'VENDAS', 'RETENCAO', 'POS_VENDAS', 'BACKOFFICE', 'OUVIDORIA'];
 
 /// Vendas e Pós-Vendas são departamentos do Comercial, não do Centro de
 /// Solução — cada grupo de navegação vê só os seus setores nessa página de
 /// atendimento (ver AtendimentoResumoPanel.vue). O chat de gestão do C.A.I.O.
-/// continua vendo os 8 juntos (não usa essas constantes).
-export const SETORES_CENTRO_SOLUCAO: SetorAtendimento[] = ['SAC', 'N1', 'N2', 'COBRANCA', 'RETENCAO', 'BACKOFFICE'];
+/// continua vendo os 9 juntos (não usa essas constantes). Ouvidoria
+/// confirmada pelo usuário como do Centro de Solução (2026-07-21). "Falha
+/// Massiva" foi cogitada mas descartada, é do setor Campo, não daqui.
+export const SETORES_CENTRO_SOLUCAO: SetorAtendimento[] = ['SAC', 'N1', 'N2', 'COBRANCA', 'RETENCAO', 'BACKOFFICE', 'OUVIDORIA'];
 export const SETORES_COMERCIAL: SetorAtendimento[]      = ['VENDAS', 'POS_VENDAS'];
 
 export const NOMES_SETOR: Record<SetorAtendimento, string> = {
@@ -47,6 +49,7 @@ export const NOMES_SETOR: Record<SetorAtendimento, string> = {
   RETENCAO:   'Retenção',
   POS_VENDAS: 'Pós-Vendas',
   BACKOFFICE: 'Backoffice',
+  OUVIDORIA:  'Ouvidoria',
 };
 
 /// Mesma paleta usada em ChartRanking.vue — reaproveitada aqui pra manter
@@ -60,6 +63,7 @@ export const CORES_SETOR: Record<SetorAtendimento, string> = {
   RETENCAO:   '#34d399',
   POS_VENDAS: '#60a5fa',
   BACKOFFICE: '#fb923c',
+  OUVIDORIA:  '#818cf8',
 };
 
 export interface KpisAtendimento {
@@ -112,7 +116,7 @@ export interface RankingsAtendimento {
 /// agregados de volume/escalonamento que vão por e-mail.
 export interface AlertaOperacional {
   id:                       string;
-  tipo:                     'CONVERSA_PARADA' | 'SLA_FILA' | 'AGENTE_AUSENTE' | 'FILA_ACUMULADA';
+  tipo:                     'CONVERSA_PARADA' | 'SLA_FILA' | 'AGENTE_AUSENTE' | 'FILA_ACUMULADA' | 'FILA_CRITICA_TOTAL';
   severidade:               'AVISO' | 'CRITICO';
   titulo:                   string;
   descricao:                string;
@@ -127,7 +131,8 @@ export interface AlertaOperacional {
 export interface OperadorAoVivo {
   nome: string;
   setor: string;
-  status: 'on' | 'au' | 'pause';
+  /// 'call' = agente literalmente em ligação agora, status próprio desde 2026-07-20.
+  status: 'on' | 'call' | 'au' | 'pause';
   tempoStatusMs: number;
   volumeHoje: number;
   tmaMs: number | null;
@@ -181,6 +186,9 @@ export const atendimentoApiClient = {
 
   getOperadoresAoVivo: (setores?: SetorAtendimento[]): Promise<{ operadores: OperadorAoVivo[] }> =>
     api.get('/operadores-ao-vivo', { params: { setores: setores?.join(',') } }).then((r) => r.data),
+
+  getFilaAoVivo: (setores?: SetorAtendimento[]): Promise<{ naFila: number }> =>
+    api.get('/fila-ao-vivo', { params: { setores: setores?.join(',') } }).then((r) => r.data),
 
   getIndicadoresJornada: (params: { dateFrom?: string; dateTo?: string; setores?: SetorAtendimento[] }): Promise<{ indicadores: IndicadorJornadaOperador[] }> =>
     api.get('/indicadores-jornada', { params: { ...params, setores: params.setores?.join(',') } }).then((r) => r.data),

@@ -255,6 +255,8 @@
     </div>
     </div>
   </div>
+
+  <AtendimentoAlertaToasts v-if="isAuthenticated && podeVerAlertasAtendimento" />
 </template>
 
 <script setup lang="ts">
@@ -279,8 +281,10 @@ import HubAdminView          from './views/hub/HubAdminView.vue';
 import AgendaView            from './views/AgendaView.vue';
 import AlertasHubView        from './views/AlertasHubView.vue';
 import RhView                from './views/RhView.vue';
+import AtendimentoAlertaToasts from './components/AtendimentoAlertaToasts.vue';
 import { useAuth } from './composables/useAuth';
 import { useNavMenu, type Tab, type NavItem, type NavGroupKey } from './composables/useNavMenu';
+import { temAcesso, PERFIS_MODULO } from './config/acesso';
 import type { HubDashboard } from './services/hubApi';
 import { logModuleView } from './services/hubApi';
 import { getOtdrLink } from './services/otdrApi';
@@ -302,10 +306,15 @@ async function abrirOtdr() {
   }
 }
 
+const perfilAtual = computed(() => user.value?.perfil ?? '');
 const { visibleGroups, tabParaGrupo, isItemActive } = useNavMenu({
-  isGestor, isCS, isEstoque, isCampo, isAgente, souAgenteQa, isHubAdmin, abrindoOtdr, 
-  perfilAtual: computed(() => user.value?.perfil ?? ''), abrirOtdr,
+  isGestor, isCS, isEstoque, isCampo, isAgente, souAgenteQa, isHubAdmin, abrindoOtdr,
+  perfilAtual, abrirOtdr,
 });
+
+// Mesmo gate do item de nav "Atendimento" (useNavMenu.ts). Notificação
+// flutuante de alerta só pra quem já teria acesso à aba de Alertas mesmo.
+const podeVerAlertasAtendimento = computed(() => temAcesso(perfilAtual.value, PERFIS_MODULO.atendimentoGestaoQa));
 
 const tab = ref<Tab>(
   isAgente.value  ? 'minhas-avaliacoes' :

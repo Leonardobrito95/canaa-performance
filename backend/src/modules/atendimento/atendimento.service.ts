@@ -7,6 +7,7 @@ import {
   buscarMotivosAtendimento,
   buscarRankingAvaliacaoAtendentes,
   buscarKpisOperadoresAoVivo,
+  buscarFilaAoVivo,
   buscarIndicadoresJornada,
   buscarConfigJornada,
 } from './atendimento.repository';
@@ -18,7 +19,7 @@ export interface SolicitanteAtendimento {
   ixcUsername: string;
 }
 
-/// KPIs brutos dos setores informados num período (todos os 8, se `setores`
+/// KPIs brutos dos setores informados num período (todos os 9, se `setores`
 /// não for passado) — alimenta tanto os cards das views dedicadas (Centro de
 /// Solução e Comercial, cada uma passando seu próprio subconjunto) quanto o
 /// contexto de gestão do C.A.I.O. (que não filtra, quer a visão completa).
@@ -152,6 +153,13 @@ export async function auditarAtendimentoIndividual(
 /// focada na sala de controle (Dashboard de Atendimento).
 export async function getOperadoresAoVivo(setores?: SetorAtendimento[]): Promise<OperadorAoVivo[]> {
   return buscarKpisOperadoresAoVivo(setores);
+}
+
+/// Quantidade de atendimentos aguardando na fila agora (status='AG'),
+/// separado da tabela de operadores porque um atendimento na fila ainda não
+/// tem operador atribuído. Pedido real da gestora do Centro de Solução.
+export async function getFilaAoVivo(setores?: SetorAtendimento[]): Promise<number> {
+  return buscarFilaAoVivo(setores);
 }
 
 /// Indicador de jornada por operador (RH/gestão) num período configurável —

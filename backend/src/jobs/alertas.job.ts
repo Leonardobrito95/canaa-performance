@@ -21,6 +21,7 @@ import { rodarAnaliseIaEmMassa } from '../modules/atendimento/atendimento.analis
 import { rodarMonitoriaAutomaticaEmMassa } from '../modules/atendimento/atendimento.monitoria-automatica';
 import { rodarDeteccaoAlertasOperacionais } from '../modules/atendimento/atendimento.alertas-operacionais';
 import { verificarEscalonamentoAlertas } from '../modules/atendimento/atendimento.alertas-escalonamento';
+import { verificarFilaCriticaWhatsapp } from '../modules/atendimento/atendimento.alerta-fila-whatsapp';
 import { rodarDeteccaoAlertasVistoria } from '../modules/vistoriaPop/vistoria.alerta-detectores';
 
 const SOLICITANTE_CRON = { ixcUserId: 'cron-alertas', ixcUsername: 'cron-alertas' };
@@ -223,7 +224,10 @@ export function iniciarJobs(): void {
   // (GET /atendimento/alertas-operacionais). Alertas CRITICO (hoje só
   // SLA_FILA recente) escalam por WhatsApp pra gestora e depois diretoria —
   // ver atendimento.alertas-escalonamento.ts (fica off até
-  // ESCALONAMENTO_WHATSAPP_ATIVO=true no .env).
+  // ESCALONAMENTO_WHATSAPP_ATIVO=true no .env). Separado disso, a fila TOTAL
+  // do Centro de Solução acima do limiar dispara WhatsApp direto pela Meta
+  // Cloud API pra gestora, ver atendimento.alerta-fila-whatsapp.ts (fica
+  // off até ALERTA_FILA_CENTRO_SOLUCAO_WHATSAPP_ATIVO=true no .env).
   cron.schedule('*/2 * * * *', async () => {
     await runSafe('Alertas Operacionais de Atendimento', async () => {
       const r = await rodarDeteccaoAlertasOperacionais();
@@ -237,6 +241,12 @@ export function iniciarJobs(): void {
       const e = await verificarEscalonamentoAlertas();
       if (e.notificados || e.escalados) {
         logger.info(`[JOBS] Escalonamento WhatsApp: ${e.notificados} notificado(s) à gestora, ${e.escalados} escalado(s) à diretoria.`);
+      }
+    });
+    await runSafe('Alerta de Fila Crítica (WhatsApp direto)', async () => {
+      const f = await verificarFilaCriticaWhatsapp();
+      if (f.notificado) {
+        logger.info(`[JOBS] Fila Crítica WhatsApp: gestora notificada (${f.qtdNaFila} na fila).`);
       }
     });
   }, { timezone: 'America/Sao_Paulo' });

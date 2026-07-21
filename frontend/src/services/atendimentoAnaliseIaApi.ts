@@ -78,7 +78,7 @@ export interface MotivoIaResumo {
 export interface FiltrosAnaliseIa {
   setor?:     string;
   /// Grupo de setores (ex: SETORES_CENTRO_SOLUCAO de atendimentoApi.ts) — sem
-  /// isso, o dashboard/triagem mostra os 8 setores juntos, incluindo VENDAS/
+  /// isso, o dashboard/triagem mostra os 9 setores juntos, incluindo VENDAS/
   /// POS_VENDAS (Comercial), mesmo numa tela que só cobre Centro de Solução.
   setores?:   string[];
   dateFrom?:  string;

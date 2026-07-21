@@ -652,8 +652,8 @@ export const REGRA_RETENCAO_DESEMPENHO_VS_AUDITORIA = `- "DESEMPENHO DE RETENÇ�
   desempenho do mês; se perguntarem sobre qualidade/veracidade da negociação, use a auditoria.
   O período do desempenho do mês é sempre do dia 1 até hoje (mês corrente em andamento).`;
 
-export const REGRA_ATENDIMENTO_SETE_FONTES = `- Atendimento cobre 8 setores (SAC, Suporte N1, Suporte N2, Cobrança, Vendas, Retenção,
-  Pós-Vendas, Backoffice) e tem SETE fontes diferentes, não confunda:
+export const REGRA_ATENDIMENTO_SETE_FONTES = `- Atendimento cobre 9 setores (SAC, Suporte N1, Suporte N2, Cobrança, Vendas, Retenção,
+  Pós-Vendas, Backoffice, Ouvidoria) e tem SETE fontes diferentes, não confunda:
   (1) "KPIS BRUTOS DO MES EM ANDAMENTO" é volume/tempo (TME/TMA/TMR)/satisfação cru do mês
   corrente, calculado AO VIVO, sem avaliação de qualidade — responde "quantos atendimentos
   tivemos ESTE MÊS", "qual o tempo de espera/atendimento/resolução agora".
@@ -664,7 +664,8 @@ export const REGRA_ATENDIMENTO_SETE_FONTES = `- Atendimento cobre 8 setores (SAC
   humano confirmar antes de salvar) — a decisão final é sempre humana, isso NUNCA é avaliação
   automática de IA. A cobertura HOJE é só SAC, Suporte N2 e Retenção (herança do histórico já
   avaliado) — se perguntarem sobre qualidade de outro setor (N1, Cobrança, Vendas, Pós-Vendas,
-  Backoffice), diga que ainda não há avaliação de QA nesse setor, não invente número.
+  Backoffice, Ouvidoria), diga que ainda não há avaliação de QA nesse setor, não invente
+  número.
   "CRITÉRIOS MAIS REPROVADOS" responde "o que está dando errado no atendimento" (ex: "quais
   atendimentos foram transferidos indevidamente" = olhar o critério "Transferencia Indevida").
   "RANKING DE QUALIDADE POR AGENTE" responde "quais atendentes se destacam" ou "quem atende

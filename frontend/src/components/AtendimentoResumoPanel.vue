@@ -35,6 +35,8 @@
     </div>
 
     <template v-if="aba === 'dashboard'">
+    <AtendimentoLiveStats :setores="setores" />
+
     <!-- Cards por setor -->
     <div v-if="loadingKpis" class="state-msg">
       <span class="loading-dots"><span/><span/><span/></span> Carregando indicadores…
@@ -176,6 +178,7 @@ import ChartBars from './ChartBars.vue';
 import ChartRanking from './ChartRanking.vue';
 import AlertaCard from './shared/AlertaCard.vue';
 import AtendimentoOperadoresAoVivo from './AtendimentoOperadoresAoVivo.vue';
+import AtendimentoLiveStats from './AtendimentoLiveStats.vue';
 import IndicadorJornadaTable from './shared/IndicadorJornadaTable.vue';
 import { type Period, getPeriodRange } from '../composables/useDateRange';
 import {
@@ -375,6 +378,11 @@ onUnmounted(() => { if (pollingId) clearInterval(pollingId); });
 .atd-aviso { font-size: .8rem; color: var(--text-2); margin-bottom: 1rem; max-width: 720px; line-height: 1.5; }
 
 .alertas-lista { display: flex; flex-direction: column; gap: .7rem; }
+
+/* AtendimentoLiveStats é usado também dentro de Operadores Ao Vivo, onde o
+   espaçamento já vem do flex-gap do pai. Aqui no Dashboard os elementos são
+   blocos soltos, por isso o margin-bottom só nesta instância. */
+:deep(.live-stats) { margin-bottom: 1.25rem; }
 
 .setor-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin-bottom: 1.25rem; }
 @media (max-width: 1100px) { .setor-cards { grid-template-columns: repeat(2, 1fr); } }

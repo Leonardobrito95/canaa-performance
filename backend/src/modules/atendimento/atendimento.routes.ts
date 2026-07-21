@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../../middlewares/authenticate';
 import { requirePerfil } from '../../middlewares/requirePerfil';
 import { PERFIS_MODULO } from '../../config/acesso';
-import { resumoAtendimento, auditarAtendimento, operadoresAoVivo, indicadoresJornada, configJornada } from './atendimento.controller';
+import { resumoAtendimento, auditarAtendimento, operadoresAoVivo, filaAoVivo, indicadoresJornada, configJornada } from './atendimento.controller';
 import {
   listarMonitoriaQa, dashboardQa, criarMonitoria, atualizarMonitoria, buscarMonitoria, sugestaoQa,
   minhasAvaliacoes, comunicarCiencia,
@@ -45,6 +45,9 @@ router.post('/alertas-operacionais/:id/resolver', authenticate, requirePerfil(..
 
 // Tabela em tempo real de operadores online
 router.get('/operadores-ao-vivo', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), operadoresAoVivo);
+
+// Quantidade de atendimentos aguardando na fila agora (status='AG')
+router.get('/fila-ao-vivo', authenticate, requirePerfil(...PERFIS_MODULO.atendimentoGestaoQa), filaAoVivo);
 
 // Indicador de jornada (RH/gestão) num período configurável — tempo
 // produtivo/pausa/ausente e volume por operador, histórico (não é só o
