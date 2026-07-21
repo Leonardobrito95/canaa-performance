@@ -363,6 +363,12 @@ model RetencaoAuditoria {
   /// real do OpaSuite, quando encontrada — null = bateu, ou não havia
   /// conversa do OpaSuite pra comparar.
   divergencia_nota_os  String?
+  /// Falha de processo ANTES da retenção em si (ex: instalação sem
+  /// viabilidade, transferência de setor sem aviso), achada nas outras O.S.
+  /// do cliente no período (+-3 dias). Não influencia `classificacao`, que
+  /// mede só a negociação de retenção isolada, é contexto complementar
+  /// (2026-07-21, ver retencao.ia.ts).
+  processo_anterior    String?
   data_abertura_os     DateTime
   classificado_em      DateTime @default(now())
   modelo_usado         String?

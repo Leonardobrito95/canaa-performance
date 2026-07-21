@@ -65,6 +65,7 @@ export interface AuditoriaData {
   justificativa:        string;
   negociacao_detectada: string | null;
   divergencia_nota_os:  string | null;
+  processo_anterior:    string | null;
 }
 
 export interface RetencaoDetalhe {
@@ -255,6 +256,7 @@ export async function fetchRetencaoDetalhe(filters: RetencaoFilters): Promise<Re
             justificativa:        aud.justificativa,
             negociacao_detectada: aud.negociacao_detectada,
             divergencia_nota_os:  aud.divergencia_nota_os,
+            processo_anterior:    aud.processo_anterior,
           }
         : null,
     };
@@ -314,6 +316,21 @@ export interface AtendimentoRelacionado {
   status:      string | null;
 }
 
+/// Outras O.S. do MESMO cliente na janela (qualquer assunto, exceto a
+/// retenção sendo classificada). Contexto da jornada até chegar na
+/// retenção (ex: instalação sem viabilidade, transferência de setor sem
+/// aviso), que o classificador não enxergava antes (2026-07-21, achado real
+/// investigando um caso onde o gestor via um processo bem mais grave do que
+/// a IA, porque a IA só olhava a O.S. da retenção em si).
+export interface OutraOsRelacionada {
+  idChamado:        string;
+  assunto:          string;
+  dataAbertura:     Date | null;
+  mensagem:         string;
+  mensagemResposta: string | null;
+  status:           string;
+}
+
 export interface ChamadoParaAuditar {
   idChamado:              string;
   nomeOperador:            string;
@@ -322,6 +339,7 @@ export interface ChamadoParaAuditar {
   idCliente:               number;
   mensagensOs:             MensagemChamado[];
   atendimentosRelacionados: AtendimentoRelacionado[];
+  outrasOsRelacionadas:    OutraOsRelacionada[];
   /// Conversa real do OpaSuite (WhatsApp/voz), resolvida pelo protocolo
   /// "OPA..." citado na nota da O.S. — evidência mais confiável que o texto
   /// que o próprio operador escreveu, porque ele não edita depois.
@@ -377,6 +395,46 @@ async function buscarAtendimentosPorCliente(
       mensagem:    String(r.menssagem ?? ''),
       dataCriacao: r.data_criacao ? new Date(r.data_criacao) : null,
       status:      r.status ?? null,
+    });
+  }
+  return map;
+}
+
+/// Outras O.S. do cliente na mesma janela (qualquer assunto), pra dar
+/// contexto da jornada até a retenção, ex: instalação sem viabilidade,
+/// transferência de setor, falha de processo anterior que a IA não via
+/// antes (só olhava a O.S. de retenção isolada). Exclui as próprias O.S.
+/// de retenção sendo classificadas nesta rodada (`idsChamadoExcluir`).
+async function buscarOutrasOsPorCliente(
+  idsCliente: number[],
+  dataMin: Date,
+  dataMax: Date,
+  idsChamadoExcluir: number[],
+): Promise<Map<number, OutraOsRelacionada[]>> {
+  const map = new Map<number, OutraOsRelacionada[]>();
+  if (!idsCliente.length) return map;
+
+  const excluir = idsChamadoExcluir.length ? `AND c.id NOT IN (${idsChamadoExcluir.map(() => '?').join(',')})` : '';
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT c.id, c.id_cliente, c.id_assunto, a.assunto, c.data_abertura, c.mensagem, c.mensagem_resposta, c.status
+     FROM su_oss_chamado c
+     LEFT JOIN su_oss_assunto a ON a.id = c.id_assunto
+     WHERE c.id_cliente IN (${idsCliente.map(() => '?').join(',')})
+       AND c.data_abertura BETWEEN ? AND ?
+       ${excluir}
+     ORDER BY c.id_cliente, c.data_abertura ASC`,
+    [...idsCliente, dataMin, dataMax, ...idsChamadoExcluir],
+  );
+  for (const r of rows) {
+    const key = Number(r.id_cliente);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push({
+      idChamado:        String(r.id),
+      assunto:          String(r.assunto ?? `assunto #${r.id_assunto}`),
+      dataAbertura:     r.data_abertura ? new Date(r.data_abertura) : null,
+      mensagem:         String(r.mensagem ?? ''),
+      mensagemResposta: r.mensagem_resposta ? String(r.mensagem_resposta) : null,
+      status:           String(r.status ?? ''),
     });
   }
   return map;
@@ -446,9 +504,10 @@ export async function buscarChamadosParaAuditar(
   const dataMin     = new Date(Math.min(...datas) - JANELA_ATENDIMENTO_MS);
   const dataMax     = new Date(Math.max(...datas) + JANELA_ATENDIMENTO_MS);
 
-  const [mensagensMap, atendimentosMap] = await Promise.all([
+  const [mensagensMap, atendimentosMap, outrasOsMap] = await Promise.all([
     buscarMensagensPorChamado(idsChamado),
     buscarAtendimentosPorCliente(idsClientes, dataMin, dataMax),
+    buscarOutrasOsPorCliente(idsClientes, dataMin, dataMax, idsChamado),
   ]);
 
   return Promise.all(rows.map(async (r) => {
@@ -459,6 +518,10 @@ export async function buscarChamadosParaAuditar(
       a.dataCriacao && Math.abs(a.dataCriacao.getTime() - dataAberturaOs.getTime()) <= JANELA_ATENDIMENTO_MS
     );
     const mensagensOs = mensagensMap.get(Number(r.id)) ?? [];
+    const todasOutrasOs = outrasOsMap.get(idCliente) ?? [];
+    const outrasOsRelacionadas = todasOutrasOs.filter((os) =>
+      os.dataAbertura && Math.abs(os.dataAbertura.getTime() - dataAberturaOs.getTime()) <= JANELA_ATENDIMENTO_MS
+    );
 
     // Protocolo "OPA..." citado na nota da O.S. ou do atendimento aponta pra
     // conversa real no OpaSuite — evidência mais confiável que o texto que o
@@ -477,6 +540,7 @@ export async function buscarChamadosParaAuditar(
       idCliente,
       mensagensOs,
       atendimentosRelacionados,
+      outrasOsRelacionadas,
       conversasOpaSuite,
     };
   }));

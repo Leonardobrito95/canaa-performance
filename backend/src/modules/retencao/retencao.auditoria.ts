@@ -56,6 +56,7 @@ export async function rodarAuditoriaRetencao(
           justificativa:        resultado.justificativa,
           negociacao_detectada: resultado.negociacaoDetectada,
           divergencia_nota_os:  resultado.divergenciaNotaOs,
+          processo_anterior:    resultado.processoAnterior,
           data_abertura_os:     chamado.dataAberturaOs,
           modelo_usado:         resultado.modeloUsado,
         },
@@ -64,6 +65,7 @@ export async function rodarAuditoriaRetencao(
           justificativa:        resultado.justificativa,
           negociacao_detectada: resultado.negociacaoDetectada,
           divergencia_nota_os:  resultado.divergenciaNotaOs,
+          processo_anterior:    resultado.processoAnterior,
           modelo_usado:         resultado.modeloUsado,
         },
       });

@@ -85,7 +85,7 @@ export async function getRetencaoDetalhe(
     return detalhes.map((d) => ({
       ...d,
       auditoria: d.auditoria?.classificacao === 'NEGOCIACAO_REAL'
-        ? { classificacao: 'NEGOCIACAO_REAL' as const, justificativa: '', negociacao_detectada: null, divergencia_nota_os: null }
+        ? { classificacao: 'NEGOCIACAO_REAL' as const, justificativa: '', negociacao_detectada: null, divergencia_nota_os: null, processo_anterior: null }
         : null,
     }));
   }

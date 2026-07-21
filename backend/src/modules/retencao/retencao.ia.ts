@@ -10,6 +10,13 @@ export interface ResultadoClassificacao {
   /// Diferença entre o que a nota da O.S. alega e o que a conversa real do
   /// OpaSuite mostra (null = bateu, ou não havia conversa do OpaSuite pra comparar).
   divergenciaNotaOs:    string | null;
+  /// Falha de processo ANTES da retenção em si (ex: instalação sem
+  /// viabilidade, transferência de setor sem aviso), achado real
+  /// investigando um caso (2026-07-21) onde a IA classificou certo a
+  /// retenção isolada, mas não via o processo bem mais grave que
+  /// aconteceu antes dela. Não muda a CLASSIFICACAO (que mede só a
+  /// negociação em si), é contexto adicional. null = nada relevante achado.
+  processoAnterior:     string | null;
   modeloUsado:          string;
 }
 
@@ -55,12 +62,22 @@ da O.S. e nos atendimentos relacionados, e NUNCA reporte DIVERGENCIA_NOTA_OS só
 da ligação não menciona a oferta — divergência só se aplica quando há TEXTO real (WhatsApp)
 contradizendo a nota.
 
+Sobre "OUTRAS O.S. DO CLIENTE NO PERÍODO": mostra a jornada do cliente ANTES de chegar na
+retenção (ex: pedido de mudança de endereço sem viabilidade, transferências entre setores,
+atendimentos anteriores mal resolvidos). NÃO use isso pra mudar a CLASSIFICACAO, que continua
+medindo só se a retenção em si teve uma concessão real oferecida e aceita, mesmo quando o
+processo anterior foi ruim. Mas se essa jornada mostrar falha de processo real e relevante
+(ex: cliente não avisado de mudança de setor, prometido algo que não foi cumprido, atendimento
+que se arrastou sem resolução), registre isso em PROCESSO_ANTERIOR, é informação separada da
+negociação de retenção, útil pro gestor entender a causa raiz completa do cancelamento.
+
 Não invente informação que não está no texto abaixo. Responda EXATAMENTE neste formato, sem nada antes ou depois:
 
 CLASSIFICACAO: NEGOCIACAO_REAL | SEM_NEGOCIACAO | INDEFINIDO
 JUSTIFICATIVA: <1-2 frases explicando a decisão, citando o que foi encontrado no texto>
 NEGOCIACAO_DETECTADA: <o que foi oferecido e aceito, se houver, ou "nenhuma">
-DIVERGENCIA_NOTA_OS: <o que a nota da O.S. alega que a conversa real do OpaSuite não sustenta, ou "nenhuma">`;
+DIVERGENCIA_NOTA_OS: <o que a nota da O.S. alega que a conversa real do OpaSuite não sustenta, ou "nenhuma">
+PROCESSO_ANTERIOR: <falha de processo relevante ANTES da retenção, encontrada nas outras O.S. do período, ou "nenhum">`;
 
 function formatarEvidencia(chamado: ChamadoParaAuditar): string {
   const linhasOs = chamado.mensagensOs.length
@@ -74,6 +91,12 @@ function formatarEvidencia(chamado: ChamadoParaAuditar): string {
         .map((a) => `- [${a.dataCriacao ? a.dataCriacao.toISOString().slice(0, 16).replace('T', ' ') : '?'}] ${a.titulo}: ${a.mensagem.replace(/\s+/g, ' ').trim()}`)
         .join('\n')
     : '(nenhum atendimento relacionado no período)';
+
+  const linhasOutrasOs = chamado.outrasOsRelacionadas.length
+    ? chamado.outrasOsRelacionadas
+        .map((os) => `- [${os.dataAbertura ? os.dataAbertura.toISOString().slice(0, 16).replace('T', ' ') : '?'}] O.S. ${os.idChamado} (${os.assunto}): ${os.mensagem.replace(/\s+/g, ' ').trim()}${os.mensagemResposta ? ` | Resposta: ${os.mensagemResposta.replace(/\s+/g, ' ').trim()}` : ''}`)
+        .join('\n')
+    : '(nenhuma outra O.S. do cliente no período)';
 
   const blocoOpaSuite = chamado.conversasOpaSuite.length
     ? chamado.conversasOpaSuite.map((c) => {
@@ -97,6 +120,9 @@ function formatarEvidencia(chamado: ChamadoParaAuditar): string {
     '=== ATENDIMENTOS RELACIONADOS (mesmo cliente, +-3 dias) ===',
     linhasAtendimento,
     '',
+    '=== OUTRAS O.S. DO CLIENTE NO PERÍODO (jornada até a retenção, +-3 dias) ===',
+    linhasOutrasOs,
+    '',
     '=== CONVERSA REAL DO OPASUITE (fonte de verdade, prioridade sobre a nota da O.S.) ===',
     blocoOpaSuite,
   ].join('\n');
@@ -106,19 +132,22 @@ function parseClassificacao(texto: string, modeloUsado: string): ResultadoClassi
   const classMatch = /CLASSIFICACAO:\s*(NEGOCIACAO_REAL|SEM_NEGOCIACAO|INDEFINIDO)/i.exec(texto);
   const justMatch  = /JUSTIFICATIVA:\s*(.+?)(?=\n\s*NEGOCIACAO_DETECTADA:|$)/is.exec(texto);
   const negMatch   = /NEGOCIACAO_DETECTADA:\s*(.+?)(?=\n\s*DIVERGENCIA_NOTA_OS:|$)/is.exec(texto);
-  const divMatch   = /DIVERGENCIA_NOTA_OS:\s*(.+)/is.exec(texto);
+  const divMatch   = /DIVERGENCIA_NOTA_OS:\s*(.+?)(?=\n\s*PROCESSO_ANTERIOR:|$)/is.exec(texto);
+  const procMatch  = /PROCESSO_ANTERIOR:\s*(.+)/is.exec(texto);
 
   const classificacao = (classMatch?.[1]?.toUpperCase() as ClassificacaoRetencao) ?? 'INDEFINIDO';
   const justificativa = justMatch?.[1]?.trim() || texto.trim().slice(0, 500);
   const negociacaoBruta = negMatch?.[1]?.trim() ?? '';
   const divergenciaBruta = divMatch?.[1]?.trim() ?? '';
+  const processoBruto = procMatch?.[1]?.trim() ?? '';
   // Frouxo de propósito: o modelo varia entre "nenhuma", "nenhuma.", "nenhuma
   // divergência encontrada" etc — verifica só o prefixo, não a frase inteira.
   const ehNenhuma = (s: string) => !s || /^nenhum/i.test(s.trim());
   const negociacaoDetectada = ehNenhuma(negociacaoBruta) ? null : negociacaoBruta;
   const divergenciaNotaOs   = ehNenhuma(divergenciaBruta) ? null : divergenciaBruta;
+  const processoAnterior    = ehNenhuma(processoBruto) ? null : processoBruto;
 
-  return { classificacao, justificativa, negociacaoDetectada, divergenciaNotaOs, modeloUsado };
+  return { classificacao, justificativa, negociacaoDetectada, divergenciaNotaOs, processoAnterior, modeloUsado };
 }
 
 export async function classificarNegociacao(chamado: ChamadoParaAuditar): Promise<ResultadoClassificacao> {
@@ -126,6 +155,6 @@ export async function classificarNegociacao(chamado: ChamadoParaAuditar): Promis
     role: 'user' as const,
     parts: [{ text: `${AUDITORIA_SYSTEM_PROMPT}\n\n${formatarEvidencia(chamado)}` }],
   }];
-  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 300, thinkingConfig: { thinkingBudget: 0 } }, 'alto_volume');
+  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 300, thinkingConfig: { thinkingLevel: 'MINIMAL' } }, 'alto_volume');
   return parseClassificacao(texto, metricas.modeloUsado);
 }
