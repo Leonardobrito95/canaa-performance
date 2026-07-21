@@ -18,37 +18,48 @@ const LANG      = process.env.WHATSAPP_LANG ?? 'pt_BR';
 /// {{1}}, {{2}}, {{3}}... na ordem, preenchendo o corpo do template
 /// aprovado. Sem WHATSAPP_TOKEN/WHATSAPP_PHONE_ID configurado, não faz nada
 /// (silencioso).
+///
+/// `numeroDestino` aceita um ou mais números separados por vírgula, mesma
+/// convenção do WHATSAPP_TO/WHATSAPP_ESCALON_TO do sistema OTDR (envia uma
+/// mensagem por número, uma falha isolada não impede as demais). Retorna
+/// true se pelo menos um envio deu certo.
 export async function enviarWhatsappMeta(numeroDestino: string, parametros: string[]): Promise<boolean> {
   if (!TOKEN || !PHONE_ID) {
     logger.warn('[Meta WhatsApp] WHATSAPP_TOKEN ou WHATSAPP_PHONE_ID não configurado, envio ignorado.');
     return false;
   }
-  if (!numeroDestino) {
+  const numeros = numeroDestino.split(',').map((n) => n.trim()).filter(Boolean);
+  if (!numeros.length) {
     logger.warn('[Meta WhatsApp] Número de destino vazio, envio ignorado.');
     return false;
   }
 
   const url = `https://graph.facebook.com/v20.0/${PHONE_ID}/messages`;
-  const body = {
-    messaging_product: 'whatsapp',
-    to: numeroDestino,
-    type: 'template',
-    template: {
-      name: TEMPLATE,
-      language: { code: LANG },
-      components: [{
-        type: 'body',
-        parameters: parametros.map((p) => ({ type: 'text', text: p })),
-      }],
-    },
-  };
+  let algumSucesso = false;
 
-  try {
-    await axios.post(url, body, { headers: { Authorization: `Bearer ${TOKEN}` }, timeout: 15_000 });
-    return true;
-  } catch (err: any) {
-    const detalhe = err?.response?.data ? JSON.stringify(err.response.data) : err.message;
-    logger.warn(`[Meta WhatsApp] Falha ao enviar: ${detalhe}`);
-    return false;
+  for (const numero of numeros) {
+    const body = {
+      messaging_product: 'whatsapp',
+      to: numero,
+      type: 'template',
+      template: {
+        name: TEMPLATE,
+        language: { code: LANG },
+        components: [{
+          type: 'body',
+          parameters: parametros.map((p) => ({ type: 'text', text: p })),
+        }],
+      },
+    };
+
+    try {
+      await axios.post(url, body, { headers: { Authorization: `Bearer ${TOKEN}` }, timeout: 15_000 });
+      algumSucesso = true;
+    } catch (err: any) {
+      const detalhe = err?.response?.data ? JSON.stringify(err.response.data) : err.message;
+      logger.warn(`[Meta WhatsApp] Falha ao enviar pra ${numero}: ${detalhe}`);
+    }
   }
+
+  return algumSucesso;
 }
