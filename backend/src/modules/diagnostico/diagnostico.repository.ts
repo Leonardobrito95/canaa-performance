@@ -18,6 +18,7 @@ import {
   EvolucaoMensalEntry,
   PopStatusEntry,
   StatusRedeAgora,
+  EquipamentoAtual,
 } from './diagnostico.types';
 
 const OTDR_BASE = process.env.OTDR_API_URL ?? 'http://127.0.0.1:5008';
@@ -156,7 +157,17 @@ function ordenarPorRelevanciaEData<T>(
 /// "Emprestado") é a forma confiável de achar o que está em uso agora, em vez
 /// de confiar em campos que podem ficar desatualizados (ex: radusuarios.onu_mac)
 /// ou em fotos antigas que podem mostrar um equipamento já devolvido.
-export async function buscarEquipamentoAtual(idCliente: number): Promise<{ descricao: string; numeroSerie: string }[]> {
+///
+/// Fallback (2026-07-21): quando o comodato vem vazio (instalação recente
+/// cuja O.S. de auditoria ainda não fechou, comodato novo ainda não
+/// lançado), cai pra radusuarios.onu_mac. Caso real confirmado: cliente
+/// 15404/contrato 15483, ONU SUMCB29A8CD4 online no SmartOLT desde
+/// 15/07/2026, sem nenhum registro em movimento_comodatos, só em
+/// radusuarios. Marca fonteIncerta=true nesse caso, pro prompt do
+/// Diagnóstico avisar que essa vinculação não veio da fonte preferida
+/// (risco real: cliente cancelado cujo radusuarios não foi limpo mostraria
+/// a ONU de outra pessoa, ver DIAGNOSTICO_SYSTEM_PROMPT).
+export async function buscarEquipamentoAtual(idCliente: number): Promise<EquipamentoAtual[]> {
   const [rows] = await mysqlPool.query<any[]>(
     `SELECT mp.descricao, mp.numero_serie
      FROM movimento_comodatos mc
@@ -165,7 +176,21 @@ export async function buscarEquipamentoAtual(idCliente: number): Promise<{ descr
      ORDER BY mp.data DESC`,
     [idCliente],
   );
-  return rows.map((r) => ({ descricao: r.descricao, numeroSerie: r.numero_serie }));
+  if (rows.length) {
+    return rows.map((r) => ({ descricao: r.descricao, numeroSerie: r.numero_serie }));
+  }
+
+  const [radius] = await mysqlPool.query<any[]>(
+    `SELECT onu_mac FROM radusuarios WHERE id_cliente = ? AND onu_mac IS NOT NULL AND onu_mac != '' LIMIT 1`,
+    [idCliente],
+  );
+  if (!radius.length) return [];
+
+  return [{
+    descricao:    'ONU (via radusuarios, sem comodato ativo confirmado)',
+    numeroSerie:  radius[0].onu_mac,
+    fonteIncerta: true,
+  }];
 }
 
 /// Busca a oscilação/degradação de sinal via o próprio OTDR (/api/consulta_cliente).
@@ -174,7 +199,7 @@ export async function buscarEquipamentoAtual(idCliente: number): Promise<{ descr
 /// pode falhar mesmo com a ONU online (confirmado: buscar por CPF não encontrou
 /// um cliente cuja ONU, buscada por SN, respondia normalmente). Cai para busca
 /// por CPF só se não houver comodato de ONU ativo identificado.
-export async function buscarOscilacaoRede(idCliente: number, equipamentoAtual: { descricao: string; numeroSerie: string }[]): Promise<OscilacaoRede | null> {
+export async function buscarOscilacaoRede(idCliente: number, equipamentoAtual: EquipamentoAtual[]): Promise<OscilacaoRede | null> {
   let termoBusca = resolverSnOnu(equipamentoAtual);
 
   if (!termoBusca) {
@@ -230,7 +255,7 @@ export async function buscarOscilacaoRede(idCliente: number, equipamentoAtual: {
 /// 16.822 ocorrências reais em movimento_produtos. Sem "ont" no regex, todo
 /// contrato com esse modelo nunca recebia enriquecimento de SmartOLT (nem o
 /// snapshot diário, nem a consulta ao vivo), silenciosamente.
-export function resolverSnOnu(equipamentoAtual: { descricao: string; numeroSerie: string }[]): string | null {
+export function resolverSnOnu(equipamentoAtual: EquipamentoAtual[]): string | null {
   return equipamentoAtual.find((e) => /onu|ont/i.test(e.descricao))?.numeroSerie || null;
 }
 
@@ -238,7 +263,7 @@ export function resolverSnOnu(equipamentoAtual: { descricao: string; numeroSerie
 /// mesmo SN resolvido em buscarEquipamentoAtual. Cobre só uma parte do fleet
 /// (ONUs que já tiveram algum problema) — não encontrar é esperado, não erro,
 /// então retorna null silenciosamente nesse caso (só loga falha de conexão).
-export async function buscarStatusSmartOlt(equipamentoAtual: { descricao: string; numeroSerie: string }[]): Promise<StatusSmartOlt | null> {
+export async function buscarStatusSmartOlt(equipamentoAtual: EquipamentoAtual[]): Promise<StatusSmartOlt | null> {
   const sn = resolverSnOnu(equipamentoAtual);
   if (!sn) return null;
 

@@ -55,6 +55,22 @@ prova definitiva sozinha, e não invente um limiar numérico oficial que não fo
 causa do último evento vier reportada DIRETO PELA OLT (rótulo explícito no contexto, ex:
 "Power Fail" ou "LOS"), priorize essa informação sobre qualquer suposição sua baseada só no
 nível de sinal, ela não é inferência, é o que o próprio equipamento registrou.
+Se o equipamento atual vier marcado "[FONTE INCERTA: veio do login RADIUS, sem comodato ativo
+confirmado no IXC]": normalmente o vínculo cliente-ONU vem do comodato oficial (mais confiável),
+e esse aviso só aparece quando não existe comodato e o sistema usou o login RADIUS como
+alternativa. Um cliente que cancelou e cujo login RADIUS não foi limpo corretamente poderia
+mostrar o sinal de uma ONU que já não é mais dele, então trate SN/sinal/SmartOLT vindos dessa
+fonte como prováveis, não confirmados. Mencione essa incerteza explicitamente na seção ERRO se
+a causa depender desse equipamento, não afirme com a mesma confiança de quando o comodato
+está confirmado.
+Se o contexto de sinal vier só "Sem registros de degradação de sinal." (sem nenhuma linha de
+SmartOLT/OTDR abaixo disso), isso significa apenas que não há dado de sinal PARA ESSE cliente
+específico agora (equipamento não identificado, ou nunca degradou). NÃO conclua nem afirme que
+"o painel/sistema não possui integração em tempo real" ou qualquer variação disso: essa
+integração existe e funciona normalmente pra outros clientes, a ausência aqui é específica
+deste caso, não uma limitação geral da ferramenta. Diga só que não há dado de sinal disponível
+para este cliente agora, sem especular sobre a causa dessa ausência nem sobre a capacidade do
+sistema.
 Itens do manual de instalação que dependem do painel administrativo do equipamento, não da
 posição física: login/senha de administrador trocados do padrão de fábrica, nome (SSID) e senha
 do Wi-Fi personalizados, configuração das bandas 2.4GHz/5GHz (dual-band), tipo de criptografia
@@ -205,7 +221,10 @@ function formatarContratos(ctx: ContextoClienteDiagnostico): string {
 
 function formatarEquipamentoAtual(ctx: ContextoClienteDiagnostico): string {
   if (!ctx.equipamentoAtual.length) return 'Nenhum equipamento em comodato ativo identificado.';
-  return ctx.equipamentoAtual.map((e) => `- ${e.descricao} (S/N ${e.numeroSerie})`).join('\n');
+  return ctx.equipamentoAtual.map((e) => {
+    const aviso = e.fonteIncerta ? ' [FONTE INCERTA: veio do login RADIUS, sem comodato ativo confirmado no IXC]' : '';
+    return `- ${e.descricao} (S/N ${e.numeroSerie})${aviso}`;
+  }).join('\n');
 }
 
 function formatarHistoricoSinal(ctx: ContextoClienteDiagnostico): string {

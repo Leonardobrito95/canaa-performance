@@ -145,6 +145,11 @@ export interface OscilacaoRede {
 export interface EquipamentoAtual {
   descricao:   string;
   numeroSerie: string;
+  /// true quando o SN veio do fallback (radusuarios.onu_mac), não do
+  /// comodato ativo (status_comodato='E' em movimento_comodatos), a fonte
+  /// preferida sempre que existe. Ver buscarEquipamentoAtual em
+  /// diagnostico.repository.ts.
+  fonteIncerta?: boolean;
 }
 
 /// Status granular da ONU vindo do SmartOLT (otdr.historico_smartolt) — cobre
