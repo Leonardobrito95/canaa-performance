@@ -245,7 +245,7 @@ export async function gerarDiagnostico(
       ...partesImagens,
     ],
   }];
-  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } });
+  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 700, thinkingConfig: { thinkingLevel: 'MINIMAL' } });
   return parseResposta(texto, metricas);
 }
 
@@ -276,6 +276,6 @@ export async function gerarRespostaGestao(
   // vendas entre 2 meses + ranking de vendedores" truncou literalmente no
   // meio de um nome). 2048 dá folga sem custo desproporcional pro chat de
   // gestão, que já tende a pedir resposta mais longa que o Diagnóstico.
-  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } });
+  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 2048, thinkingConfig: { thinkingLevel: 'MINIMAL' } });
   return { texto: texto.trim(), metricas };
 }

@@ -145,7 +145,7 @@ export async function analisarAtendimento(
     responseMimeType: 'application/json',
     responseSchema: RESPONSE_SCHEMA,
     maxOutputTokens: 400,
-    thinkingConfig: { thinkingBudget: 0 },
+    thinkingConfig: { thinkingLevel: 'MINIMAL' },
   }, 'alto_volume');
 
   const bruto = JSON.parse(texto) as { motivo: string; adesaoScript: number; indiceSentimento: number; justificativa: string };

@@ -45,6 +45,6 @@ export async function auditarAtendimentoPontual(
     role: 'user' as const,
     parts: [{ text: `${AUDITORIA_PONTUAL_SYSTEM_PROMPT}\n\n${formatarConversa(atendimento)}\n\n=== PERGUNTA DO GESTOR ===\n${perguntaFinal}` }],
   }];
-  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } });
+  const { texto, metricas } = await chamarGemini(contents, { maxOutputTokens: 500, thinkingConfig: { thinkingLevel: 'MINIMAL' } });
   return { texto: texto.trim(), metricas };
 }
