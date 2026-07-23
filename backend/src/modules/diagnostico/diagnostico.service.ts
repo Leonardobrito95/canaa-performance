@@ -24,6 +24,7 @@ import { ContextoClienteDiagnostico, ResumoCliente } from './diagnostico.types';
 import { montarContextoTextual, montarContextoGestaoTextual } from './diagnostico.prompt';
 import { FONTES_GESTAO, DadosGestao, JanelaTemporalGestao } from './diagnostico.gestao-fontes';
 import { gerarDiagnostico, gerarRespostaGestao, DiagnosticoIaResultado, custoEstimadoChamada } from './diagnostico.ia';
+import { alertarCustoCaioSeNecessario } from './diagnostico.alertas-admin';
 
 /// Teto diário de custo do chat do CAIO (Consulta individual + Painel de
 /// Gestão), calibrado nos dados reais de uso (2026-07-09 a 2026-07-20, 384
@@ -64,6 +65,10 @@ export async function gastoCaioHojeUsd(): Promise<number> {
 
 async function garantirLimiteCaio(): Promise<void> {
   const gasto = await gastoCaioHojeUsd();
+  // Melhor esforço, nunca atrasa nem quebra a requisição real do CAIO.
+  alertarCustoCaioSeNecessario(gasto, LIMITE_CAIO_USD_DIA).catch((err) =>
+    logger.warn(`[Alerta CAIO Admin] Falha ao processar alerta de custo: ${err.message}`),
+  );
   if (gasto >= LIMITE_CAIO_USD_DIA) {
     throw new LimiteCaioExcedidoError(gasto, LIMITE_CAIO_USD_DIA);
   }

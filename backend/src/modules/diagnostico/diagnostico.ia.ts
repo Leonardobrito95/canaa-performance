@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import logger from '../../config/logger';
 import { montarDiagnosticoSystemPrompt, montarGestaoSystemPrompt } from './diagnostico.prompt';
 import { buscarBlocosPrompt } from './diagnostico.repository';
+import { alertarFalhaTecnicaCaio } from './diagnostico.alertas-admin';
 import { ImagemAnexo } from './diagnostico.types';
 
 // 'gemini-2.5-flash' foi descontinuado para geração (ainda aparece em
@@ -147,6 +148,10 @@ export async function chamarGemini(
       if (i < tentativas.length - 1) await new Promise((r) => setTimeout(r, 1500));
     }
   }
+  // Melhor esforço, nunca atrasa nem quebra o throw real abaixo.
+  alertarFalhaTecnicaCaio(ultimoErro).catch((err) =>
+    logger.warn(`[Alerta CAIO Admin] Falha ao processar alerta de falha técnica: ${err.message}`),
+  );
   throw ultimoErro;
 }
 
